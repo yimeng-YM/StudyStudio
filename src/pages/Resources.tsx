@@ -1,8 +1,8 @@
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/db';
 import { processFile } from '@/lib/fileProcessor';
-import { Folder, Upload, FileText, Trash2, Eye, File as FileIcon } from 'lucide-react';
+import { Folder, Upload, Trash2, Eye, File as FileIcon } from 'lucide-react';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { Modal } from '@/components/ui/Modal';
 

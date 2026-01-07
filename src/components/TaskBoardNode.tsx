@@ -1,4 +1,4 @@
-import { memo, useState, useCallback } from 'react';
+import { memo, useState } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
 import { Plus, X, Check, Trash2 } from 'lucide-react';
 
