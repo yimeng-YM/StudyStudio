@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { useAIStore } from '@/store/useAIStore';
 import { streamAICompletion, Message, MessageContentPart } from '@/services/ai';
-import { Send, Paperclip, X, Trash2, Plus, History, MessageSquare, Folder } from 'lucide-react';
+import { Send, Paperclip, X, Trash2, Plus, History, MessageSquare, Folder, Sparkles } from 'lucide-react';
 import { MessageRenderer } from './MessageRenderer';
 import { db, ChatSession } from '@/db';
 import { processFile } from '@/lib/fileProcessor';
@@ -48,7 +48,7 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
 
   // Fetch history if entityId is provided, otherwise fetch general sessions
   const history = useLiveQuery<ChatSession[]>(
-    () => entityId 
+    () => entityId
       ? db.chatSessions.where('entityId').equals(entityId).reverse().sortBy('updatedAt')
       : db.chatSessions.filter(s => !s.entityId).reverse().sortBy('updatedAt'),
     [entityId]
@@ -268,18 +268,18 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
       // Check for commands in the response
       if (onAICommand) {
         let found = false;
-        
+
         // Robust JSON extraction from Markdown code blocks to handle nested backticks (e.g. mermaid in JSON string)
         const markers = [...assistantContent.matchAll(/```(?:json)?/g)];
         if (markers.length > 0) {
           for (const startMatch of markers) {
             const contentStart = startMatch.index! + startMatch[0].length;
-            
+
             // Try every subsequent "```" as a potential end marker
             const endMarkerRegex = /```/g;
             endMarkerRegex.lastIndex = contentStart;
             let endMatch;
-            
+
             while ((endMatch = endMarkerRegex.exec(assistantContent)) !== null) {
               const potentialJson = assistantContent.substring(contentStart, endMatch.index).trim();
               if (!potentialJson) continue;
@@ -375,18 +375,18 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
       <div className="absolute top-2 right-4 z-20">
         <button
           onClick={() => setShowHistory(!showHistory)}
-            className="p-2 bg-white dark:bg-slate-800 rounded-full shadow-md text-slate-500 hover:text-blue-600 border dark:border-slate-700"
-            title="历史对话"
-          >
-            <History size={18} />
-          </button>
+          className="p-2 bg-white dark:bg-zinc-800 rounded-full shadow-md text-zinc-500 hover:text-blue-600 border dark:border-zinc-700"
+          title="历史对话"
+        >
+          <History size={18} />
+        </button>
       </div>
 
       {/* History Overlay */}
       {showHistory && (
-        <div className="absolute inset-0 bg-white/95 dark:bg-slate-900/95 z-30 flex flex-col p-4 animate-in fade-in duration-200">
+        <div className="absolute inset-0 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl z-30 flex flex-col p-4 animate-in fade-in zoom-in-95 duration-200">
           <div className="flex justify-between items-center mb-4">
-            <h3 className="font-bold text-lg text-slate-800 dark:text-slate-100">历史对话</h3>
+            <h3 className="font-bold text-lg text-zinc-800 dark:text-zinc-100">历史对话</h3>
             <button onClick={() => setShowHistory(false)}><X size={20} /></button>
           </div>
           <button
@@ -400,51 +400,57 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
               <div
                 key={s.id}
                 onClick={() => switchSession(s.id)}
-                className={`w-full text-left p-3 rounded border dark:border-slate-700 flex items-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer group ${currentSessionId === s.id ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : ''}`}
+                className={`w-full text-left p-3 rounded-xl border dark:border-zinc-700 flex items-center gap-2 hover:bg-zinc-100/50 dark:hover:bg-zinc-800/50 cursor-pointer group transition-all duration-200 ${currentSessionId === s.id ? 'border-primary/50 bg-primary/5' : 'border-transparent'
+                  }`}
               >
-                <MessageSquare size={16} className="text-slate-400 shrink-0" />
+                <MessageSquare size={16} className="text-zinc-400 shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <div className="truncate text-sm font-medium text-slate-700 dark:text-slate-300">
+                  <div className="truncate text-sm font-medium text-zinc-700 dark:text-zinc-300">
                     {s.title}
                   </div>
-                  <div className="text-xs text-slate-400">
+                  <div className="text-xs text-zinc-400">
                     {new Date(s.updatedAt).toLocaleDateString()}
                   </div>
                 </div>
                 <button
                   onClick={(e) => deleteSession(e, s.id)}
-                  className="opacity-0 group-hover:opacity-100 p-2 text-slate-400 hover:text-red-500 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-all"
+                  className="opacity-0 group-hover:opacity-100 p-2 text-zinc-400 hover:text-destructive hover:bg-destructive/10 rounded-full transition-all"
                   title="删除对话"
                 >
                   <Trash2 size={14} />
                 </button>
               </div>
             ))}
-            {history?.length === 0 && <div className="text-center text-slate-500 mt-10">暂无历史记录</div>}
+            {history?.length === 0 && <div className="text-center text-zinc-500 mt-10">暂无历史记录</div>}
           </div>
         </div>
       )}
 
-      <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 pt-10">
+      <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-6 pt-10 scroll-smooth">
         {messages.length === 0 && (
-          <div className="text-center text-slate-500 mt-10">
-            {placeholder || "开始与 AI 对话..."}
+          <div className="flex flex-col items-center justify-center h-full text-zinc-400 space-y-4">
+            <div className="w-16 h-16 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center">
+              <Sparkles size={32} className="text-primary/50" />
+            </div>
+            <p className="text-sm font-medium">{placeholder || "开始与 AI 对话..."}</p>
           </div>
         )}
         {messages.map((m, i) => (
-          <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[90%] md:max-w-[80%] rounded-lg p-3 ${m.role === 'user'
-              ? 'bg-blue-600 text-white'
-              : 'bg-white dark:bg-slate-800 border dark:border-slate-700 text-slate-800 dark:text-slate-200 shadow-sm'
+          <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
+            <div className={`max-w-[90%] md:max-w-[80%] p-4 ${m.role === 'user'
+              ? 'bg-zinc-800 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900 rounded-2xl rounded-tr-sm shadow-md'
+              : 'bg-white/80 dark:bg-zinc-800/80 backdrop-blur-sm shadow-sm rounded-2xl rounded-tl-sm ring-1 ring-zinc-900/5 dark:ring-zinc-100/10'
               }`}>
-              <MessageRenderer content={m.content} />
+              <MessageRenderer content={m.content} isUser={m.role === 'user'} />
             </div>
           </div>
         ))}
         {loading && !messages[messages.length - 1]?.content && (
-          <div className="flex justify-start">
-            <div className="bg-white dark:bg-slate-800 p-3 rounded-lg border dark:border-slate-700 text-slate-500">
-              思考中...
+          <div className="flex justify-start animate-in fade-in">
+            <div className="bg-white/50 dark:bg-zinc-800/50 p-4 rounded-2xl rounded-tl-sm flex items-center gap-2 text-zinc-500">
+              <span className="w-2 h-2 bg-primary/50 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+              <span className="w-2 h-2 bg-primary/50 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+              <span className="w-2 h-2 bg-primary/50 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
             </div>
           </div>
         )}
@@ -454,25 +460,43 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
       {selectedFiles.length > 0 && (
         <div className="px-4 pb-2 flex gap-2 overflow-x-auto">
           {selectedFiles.map((f, i) => (
-            <div key={i} className="relative bg-slate-100 dark:bg-slate-800 p-2 rounded border dark:border-slate-700 flex items-center gap-2 max-w-[200px]">
-              <div className="truncate text-xs text-slate-700 dark:text-slate-300">{f.name}</div>
-              <button onClick={() => setSelectedFiles(prev => prev.filter((_, idx) => idx !== i))} className="text-red-500 hover:text-red-700"><X size={12} /></button>
+            <div key={i} className={`relative backdrop-blur px-3 py-1.5 rounded-lg border flex items-center gap-2 max-w-[200px] shadow-sm animate-in zoom-in duration-200 ${f.name.endsWith('.pdf') ? 'bg-red-50/80 dark:bg-red-900/20 border-red-200 dark:border-red-800' : 'bg-white/80 dark:bg-zinc-800/80 border-primary/20'
+              }`}>
+              {f.name.endsWith('.pdf') ? (
+                <div className="w-8 h-8 rounded bg-red-100 dark:bg-red-900/50 flex items-center justify-center shrink-0">
+                  <span className="text-[10px] font-bold text-red-600 dark:text-red-400">PDF</span>
+                </div>
+              ) : (
+                <div className="w-8 h-8 rounded bg-primary/10 flex items-center justify-center shrink-0">
+                  <Sparkles size={14} className="text-primary" />
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-xs font-medium text-foreground">{f.name}</div>
+                <div className="text-[10px] text-muted-foreground truncate">{f.content.length > 0 ? `${(f.content.length / 1024).toFixed(1)}KB` : 'Empty'}</div>
+              </div>
+              <button
+                onClick={() => setSelectedFiles(prev => prev.filter((_, idx) => idx !== i))}
+                className="absolute -top-1 -right-1 bg-destructive/90 text-destructive-foreground rounded-full p-0.5 hover:scale-110 transition-transform shadow-sm"
+              >
+                <X size={10} />
+              </button>
             </div>
           ))}
         </div>
       )}
 
-      <div className="p-4 border-t dark:border-slate-800 bg-white dark:bg-slate-900">
-        <div className="flex gap-2">
+      <div className="p-4 bg-transparent">
+        <div className="flex gap-2 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl p-2 rounded-[1.5rem] shadow-lg border border-zinc-200/50 dark:border-zinc-800/50 ring-1 ring-black/5 dark:ring-white/5 items-end">
           <button
             type="button"
             onClick={() => setShowResources(true)}
-            className="p-2 text-slate-500 hover:text-slate-700 bg-slate-100 dark:bg-slate-800 rounded-lg transition-colors"
+            className="p-3 text-zinc-500 hover:text-primary hover:bg-primary/10 rounded-full transition-all duration-300 mb-0.5"
             title="从资料库引用"
           >
             <Folder size={20} />
           </button>
-          <button onClick={() => fileInputRef.current?.click()} className="p-2 text-slate-500 hover:text-slate-700 bg-slate-100 dark:bg-slate-800 rounded-lg transition-colors" title="上传文件 (图片, Word, Excel, 文本)">
+          <button onClick={() => fileInputRef.current?.click()} className="p-3 text-zinc-500 hover:text-primary hover:bg-primary/10 rounded-full transition-all duration-300 mb-0.5" title="上传文件">
             <Paperclip size={20} />
           </button>
           <input
@@ -482,53 +506,68 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
             multiple
             onChange={handleFileSelect}
           />
-          <input
-            className="flex-1 border rounded-lg px-4 py-2 bg-slate-50 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          <textarea
+            className="flex-1 bg-transparent px-2 py-3 text-zinc-900 dark:text-zinc-100 focus:outline-none placeholder:text-zinc-400 disabled:opacity-50 disabled:cursor-not-allowed resize-none max-h-[120px] min-h-[44px]"
             value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-            placeholder="输入问题..."
+            onChange={e => {
+              setInput(e.target.value);
+              // Auto-resize
+              e.target.style.height = 'auto';
+              e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
+            }}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+                // Reset height after send
+                const target = e.target as HTMLTextAreaElement;
+                setTimeout(() => {
+                  target.style.height = 'auto';
+                }, 0);
+              }
+            }}
+            placeholder={!settings?.apiKey ? "请先在设置中配置 API Key" : "输入问题..."}
             disabled={loading || !settings?.apiKey}
+            rows={1}
           />
           <button
             onClick={sendMessage}
             disabled={loading || !settings?.apiKey}
-            className="bg-blue-600 text-white p-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            className="bg-primary text-primary-foreground p-3 rounded-xl shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/40 hover:scale-105 disabled:opacity-50 disabled:hover:scale-100 transition-all duration-300 mb-0.5"
           >
-            <Send size={20} />
+            <Send size={18} />
           </button>
         </div>
-        {!settings?.apiKey && <div className="text-red-500 text-sm mt-2">请先在设置中配置 API Key。</div>}
-      </div>
 
-      {/* Resource Selection Modal */}
-      <Modal
-        isOpen={showResources}
-        onClose={() => setShowResources(false)}
-        title="选择资料库文件"
-      >
-        <div className="space-y-2">
-          {!availableResources || availableResources.length === 0 ? (
-            <div className="text-center text-slate-500 py-8">
-              暂无资料，请先在侧边栏“资料库”中上传。
-            </div>
-          ) : (
-            availableResources.map(file => (
-              <button
-                key={file.id}
-                onClick={() => handleResourceSelect(file)}
-                className="w-full text-left p-3 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg flex items-center gap-3 transition-colors border dark:border-slate-800"
-              >
-                <Folder className="text-blue-500" size={20} />
-                <div>
-                  <div className="font-medium text-slate-800 dark:text-slate-200">{file.title}</div>
-                  <div className="text-xs text-slate-500">{(file.content.size / 1024).toFixed(1)} KB • {new Date(file.createdAt).toLocaleDateString()}</div>
-                </div>
-              </button>
-            ))
-          )}
-        </div>
-      </Modal>
+        {/* Resource Selection Modal */}
+        <Modal
+          isOpen={showResources}
+          onClose={() => setShowResources(false)}
+          title="选择资料库文件"
+        >
+          <div className="space-y-2">
+            {!availableResources || availableResources.length === 0 ? (
+              <div className="text-center text-zinc-500 py-8">
+                暂无资料，请先在侧边栏“资料库”中上传。
+              </div>
+            ) : (
+              availableResources.map(file => (
+                <button
+                  key={file.id}
+                  onClick={() => handleResourceSelect(file)}
+                  className="w-full text-left p-3 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg flex items-center gap-3 transition-colors border dark:border-zinc-800"
+                >
+                  <Folder className="text-blue-500" size={20} />
+                  <div>
+                    <div className="font-medium text-zinc-800 dark:text-zinc-200">{file.title}</div>
+                    <div className="text-xs text-zinc-500">{(file.content.size / 1024).toFixed(1)} KB • {new Date(file.createdAt).toLocaleDateString()}</div>
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        </Modal>
+      </div>
     </div>
   );
 });

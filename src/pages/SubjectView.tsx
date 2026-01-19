@@ -52,11 +52,11 @@ export function SubjectView() {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="border-b px-8 py-4 bg-white dark:bg-slate-900 flex items-center justify-between sticky top-0 z-10">
+      <div className="border-b px-8 py-4 bg-white dark:bg-black border-zinc-200 dark:border-zinc-800 flex items-center justify-between sticky top-0 z-10">
         {isEditing ? (
           <input
             autoFocus
-            className="text-2xl font-bold text-slate-800 dark:text-slate-100 bg-transparent border-b-2 border-primary outline-none"
+            className="text-2xl font-bold text-zinc-800 dark:text-zinc-100 bg-transparent border-b-2 border-primary outline-none"
             value={editedName}
             onChange={(e) => setEditedName(e.target.value)}
             onBlur={handleNameUpdate}
@@ -81,12 +81,12 @@ export function SubjectView() {
           </h1>
         )}
 
-        <div className="flex space-x-2 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
+        <div className="flex space-x-2 bg-zinc-100 dark:bg-zinc-900 p-1 rounded-lg">
           <button
             onClick={() => setActiveTab('mindmap')}
             className={cn(
               "px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition-colors",
-              activeTab === 'mindmap' ? "bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-slate-100" : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
+              activeTab === 'mindmap' ? "bg-white dark:bg-zinc-800 shadow-sm text-zinc-900 dark:text-zinc-100" : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
             )}
           >
             <Network size={16} />
@@ -96,7 +96,7 @@ export function SubjectView() {
             onClick={() => setActiveTab('notes')}
             className={cn(
               "px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition-colors",
-              activeTab === 'notes' ? "bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-slate-100" : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
+              activeTab === 'notes' ? "bg-white dark:bg-zinc-800 shadow-sm text-zinc-900 dark:text-zinc-100" : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
             )}
           >
             <FileText size={16} />
@@ -106,7 +106,7 @@ export function SubjectView() {
             onClick={() => setActiveTab('tasks')}
             className={cn(
               "px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition-colors",
-              activeTab === 'tasks' ? "bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-slate-100" : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
+              activeTab === 'tasks' ? "bg-white dark:bg-zinc-800 shadow-sm text-zinc-900 dark:text-zinc-100" : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
             )}
           >
             <CheckSquare size={16} />
@@ -115,7 +115,7 @@ export function SubjectView() {
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-hidden p-6 bg-slate-50/50 dark:bg-slate-950/50 relative">
+      <div className="flex-1 min-h-0 overflow-hidden p-6 bg-zinc-50/50 dark:bg-black relative">
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}

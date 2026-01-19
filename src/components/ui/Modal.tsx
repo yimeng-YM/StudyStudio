@@ -28,12 +28,12 @@ export function Modal({ isOpen, onClose, title, children, footer }: ModalProps) 
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
               transition={{ duration: 0.2 }}
-              className="bg-white dark:bg-slate-900 rounded-lg shadow-xl w-full max-w-md border border-slate-200 dark:border-slate-800 flex flex-col max-h-[90vh] pointer-events-auto"
+              className="bg-white dark:bg-zinc-900 rounded-lg shadow-xl w-full max-w-md border border-zinc-200 dark:border-zinc-800 flex flex-col max-h-[90vh] pointer-events-auto"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center justify-between p-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{title}</h3>
-                <button onClick={onClose} className="text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">
+              <div className="flex items-center justify-between p-4 border-b border-zinc-100 dark:border-zinc-800 shrink-0">
+                <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">{title}</h3>
+                <button onClick={onClose} className="text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300">
                   <X size={20} />
                 </button>
               </div>
@@ -41,7 +41,7 @@ export function Modal({ isOpen, onClose, title, children, footer }: ModalProps) 
                 {children}
               </div>
               {footer && (
-                <div className="p-4 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-2 shrink-0">
+                <div className="p-4 border-t border-zinc-100 dark:border-zinc-800 flex justify-end gap-2 shrink-0">
                   {footer}
                 </div>
               )}

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
 import ReactFlow, {
   MiniMap,
-  Controls,
   Background,
   useNodesState,
   useEdgesState,
@@ -20,6 +19,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useTheme } from '@/hooks/useTheme';
 import { useAIStore } from '@/store/useAIStore';
+import { ViewControls } from './ViewControls';
 
 interface TasksModuleProps {
   subjectId: string;
@@ -353,29 +353,29 @@ export function TasksModule({ subjectId, initialSessionId }: TasksModuleProps) {
     if (!boardEntity) return; // Wait for entity
 
     const getSystemContext = () => {
-        const _nodes = nodesRef.current;
-        const _mindMap = mindMapRef.current;
-        const _notes = notesRef.current;
+      const _nodes = nodesRef.current;
+      const _mindMap = mindMapRef.current;
+      const _notes = notesRef.current;
 
-        let context = `You are a Task Management Assistant helping user organize tasks based on their study material.\n\n`;
+      let context = `You are a Task Management Assistant helping user organize tasks based on their study material.\n\n`;
 
-        const currentBoard = _nodes.map(n =>
+      const currentBoard = _nodes.map(n =>
         `Block: ${n.data.title} (ID: ${n.id})\nItems: ${n.data.items?.map((i: any) => i.text + (i.completed ? '[x]' : '[ ]')).join(', ')}`
-        ).join('\n\n');
-        context += `Current Task Board:\n${currentBoard}\n\n`;
+      ).join('\n\n');
+      context += `Current Task Board:\n${currentBoard}\n\n`;
 
-        if (_mindMap && _mindMap.content && _mindMap.content.nodes) {
+      if (_mindMap && _mindMap.content && _mindMap.content.nodes) {
         const mapNodes = _mindMap.content.nodes as any[];
         const structure = mapNodes.map(n => n.data.label).join(', ');
         context += `Related Mind Map Topics:\n${structure}\n\n`;
-        }
+      }
 
-        if (_notes && _notes.length > 0) {
+      if (_notes && _notes.length > 0) {
         const notesSummary = _notes.map(n => `Note "${n.title}": ${n.content.slice(0, 100)}...`).join('\n');
         context += `Related Notes Previews:\n${notesSummary}\n\n`;
-        }
+      }
 
-        context += `
+      context += `
     Based on the mind map and notes, suggest tasks or study plans.
     To CREATE task blocks, respond with a JSON block:
     \`\`\`json
@@ -398,24 +398,24 @@ export function TasksModule({ subjectId, initialSessionId }: TasksModuleProps) {
     To UPDATE/DELETE:
     ... (same as before)
     `;
-        return context;
+      return context;
     };
 
     setContext({
-        id: boardEntity.id, // Use REAL entity ID
-        sourceType: 'task',
-        sessionId: chatSessionId,
-        onSessionChange: handleSessionChange,
-        getSystemContext,
-        handleCommand: handleAICommand
+      id: boardEntity.id, // Use REAL entity ID
+      sourceType: 'task',
+      sessionId: chatSessionId,
+      onSessionChange: handleSessionChange,
+      getSystemContext,
+      handleCommand: handleAICommand
     });
-    
+
     return () => setContext(null);
   }, [boardEntity, chatSessionId, handleSessionChange, handleAICommand, setContext]);
 
 
   return (
-    <div style={{ width: '100%', height: '100%' }} className="relative bg-slate-50 dark:bg-slate-950">
+    <div style={{ width: '100%', height: '100%' }} className="relative bg-zinc-50 dark:bg-black">
       <ReactFlow
         nodes={nodesWithHandlers}
         edges={edges}
@@ -426,22 +426,22 @@ export function TasksModule({ subjectId, initialSessionId }: TasksModuleProps) {
         nodeTypes={nodeTypes}
         fitView
       >
-        <Controls />
+        <ViewControls />
         <MiniMap
-          nodeColor={theme === 'dark' ? '#1e293b' : '#e2e8f0'}
-          maskColor={theme === 'dark' ? 'rgba(30, 41, 59, 0.7)' : 'rgba(240, 242, 245, 0.7)'}
-          style={{ backgroundColor: theme === 'dark' ? '#0f172a' : '#fff' }}
+          nodeColor={theme === 'dark' ? '#27272a' : '#e2e8f0'}
+          maskColor={theme === 'dark' ? 'rgba(9, 9, 11, 0.7)' : 'rgba(240, 242, 245, 0.7)'}
+          style={{ backgroundColor: theme === 'dark' ? '#000000' : '#fff' }}
         />
         <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
         <Panel position="top-right" className="flex gap-2">
           {/* AI Button Removed */}
-          <button onClick={addBlock} className="bg-white dark:bg-slate-800 p-2 rounded shadow hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200" title="添加任务块">
+          <button onClick={addBlock} className="bg-white/80 dark:bg-zinc-900/80 backdrop-blur p-2.5 rounded-xl shadow-sm border border-zinc-200/50 dark:border-zinc-800/50 hover:bg-white dark:hover:bg-zinc-800 hover:scale-105 transition-all text-zinc-700 dark:text-zinc-200" title="添加任务块">
             <Plus size={20} />
           </button>
-          <button onClick={() => setAutoSave(!autoSave)} className={`bg-white dark:bg-slate-800 p-2 rounded shadow hover:bg-slate-50 dark:hover:bg-slate-700 ${autoSave ? 'text-green-600' : 'text-slate-400'}`} title={autoSave ? "自动保存已开启" : "自动保存已关闭"}>
+          <button onClick={() => setAutoSave(!autoSave)} className={`bg-white/80 dark:bg-zinc-900/80 backdrop-blur p-2.5 rounded-xl shadow-sm border border-zinc-200/50 dark:border-zinc-800/50 hover:bg-white dark:hover:bg-zinc-800 hover:scale-105 transition-all ${autoSave ? 'text-green-500' : 'text-zinc-400'}`} title={autoSave ? "自动保存已开启" : "自动保存已关闭"}>
             <SaveAll size={20} />
           </button>
-          <button onClick={save} className="bg-white dark:bg-slate-800 p-2 rounded shadow hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200" title="手动保存">
+          <button onClick={save} className="bg-white/80 dark:bg-zinc-900/80 backdrop-blur p-2.5 rounded-xl shadow-sm border border-zinc-200/50 dark:border-zinc-800/50 hover:bg-white dark:hover:bg-zinc-800 hover:scale-105 transition-all text-zinc-700 dark:text-zinc-200" title="手动保存">
             <Save size={20} />
           </button>
         </Panel>

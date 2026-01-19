@@ -15,9 +15,9 @@ export function Layout() {
   }, [loadSettings]);
 
   return (
-    <div className="flex h-screen w-full bg-white dark:bg-slate-950 overflow-hidden">
+    <div className="flex h-screen w-full bg-white dark:bg-black overflow-hidden">
       <Sidebar />
-      <main className="flex-1 overflow-hidden bg-white dark:bg-slate-950 relative">
+      <main className="flex-1 overflow-hidden bg-white dark:bg-black relative">
         <AnimatePresence mode="wait">
           <motion.div
             key={location.pathname}

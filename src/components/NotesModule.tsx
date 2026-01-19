@@ -1,11 +1,11 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, Entity } from '@/db';
-import { 
-  Plus, Trash, Edit, Save, ArrowUp, ArrowDown, SortAsc, Clock, GripVertical, 
+import {
+  Plus, Trash, Edit, Save, ArrowUp, ArrowDown, SortAsc, Clock, GripVertical,
   Image as ImageIcon, Undo, Redo,
-  Bold, Italic, Strikethrough, List, ListOrdered, Heading1, Heading2, Heading3, 
-  Quote, Code, Link as LinkIcon 
+  Bold, Italic, Strikethrough, List, ListOrdered, Heading1, Heading2, Heading3,
+  Quote, Code, Link as LinkIcon
 } from 'lucide-react';
 import { MessageRenderer } from './MessageRenderer';
 import { cn } from '@/lib/utils';
@@ -220,7 +220,7 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
         const newCursorPos = selection.length === 0 && suffix.length > 0
           ? start + actualPrefix.length
           : start + actualPrefix.length + selection.length + actualSuffix.length;
-        
+
         textAreaRef.current.setSelectionRange(newCursorPos, newCursorPos);
       }
     }, 0);
@@ -439,7 +439,7 @@ IMPORTANT: When updating a note, you MUST provide the COMPLETE content. Do NOT o
         setSortDirection={setSortDirection}
       />
 
-      <div className="flex-1 flex flex-col bg-white dark:bg-slate-900 rounded-lg shadow-sm border border-slate-200 dark:border-slate-800 p-4 relative overflow-hidden">
+      <div className="flex-1 flex flex-col bg-white dark:bg-zinc-900/50 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800 p-4 relative overflow-hidden">
         {selectedNote ? (
           <>
             <div className="flex justify-between items-center mb-4 border-b dark:border-slate-800 pb-2">
@@ -504,35 +504,35 @@ IMPORTANT: When updating a note, you MUST provide the COMPLETE content. Do NOT o
             </div>
 
             <div className="flex-1 overflow-hidden flex gap-4">
-              <div className={`flex-1 flex flex-col min-w-0 h-full ${isEditing ? 'border border-slate-200 dark:border-slate-700 rounded' : ''}`}>
+              <div className={`flex-1 flex flex-col min-w-0 h-full ${isEditing ? 'border border-zinc-200 dark:border-zinc-700 rounded' : ''}`}>
                 {isEditing ? (
                   <>
-                    <div className="flex flex-wrap items-center gap-1 p-2 bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
-                      <button onClick={() => insertMarkdown('**', '**')} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400" title="加粗"><Bold size={16} /></button>
-                      <button onClick={() => insertMarkdown('*', '*')} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400" title="斜体"><Italic size={16} /></button>
-                      <button onClick={() => insertMarkdown('~~', '~~')} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400" title="删除线"><Strikethrough size={16} /></button>
-                      <div className="w-px h-4 bg-slate-300 dark:bg-slate-600 mx-1" />
-                      <button onClick={() => insertMarkdown('# ', '', true)} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400" title="一级标题"><Heading1 size={16} /></button>
-                      <button onClick={() => insertMarkdown('## ', '', true)} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400" title="二级标题"><Heading2 size={16} /></button>
-                      <button onClick={() => insertMarkdown('### ', '', true)} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400" title="三级标题"><Heading3 size={16} /></button>
-                      <div className="w-px h-4 bg-slate-300 dark:bg-slate-600 mx-1" />
-                      <button onClick={() => insertMarkdown('- ', '', true)} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400" title="无序列表"><List size={16} /></button>
-                      <button onClick={() => insertMarkdown('1. ', '', true)} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400" title="有序列表"><ListOrdered size={16} /></button>
-                      <button onClick={() => insertMarkdown('> ', '', true)} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400" title="引用"><Quote size={16} /></button>
-                      <div className="w-px h-4 bg-slate-300 dark:bg-slate-600 mx-1" />
-                      <button onClick={() => insertMarkdown('```\n', '\n```', true)} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400" title="代码块"><Code size={16} /></button>
-                      <button onClick={() => insertMarkdown('[', '](url)')} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400" title="链接"><LinkIcon size={16} /></button>
+                    <div className="flex flex-wrap items-center gap-1 p-2 bg-zinc-50 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700">
+                      <button onClick={() => insertMarkdown('**', '**')} className="p-1.5 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400" title="加粗"><Bold size={16} /></button>
+                      <button onClick={() => insertMarkdown('*', '*')} className="p-1.5 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400" title="斜体"><Italic size={16} /></button>
+                      <button onClick={() => insertMarkdown('~~', '~~')} className="p-1.5 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400" title="删除线"><Strikethrough size={16} /></button>
+                      <div className="w-px h-4 bg-zinc-300 dark:bg-zinc-600 mx-1" />
+                      <button onClick={() => insertMarkdown('# ', '', true)} className="p-1.5 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400" title="一级标题"><Heading1 size={16} /></button>
+                      <button onClick={() => insertMarkdown('## ', '', true)} className="p-1.5 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400" title="二级标题"><Heading2 size={16} /></button>
+                      <button onClick={() => insertMarkdown('### ', '', true)} className="p-1.5 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400" title="三级标题"><Heading3 size={16} /></button>
+                      <div className="w-px h-4 bg-zinc-300 dark:bg-zinc-600 mx-1" />
+                      <button onClick={() => insertMarkdown('- ', '', true)} className="p-1.5 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400" title="无序列表"><List size={16} /></button>
+                      <button onClick={() => insertMarkdown('1. ', '', true)} className="p-1.5 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400" title="有序列表"><ListOrdered size={16} /></button>
+                      <button onClick={() => insertMarkdown('> ', '', true)} className="p-1.5 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400" title="引用"><Quote size={16} /></button>
+                      <div className="w-px h-4 bg-zinc-300 dark:bg-zinc-600 mx-1" />
+                      <button onClick={() => insertMarkdown('```\n', '\n```', true)} className="p-1.5 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400" title="代码块"><Code size={16} /></button>
+                      <button onClick={() => insertMarkdown('[', '](url)')} className="p-1.5 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400" title="链接"><LinkIcon size={16} /></button>
                     </div>
                     <textarea
                       ref={textAreaRef}
-                      className="w-full h-full resize-none focus:outline-none bg-transparent text-slate-800 dark:text-slate-200 font-mono p-3 border-0"
+                      className="w-full h-full resize-none focus:outline-none bg-transparent text-zinc-800 dark:text-zinc-200 font-mono p-3 border-0"
                       value={editContent}
                       onChange={e => setEditContent(e.target.value)}
                       placeholder="开始写作..."
                     />
                   </>
                 ) : (
-                  <div className="prose dark:prose-invert max-w-none text-slate-800 dark:text-slate-200 overflow-y-auto">
+                  <div className="prose dark:prose-invert max-w-none text-zinc-800 dark:text-zinc-200 overflow-y-auto">
                     <MessageRenderer content={selectedNote.content} />
                   </div>
                 )}
@@ -540,7 +540,7 @@ IMPORTANT: When updating a note, you MUST provide the COMPLETE content. Do NOT o
             </div>
           </>
         ) : (
-          <div className="flex items-center justify-center h-full text-slate-400">
+          <div className="flex items-center justify-center h-full text-zinc-400">
             选择一个笔记以查看或编辑，或者使用 AI 助手创建新笔记。
           </div>
         )}
@@ -559,26 +559,26 @@ function NotesList({ notes, selectedNote, setSelectedNote, setEditContent, setEd
           </button>
         </div>
         {/* Sort Toolbar */}
-        <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
+        <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800 p-1 rounded-lg">
           <button
             onClick={() => setSortMode('name')}
-            className={cn("p-1.5 rounded transition-colors flex-1 flex justify-center", sortMode === 'name' ? "bg-white dark:bg-slate-700 shadow-sm text-blue-600" : "text-slate-400 hover:text-slate-600")}
+            className={cn("p-1.5 rounded transition-colors flex-1 flex justify-center", sortMode === 'name' ? "bg-white dark:bg-zinc-700 shadow-sm text-blue-600" : "text-zinc-400 hover:text-zinc-600")}
             title="按名称"
           ><SortAsc size={14} /></button>
           <button
             onClick={() => setSortMode('lastAccessed')}
-            className={cn("p-1.5 rounded transition-colors flex-1 flex justify-center", sortMode === 'lastAccessed' ? "bg-white dark:bg-slate-700 shadow-sm text-blue-600" : "text-slate-400 hover:text-slate-600")}
+            className={cn("p-1.5 rounded transition-colors flex-1 flex justify-center", sortMode === 'lastAccessed' ? "bg-white dark:bg-zinc-700 shadow-sm text-blue-600" : "text-zinc-400 hover:text-zinc-600")}
             title="按时间"
           ><Clock size={14} /></button>
           <button
             onClick={() => setSortMode('manual')}
-            className={cn("p-1.5 rounded transition-colors flex-1 flex justify-center", sortMode === 'manual' ? "bg-white dark:bg-slate-700 shadow-sm text-blue-600" : "text-slate-400 hover:text-slate-600")}
+            className={cn("p-1.5 rounded transition-colors flex-1 flex justify-center", sortMode === 'manual' ? "bg-white dark:bg-zinc-700 shadow-sm text-blue-600" : "text-zinc-400 hover:text-zinc-600")}
             title="手动"
           ><GripVertical size={14} /></button>
-          <div className="w-px h-4 bg-slate-300 dark:bg-slate-600 mx-1" />
+          <div className="w-px h-4 bg-zinc-300 dark:bg-zinc-600 mx-1" />
           <button
             onClick={() => setSortDirection((prev: any) => prev === 'asc' ? 'desc' : 'asc')}
-            className="p-1.5 rounded text-slate-400 hover:text-slate-600 transition-colors"
+            className="p-1.5 rounded text-zinc-400 hover:text-zinc-600 transition-colors"
           >
             {sortDirection === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
           </button>
@@ -599,7 +599,7 @@ function NotesList({ notes, selectedNote, setSelectedNote, setEditContent, setEd
             }}
             className={cn(
               "p-3 rounded cursor-pointer transition-all group relative animate-in slide-in-from-left duration-300",
-              selectedNote?.id === note.id ? 'bg-slate-200 dark:bg-slate-800' : 'hover:bg-slate-100 dark:hover:bg-slate-900'
+              selectedNote?.id === note.id ? 'bg-zinc-200 dark:bg-zinc-800' : 'hover:bg-zinc-100 dark:hover:bg-zinc-900'
             )}
             style={{ animationDelay: `${idx * 30}ms` }}
           >

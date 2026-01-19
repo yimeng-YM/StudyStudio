@@ -47,15 +47,16 @@ mermaid.initialize({
 
 interface MessageRendererProps {
   content: string | MessageContentPart[];
+  isUser?: boolean;
 }
 
-export function MessageRenderer({ content }: MessageRendererProps) {
+export function MessageRenderer({ content, isUser }: MessageRendererProps) {
   if (Array.isArray(content)) {
     return (
       <div className="space-y-2">
         {content.map((part, i) => {
           if (part.type === 'text') {
-            return <MarkdownText key={i} content={part.text} />;
+            return <MarkdownText key={i} content={part.text} isUser={isUser} />;
           } else if (part.type === 'image_url') {
             return (
               <img
@@ -72,7 +73,7 @@ export function MessageRenderer({ content }: MessageRendererProps) {
     );
   }
 
-  return <MarkdownText content={content} />;
+  return <MarkdownText content={content} isUser={isUser} />;
 }
 
 function extractMetadata(text: string): [any | null, string] {
@@ -198,7 +199,7 @@ function Mermaid({ chart }: { chart: string }) {
   );
 }
 
-function MarkdownText({ content }: { content: string }) {
+function MarkdownText({ content, isUser }: { content: string; isUser?: boolean }) {
   const [metadata, contentToRender] = extractMetadata(content);
   const [isExpanded, setIsExpanded] = useState(false);
   const isDark = useIsDark();
@@ -225,15 +226,15 @@ function MarkdownText({ content }: { content: string }) {
           {String(children).replace(/\n$/, '')}
         </SyntaxHighlighter>
       ) : (
-        <code {...props} className={`${className} bg-slate-200 dark:bg-slate-700 rounded px-1 py-0.5`}>
+        <code {...props} className={`${className} bg-slate-200 dark:bg-slate-700 rounded px-1 py-0.5 text-inherit`}>
           {children}
         </code>
       );
     },
     img: ({ node, ...props }: any) => <AsyncImage {...props} className="max-w-full h-auto rounded-lg" />,
     table: ({ node, ...props }: any) => <div className="overflow-x-auto my-4"><table {...props} className="min-w-full divide-y divide-slate-300 dark:divide-slate-700 border border-slate-200 dark:border-slate-700 table-auto" /></div>,
-    th: ({ node, ...props }: any) => <th {...props} className="px-3 py-2 text-left text-sm font-semibold text-slate-900 dark:text-slate-100 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 whitespace-nowrap" />,
-    td: ({ node, ...props }: any) => <td {...props} className="px-3 py-2 text-sm text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700" />,
+    th: ({ node, ...props }: any) => <th {...props} className="px-3 py-2 text-left text-sm font-semibold text-inherit border border-slate-200 dark:border-slate-700 whitespace-nowrap" />,
+    td: ({ node, ...props }: any) => <td {...props} className="px-3 py-2 text-sm text-inherit border border-slate-200 dark:border-slate-700" />,
   };
 
   if (metadata) {
@@ -278,8 +279,20 @@ function MarkdownText({ content }: { content: string }) {
     );
   }
 
+  // Determine classes
+  // User Bubble Contrast Logic:
+  // - Light Mode: User bubble is Dark (bg-zinc-800) -> Needs Light Text -> prose-invert
+  // - Dark Mode: User bubble is Light (bg-zinc-100) -> Needs Dark Text -> prose
+  const userProseClass = isDark
+    ? "prose max-w-none break-words" // Dark Mode: Light Bubble, Dark Text
+    : "prose prose-invert max-w-none break-words"; // Light Mode: Dark Bubble, Light Text
+
+  const assistantProseClass = "prose dark:prose-invert max-w-none break-words";
+
+  const proseClass = isUser ? userProseClass : assistantProseClass;
+
   return (
-    <div className="prose dark:prose-invert max-w-none break-words">
+    <div className={proseClass}>
       <ReactMarkdown
         remarkPlugins={[remarkMath, remarkGfm, remarkBreaks]}
         rehypePlugins={[[rehypeKatex, { strict: false }]]}

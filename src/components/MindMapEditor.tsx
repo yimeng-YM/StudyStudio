@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
 import ReactFlow, {
   MiniMap,
-  Controls,
   Background,
   useNodesState,
   useEdgesState,
@@ -20,6 +19,7 @@ import { Modal } from './ui/Modal';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useTheme } from '@/hooks/useTheme';
 import { useAIStore } from '@/store/useAIStore';
+import { ViewControls } from './ViewControls';
 
 interface MindMapEditorProps {
   subjectId: string;
@@ -66,7 +66,7 @@ export function MindMapEditor({ subjectId, onNavigate, initialSessionId }: MindM
   // Refs for AI Context
   const nodesRef = useRef(nodes);
   const edgesRef = useRef(edges);
-  
+
   useEffect(() => {
     nodesRef.current = nodes;
     edgesRef.current = edges;
@@ -450,14 +450,14 @@ export function MindMapEditor({ subjectId, onNavigate, initialSessionId }: MindM
     if (!mindMapEntity) return; // Wait for entity
 
     const getSystemContext = () => {
-        const currentNodes = nodesRef.current;
-        const currentEdges = edgesRef.current;
-        const structure = currentNodes.map(n => {
-            const children = currentEdges.filter(e => e.source === n.id).map(e => e.target);
-            return `${n.data.label} (ID: ${n.id}) -> Children: [${children.join(', ')}]`;
-        }).join('\n');
+      const currentNodes = nodesRef.current;
+      const currentEdges = edgesRef.current;
+      const structure = currentNodes.map(n => {
+        const children = currentEdges.filter(e => e.source === n.id).map(e => e.target);
+        return `${n.data.label} (ID: ${n.id}) -> Children: [${children.join(', ')}]`;
+      }).join('\n');
 
-        return `Current Mind Map Structure:\n${structure}\n
+      return `Current Mind Map Structure:\n${structure}\n
 You are a Mind Map Assistant. You can modify the mind map.
 To update the mind map, respond with a JSON block in the following format:
 \`\`\`json
@@ -474,14 +474,14 @@ If user asks to modify, provide the updated full structure (nodes + edges).
     };
 
     setContext({
-        id: mindMapEntity.id, // Use REAL entity ID
-        sourceType: 'mindmap',
-        sessionId: chatSessionId,
-        onSessionChange: handleSessionChange,
-        getSystemContext,
-        handleCommand: handleAICommand
+      id: mindMapEntity.id, // Use REAL entity ID
+      sourceType: 'mindmap',
+      sessionId: chatSessionId,
+      onSessionChange: handleSessionChange,
+      getSystemContext,
+      handleCommand: handleAICommand
     });
-    
+
     return () => setContext(null);
   }, [mindMapEntity, chatSessionId, handleSessionChange, handleAICommand, setContext]);
 
@@ -499,28 +499,28 @@ If user asks to modify, provide the updated full structure (nodes + edges).
         nodeTypes={nodeTypes}
         fitView
       >
-        <Controls />
+        <ViewControls />
         <MiniMap
-          nodeColor={theme === 'dark' ? '#1e293b' : '#e2e8f0'}
-          maskColor={theme === 'dark' ? 'rgba(30, 41, 59, 0.7)' : 'rgba(240, 242, 245, 0.7)'}
-          style={{ backgroundColor: theme === 'dark' ? '#0f172a' : '#fff' }}
+          nodeColor={theme === 'dark' ? '#27272a' : '#e2e8f0'}
+          maskColor={theme === 'dark' ? 'rgba(9, 9, 11, 0.7)' : 'rgba(240, 242, 245, 0.7)'}
+          style={{ backgroundColor: theme === 'dark' ? '#000000' : '#fff' }}
         />
         <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
         <Panel position="top-right" className="flex gap-2">
-          <button onClick={handleUndo} disabled={historyIndex <= 0} className="bg-white dark:bg-slate-800 p-2 rounded shadow hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 disabled:opacity-50" title="撤销">
+          <button onClick={handleUndo} disabled={historyIndex <= 0} className="bg-white dark:bg-zinc-800 p-2 rounded shadow hover:bg-zinc-50 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 disabled:opacity-50" title="撤销">
             <Undo size={20} />
           </button>
-          <button onClick={handleRedo} disabled={historyIndex >= history.length - 1} className="bg-white dark:bg-slate-800 p-2 rounded shadow hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 disabled:opacity-50" title="恢复">
+          <button onClick={handleRedo} disabled={historyIndex >= history.length - 1} className="bg-white dark:bg-zinc-800 p-2 rounded shadow hover:bg-zinc-50 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 disabled:opacity-50" title="恢复">
             <Redo size={20} />
           </button>
-          <div className="w-px bg-slate-300 dark:bg-slate-700 mx-1" />
-          <button onClick={handleAddRootNode} className="bg-white dark:bg-slate-800 p-2 rounded shadow hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200" title="添加根节点">
+          <div className="w-px bg-zinc-300 dark:bg-zinc-700 mx-1" />
+          <button onClick={handleAddRootNode} className="bg-white dark:bg-zinc-800 p-2 rounded shadow hover:bg-zinc-50 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200" title="添加根节点">
             <Plus size={20} />
           </button>
-          <button onClick={() => setAutoSave(!autoSave)} className={`bg-white dark:bg-slate-800 p-2 rounded shadow hover:bg-slate-50 dark:hover:bg-slate-700 ${autoSave ? 'text-green-600' : 'text-slate-400'}`} title={autoSave ? "自动保存已开启" : "自动保存已关闭"}>
+          <button onClick={() => setAutoSave(!autoSave)} className={`bg-white dark:bg-zinc-800 p-2 rounded shadow hover:bg-zinc-50 dark:hover:bg-zinc-700 ${autoSave ? 'text-green-600' : 'text-zinc-400'}`} title={autoSave ? "自动保存已开启" : "自动保存已关闭"}>
             <SaveAll size={20} />
           </button>
-          <button onClick={save} className="bg-white dark:bg-slate-800 p-2 rounded shadow hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200" title="手动保存">
+          <button onClick={save} className="bg-white dark:bg-zinc-800 p-2 rounded shadow hover:bg-zinc-50 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200" title="手动保存">
             <Save size={20} />
           </button>
         </Panel>
@@ -533,28 +533,28 @@ If user asks to modify, provide the updated full structure (nodes + edges).
         title="添加到任务清单"
         footer={
           <>
-            <button onClick={() => setIsTaskModalOpen(false)} className="px-4 py-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors">取消</button>
+            <button onClick={() => setIsTaskModalOpen(false)} className="px-4 py-2 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded transition-colors">取消</button>
             <button onClick={confirmAddTask} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors">确定</button>
           </>
         }
       >
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">选中节点</label>
-            <div className="p-2 bg-slate-100 dark:bg-slate-800 rounded text-slate-800 dark:text-slate-200 border dark:border-slate-700">
+            <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">选中节点</label>
+            <div className="p-2 bg-zinc-100 dark:bg-zinc-800 rounded text-zinc-800 dark:text-zinc-200 border dark:border-zinc-700">
               {taskLabelToAdd}
             </div>
             {taskItemsToAdd.length > 0 && (
-              <div className="mt-2 text-xs text-slate-500">
+              <div className="mt-2 text-xs text-zinc-500">
                 包含 {taskItemsToAdd.length} 个子节点，将自动添加为子任务。
               </div>
             )}
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">选择任务块</label>
+            <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">选择任务块</label>
             <select
-              className="w-full border rounded p-2 bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100"
+              className="w-full border rounded p-2 bg-white dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
               value={selectedBlockId}
               onChange={(e) => setSelectedBlockId(e.target.value)}
             >
@@ -567,9 +567,9 @@ If user asks to modify, provide the updated full structure (nodes + edges).
 
           {selectedBlockId === 'new' && (
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">新任务块名称</label>
+              <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">新任务块名称</label>
               <input
-                className="w-full border rounded p-2 bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border rounded p-2 bg-white dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 value={newBlockName}
                 onChange={(e) => setNewBlockName(e.target.value)}
                 placeholder="例如：待办事项"

@@ -91,24 +91,24 @@ export function DialogProvider({ children }: { children: ReactNode }) {
     <DialogContext.Provider value={{ showAlert, showConfirm, showPrompt }}>
       {children}
       {dialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-slate-900 rounded-xl shadow-xl w-full max-w-md mx-4 border dark:border-slate-800 overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="p-4 border-b dark:border-slate-800 flex justify-between items-center">
-              <h3 className="font-semibold text-lg text-slate-800 dark:text-slate-100">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-2xl w-full max-w-md mx-4 border dark:border-zinc-800 overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-4 border-b dark:border-zinc-800 flex justify-between items-center bg-zinc-50/50 dark:bg-zinc-900/50">
+              <h3 className="font-semibold text-lg text-zinc-800 dark:text-zinc-100">
                 {dialog.title || (dialog.type === 'alert' ? '提示' : dialog.type === 'confirm' ? '确认' : '输入')}
               </h3>
-              <button onClick={handleCancel} className="text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">
+              <button onClick={handleCancel} className="text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors">
                 <X size={20} />
               </button>
             </div>
-            
-            <div className="p-6">
-              <p className="text-slate-600 dark:text-slate-300 mb-4 whitespace-pre-wrap">{dialog.message}</p>
-              
+
+            <div className="p-6 bg-white dark:bg-zinc-900">
+              <p className="text-zinc-600 dark:text-zinc-300 mb-4 whitespace-pre-wrap leading-relaxed">{dialog.message}</p>
+
               {dialog.type === 'prompt' && (
                 <input
                   autoFocus
-                  className="w-full border rounded-lg px-4 py-2 bg-slate-50 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border rounded-lg px-4 py-2 bg-zinc-50 dark:bg-zinc-950 border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleConfirm()}
@@ -116,18 +116,18 @@ export function DialogProvider({ children }: { children: ReactNode }) {
               )}
             </div>
 
-            <div className="p-4 border-t dark:border-slate-800 flex justify-end gap-3 bg-slate-50 dark:bg-slate-900/50">
+            <div className="p-4 border-t dark:border-zinc-800 flex justify-end gap-3 bg-zinc-50 dark:bg-zinc-900/50">
               {dialog.type !== 'alert' && (
-                <button 
+                <button
                   onClick={handleCancel}
-                  className="px-4 py-2 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                  className="px-4 py-2 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-lg transition-colors font-medium"
                 >
                   {dialog.cancelText || '取消'}
                 </button>
               )}
-              <button 
+              <button
                 onClick={handleConfirm}
-                className="px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-lg transition-colors shadow-sm"
+                className="px-4 py-2 bg-primary text-primary-foreground hover:opacity-90 rounded-lg transition-all shadow hover:shadow-md font-medium"
               >
                 {dialog.confirmText || '确定'}
               </button>

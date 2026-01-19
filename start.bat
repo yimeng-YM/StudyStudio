@@ -70,9 +70,9 @@ if not exist "node_modules" (
 echo.
 
 echo %c_cyan%[3/3] 正在启动 StudyStudio...%c_reset%
-echo %c_yell%网页将在 5 秒后自动打开...%c_reset%
+echo %c_yell%网页将在 3 秒后自动打开...%c_reset%
 
-start "" /b cmd /c "timeout /t 5 >nul && start http://localhost:5173"
+start "" /b cmd /c "timeout /t 3 >nul && start http://localhost:5173"
 
 echo.
 echo %c_blue%====================================================%c_reset%
