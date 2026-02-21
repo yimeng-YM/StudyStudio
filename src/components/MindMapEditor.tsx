@@ -91,39 +91,60 @@ export function MindMapEditor({ subjectId, onNavigate, initialSessionId }: MindM
     }
   }, [nodes, edges, history.length]);
 
+  const loadingRef = useRef(false);
+
   useEffect(() => {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
+
     const load = async () => {
-      const existing = await db.entities
-        .where({ subjectId, type: 'mindmap' })
-        .first();
+      try {
+        const existing = await db.entities
+          .where({ subjectId, type: 'mindmap' })
+          .first();
 
-      if (existing) {
-        setMindMapEntity(existing);
-        if (existing.content.chatSessionId) {
-          setChatSessionId(existing.content.chatSessionId);
-        }
+        if (existing) {
+          setMindMapEntity(existing);
+          if (existing.content.chatSessionId) {
+            setChatSessionId(existing.content.chatSessionId);
+          }
 
-        if (existing.content) {
-          const loadedNodes = (existing.content.nodes || initialNodes).map((n: any) => ({
-            ...n,
-            type: 'custom'
-          }));
-          setNodes(loadedNodes);
-          setEdges(existing.content.edges || []);
+          if (existing.content) {
+            const loadedNodes = (existing.content.nodes || initialNodes).map((n: any) => ({
+              ...n,
+              type: 'custom'
+            }));
+            setNodes(loadedNodes);
+            setEdges(existing.content.edges || []);
+          }
+        } else {
+          // Double check
+          const checkAgain = await db.entities.where({ subjectId, type: 'mindmap' }).first();
+          if (checkAgain) {
+             setMindMapEntity(checkAgain);
+             // Load logic...
+             if (checkAgain.content) {
+               setNodes((checkAgain.content.nodes || initialNodes).map((n: any) => ({ ...n, type: 'custom' })));
+               setEdges(checkAgain.content.edges || []);
+             }
+             return;
+          }
+
+          const newEntity: Entity = {
+            id: crypto.randomUUID(),
+            subjectId,
+            type: 'mindmap',
+            title: 'Main Map',
+            content: { nodes: initialNodes, edges: [] },
+            createdAt: Date.now(),
+            updatedAt: Date.now()
+          };
+          await db.entities.add(newEntity);
+          setMindMapEntity(newEntity);
+          setNodes(initialNodes);
         }
-      } else {
-        const newEntity: Entity = {
-          id: crypto.randomUUID(),
-          subjectId,
-          type: 'mindmap',
-          title: 'Main Map',
-          content: { nodes: initialNodes, edges: [] },
-          createdAt: Date.now(),
-          updatedAt: Date.now()
-        };
-        await db.entities.add(newEntity);
-        setMindMapEntity(newEntity);
-        setNodes(initialNodes);
+      } finally {
+        loadingRef.current = false;
       }
     };
     load();

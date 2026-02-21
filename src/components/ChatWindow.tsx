@@ -1,13 +1,12 @@
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { useAIStore } from '@/store/useAIStore';
 import { streamAICompletion, Message, MessageContentPart } from '@/services/ai';
-import { Send, Paperclip, X, Trash2, Plus, History, MessageSquare, Folder, Sparkles } from 'lucide-react';
+import { Send, Paperclip, X, Trash2, Plus, History, MessageSquare, Sparkles } from 'lucide-react';
 import { MessageRenderer } from './MessageRenderer';
 import { db, ChatSession } from '@/db';
 import { processFile } from '@/lib/fileProcessor';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useDialog } from '@/components/ui/DialogProvider';
-import { Modal } from '@/components/ui/Modal';
 
 interface ChatWindowProps {
   sessionId?: string | null;
@@ -44,7 +43,6 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(sessionId || null);
   const [showHistory, setShowHistory] = useState(false);
-  const [showResources, setShowResources] = useState(false);
 
   // Fetch history if entityId is provided, otherwise fetch general sessions
   const history = useLiveQuery<ChatSession[]>(
@@ -52,11 +50,6 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
       ? db.chatSessions.where('entityId').equals(entityId).reverse().sortBy('updatedAt')
       : db.chatSessions.filter(s => !s.entityId).reverse().sortBy('updatedAt'),
     [entityId]
-  );
-
-  // Fetch available resources
-  const availableResources = useLiveQuery(() =>
-    db.entities.where({ type: 'file', subjectId: 'resource_library' }).toArray()
   );
 
   // Sync prop sessionId to internal state
@@ -103,18 +96,6 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
-
-  const handleResourceSelect = (resource: any) => {
-    setSelectedFiles(prev => [
-      ...prev,
-      {
-        name: resource.title,
-        content: resource.content.textContent || "(Empty File)",
-        // images: ... (if we store image refs later)
-      }
-    ]);
-    setShowResources(false);
-  };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -488,14 +469,6 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
 
       <div className="p-4 bg-transparent">
         <div className="flex gap-2 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl p-2 rounded-[1.5rem] shadow-lg border border-zinc-200/50 dark:border-zinc-800/50 ring-1 ring-black/5 dark:ring-white/5 items-end">
-          <button
-            type="button"
-            onClick={() => setShowResources(true)}
-            className="p-3 text-zinc-500 hover:text-primary hover:bg-primary/10 rounded-full transition-all duration-300 mb-0.5"
-            title="从资料库引用"
-          >
-            <Folder size={20} />
-          </button>
           <button onClick={() => fileInputRef.current?.click()} className="p-3 text-zinc-500 hover:text-primary hover:bg-primary/10 rounded-full transition-all duration-300 mb-0.5" title="上传文件">
             <Paperclip size={20} />
           </button>
@@ -538,35 +511,6 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
             <Send size={18} />
           </button>
         </div>
-
-        {/* Resource Selection Modal */}
-        <Modal
-          isOpen={showResources}
-          onClose={() => setShowResources(false)}
-          title="选择资料库文件"
-        >
-          <div className="space-y-2">
-            {!availableResources || availableResources.length === 0 ? (
-              <div className="text-center text-zinc-500 py-8">
-                暂无资料，请先在侧边栏“资料库”中上传。
-              </div>
-            ) : (
-              availableResources.map(file => (
-                <button
-                  key={file.id}
-                  onClick={() => handleResourceSelect(file)}
-                  className="w-full text-left p-3 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg flex items-center gap-3 transition-colors border dark:border-zinc-800"
-                >
-                  <Folder className="text-blue-500" size={20} />
-                  <div>
-                    <div className="font-medium text-zinc-800 dark:text-zinc-200">{file.title}</div>
-                    <div className="text-xs text-zinc-500">{(file.content.size / 1024).toFixed(1)} KB • {new Date(file.createdAt).toLocaleDateString()}</div>
-                  </div>
-                </button>
-              ))
-            )}
-          </div>
-        </Modal>
       </div>
     </div>
   );

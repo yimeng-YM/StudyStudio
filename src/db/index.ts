@@ -9,7 +9,7 @@ export interface Subject {
   order?: number;
 }
 
-export type EntityType = 'mindmap' | 'task' | 'note' | 'flashcard' | 'task_board' | 'file' | 'notes_overview';
+export type EntityType = 'mindmap' | 'task' | 'note' | 'flashcard' | 'task_board' | 'file' | 'notes_overview' | 'quiz_bank';
 
 export interface Entity {
   id: string;

@@ -39,6 +39,7 @@ export function TasksModule({ subjectId, initialSessionId }: TasksModuleProps) {
   const { theme } = useTheme();
   const [autoSave, setAutoSave] = useState(true);
   const { setContext, setFloatingWindowOpen } = useAIStore();
+  const loadingRef = useRef(false);
 
   useEffect(() => {
     if (initialSessionId) {
@@ -54,60 +55,72 @@ export function TasksModule({ subjectId, initialSessionId }: TasksModuleProps) {
   const nodeTypes = useMemo(() => ({ taskBlock: TaskBoardNode }), []);
 
   useEffect(() => {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
+
     const load = async () => {
-      // Try to load existing task_board
-      const existing = await db.entities
-        .where({ subjectId, type: 'task_board' })
-        .first();
+      try {
+        // Try to load existing task_board
+        const existing = await db.entities
+          .where({ subjectId, type: 'task_board' })
+          .first();
 
-      if (existing) {
-        setBoardEntity(existing);
-        if (existing.content) {
-          setNodes(existing.content.nodes || []);
-          setEdges(existing.content.edges || []);
+        if (existing) {
+          setBoardEntity(existing);
+          if (existing.content) {
+            setNodes(existing.content.nodes || []);
+            setEdges(existing.content.edges || []);
+          }
+          if (existing.content.chatSessionId) {
+            setChatSessionId(existing.content.chatSessionId);
+          }
+        } else {
+          // Double check to prevent race conditions
+          const checkAgain = await db.entities
+            .where({ subjectId, type: 'task_board' })
+            .first();
+          
+          if (checkAgain) {
+             setBoardEntity(checkAgain);
+             if (checkAgain.content) {
+                setNodes(checkAgain.content.nodes || []);
+                setEdges(checkAgain.content.edges || []);
+             }
+             if (checkAgain.content.chatSessionId) {
+                setChatSessionId(checkAgain.content.chatSessionId);
+             }
+             return;
+          }
+
+          // Migration logic: Check for old 'task' entities
+          const oldTasks = await db.entities.where({ subjectId, type: 'task' }).toArray();
+          let initNodes = [...initialNodes];
+
+          if (oldTasks.length > 0) {
+            initNodes[0].data.items = oldTasks.map(t => ({
+              id: t.id, // preserve ID if possible or new UUID
+              text: t.title,
+              completed: t.content?.completed || t.content?.status === 'done' || false
+            }));
+          }
+
+          const newEntity: Entity = {
+            id: crypto.randomUUID(),
+            subjectId,
+            type: 'task_board', // New type
+            title: 'Task Board',
+            content: { nodes: initNodes, edges: [] },
+            createdAt: Date.now(),
+            updatedAt: Date.now()
+          };
+
+          await db.entities.add(newEntity);
+          setBoardEntity(newEntity);
+          setNodes(initNodes);
+          setChatSessionId(null);
         }
-        if (existing.content.chatSessionId) {
-          setChatSessionId(existing.content.chatSessionId);
-        }
-      } else {
-        // Migration logic: Check for old 'task' entities
-        const oldTasks = await db.entities.where({ subjectId, type: 'task' }).toArray();
-        let initNodes = [...initialNodes];
-
-        if (oldTasks.length > 0) {
-          initNodes[0].data.items = oldTasks.map(t => ({
-            id: t.id, // preserve ID if possible or new UUID
-            text: t.title,
-            completed: t.content?.completed || t.content?.status === 'done' || false
-          }));
-        }
-
-        const sessionId = crypto.randomUUID();
-        await db.chatSessions.add({
-          id: sessionId,
-          title: `Task Board Chat`,
-          entityId: undefined, // Will be set when entity is created
-          createdAt: Date.now(),
-          updatedAt: Date.now()
-        });
-
-        const newEntity: Entity = {
-          id: crypto.randomUUID(),
-          subjectId,
-          type: 'task_board', // New type
-          title: 'Task Board',
-          content: { nodes: initNodes, edges: [], chatSessionId: sessionId },
-          createdAt: Date.now(),
-          updatedAt: Date.now()
-        };
-
-        // Update session entityId
-        await db.chatSessions.update(sessionId, { entityId: newEntity.id });
-
-        await db.entities.add(newEntity);
-        setBoardEntity(newEntity);
-        setNodes(initNodes);
-        setChatSessionId(sessionId);
+      } finally {
+        loadingRef.current = false;
       }
     };
     load();

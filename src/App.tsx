@@ -4,7 +4,6 @@ import { Dashboard } from '@/pages/Dashboard';
 import { SubjectView } from '@/pages/SubjectView';
 import { Settings } from '@/pages/Settings';
 import { AIChat } from '@/pages/AIChat';
-import { Resources } from '@/pages/Resources';
 import { DialogProvider } from '@/components/ui/DialogProvider';
 
 function App() {
@@ -16,7 +15,6 @@ function App() {
             <Route index element={<Dashboard />} />
             <Route path="subject/:id" element={<SubjectView />} />
             <Route path="settings" element={<Settings />} />
-            <Route path="resources" element={<Resources />} />
             <Route path="ai-chat" element={<AIChat />} />
           </Route>
         </Routes>

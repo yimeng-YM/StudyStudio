@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/db';
 import { cn } from '@/lib/utils';
-import { LayoutDashboard, BookOpen, Settings, Plus, Sparkles, Trash2, ArrowUp, ArrowDown, SortAsc, Clock, GripVertical, Folder } from 'lucide-react';
+import { LayoutDashboard, BookOpen, Settings, Plus, Sparkles, Trash2, ArrowUp, ArrowDown, SortAsc, Clock, GripVertical } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { ThemeToggle } from '@/components/ThemeToggle';
@@ -261,18 +261,6 @@ export function Sidebar() {
           >
             <Sparkles size={18} />
             {!isCollapsed && "AI 历史记录"}
-          </NavLink>
-          <NavLink
-            to="/resources"
-            className={({ isActive }) => cn(
-              "flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 hover:-translate-y-0.5",
-              isActive ? "bg-primary text-primary-foreground dark:bg-zinc-800/80 dark:text-zinc-100 shadow-md shadow-primary/20 dark:shadow-none" : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
-              isCollapsed && "justify-center px-0"
-            )}
-            title={isCollapsed ? "资料库" : undefined}
-          >
-            <Folder size={18} />
-            {!isCollapsed && "资料库"}
           </NavLink>
           <NavLink
             to="/settings"

@@ -3,10 +3,11 @@ import { useParams, useLocation } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/db';
 import { cn } from '@/lib/utils';
-import { Network, FileText, CheckSquare } from 'lucide-react';
+import { Network, FileText, CheckSquare, Library } from 'lucide-react';
 import { MindMapEditor } from '@/components/MindMapEditor';
 import { NotesModule } from '@/components/NotesModule';
 import { TasksModule } from '@/components/TasksModule';
+import { QuizModule } from '@/components/QuizModule';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export function SubjectView() {
@@ -14,7 +15,7 @@ export function SubjectView() {
   const location = useLocation();
   const subject = useLiveQuery(() => db.subjects.get(id || ''), [id]);
 
-  const [activeTab, setActiveTab] = useState<'mindmap' | 'notes' | 'tasks'>('mindmap');
+  const [activeTab, setActiveTab] = useState<'mindmap' | 'notes' | 'tasks' | 'quiz'>('mindmap');
   const [targetNoteId, setTargetNoteId] = useState<string | null>(null);
   const [targetSessionId, setTargetSessionId] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -103,6 +104,16 @@ export function SubjectView() {
             详细知识
           </button>
           <button
+            onClick={() => setActiveTab('quiz')}
+            className={cn(
+              "px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition-colors",
+              activeTab === 'quiz' ? "bg-white dark:bg-zinc-800 shadow-sm text-zinc-900 dark:text-zinc-100" : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
+            )}
+          >
+            <Library size={16} />
+            题库
+          </button>
+          <button
             onClick={() => setActiveTab('tasks')}
             className={cn(
               "px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition-colors",
@@ -133,6 +144,7 @@ export function SubjectView() {
               />
             )}
             {activeTab === 'notes' && <NotesModule subjectId={id || ''} initialNoteId={targetNoteId} initialSessionId={targetSessionId} />}
+            {activeTab === 'quiz' && <QuizModule subjectId={id || ''} />}
             {activeTab === 'tasks' && <TasksModule subjectId={id || ''} initialSessionId={targetSessionId} />}
           </motion.div>
         </AnimatePresence>

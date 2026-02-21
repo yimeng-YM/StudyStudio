@@ -1,11 +1,192 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useAIStore } from '@/store/useAIStore';
 import { getModels } from '@/services/ai';
-import { DataManager } from '@/services/dataManager';
+import { DataManager, StudyStudioData } from '@/services/dataManager';
 import { useDialog } from '@/components/ui/DialogProvider';
-import { Upload, Download } from 'lucide-react';
+import { Upload, Download, ChevronRight, ChevronDown, Check, Folder, FileText, Database, GitBranch } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { db } from '@/db';
+import { cn } from '@/lib/utils';
+
+// Helper Component for the Selection Tree
+function DataSelectionTree({ 
+  data, 
+  selectedSubjectIds, 
+  selectedEntityIds, 
+  onToggleSubject, 
+  onToggleEntity 
+}: { 
+  data: { subjects: any[], entities: any[] }, 
+  selectedSubjectIds: Set<string>, 
+  selectedEntityIds: Set<string>, 
+  onToggleSubject: (id: string, entityIds: string[], checked: boolean) => void,
+  onToggleEntity: (id: string, subjectId: string, checked: boolean) => void
+}) {
+  const [expandedSubjectIds, setExpandedSubjectIds] = useState<Set<string>>(new Set());
+  const [expandedTypes, setExpandedTypes] = useState<Set<string>>(new Set());
+
+  const toggleExpand = (id: string) => {
+    const newSet = new Set(expandedSubjectIds);
+    if (newSet.has(id)) newSet.delete(id);
+    else newSet.add(id);
+    setExpandedSubjectIds(newSet);
+  };
+
+  const toggleTypeExpand = (key: string) => {
+    const newSet = new Set(expandedTypes);
+    if (newSet.has(key)) newSet.delete(key);
+    else newSet.add(key);
+    setExpandedTypes(newSet);
+  };
+
+  const entitiesBySubject = useMemo(() => {
+    const map = new Map<string, any[]>();
+    data.entities.forEach(e => {
+      if (!map.has(e.subjectId)) map.set(e.subjectId, []);
+      map.get(e.subjectId)?.push(e);
+    });
+    return map;
+  }, [data.entities]);
+
+  const groupEntitiesByType = (entities: any[]) => {
+    const groups: Record<string, any[]> = {
+      mindmap: [],
+      quiz_bank: [],
+      note: [],
+      task_board: []
+    };
+    entities.forEach(e => {
+      if (groups[e.type]) groups[e.type].push(e);
+      else {
+        // Fallback for unknown types or group 'other'
+        if (!groups['other']) groups['other'] = [];
+        groups['other'].push(e);
+      }
+    });
+    return groups;
+  };
+
+  const getEntityIcon = (type: string) => {
+    switch (type) {
+      case 'mindmap': return <GitBranch size={14} className="text-purple-500" />;
+      case 'quiz_bank': return <Database size={14} className="text-blue-500" />;
+      case 'note': return <FileText size={14} className="text-slate-500" />;
+      default: return <FileText size={14} className="text-slate-500" />;
+    }
+  };
+
+  const getTypeLabel = (type: string) => {
+    switch (type) {
+      case 'mindmap': return '思维导图';
+      case 'quiz_bank': return '题库';
+      case 'note': return '详细知识';
+      case 'task_board': return '任务清单';
+      default: return '其他';
+    }
+  };
+
+  return (
+    <div className="space-y-1 max-h-[60vh] overflow-y-auto border border-zinc-200 dark:border-zinc-700 p-2 rounded-lg bg-white dark:bg-zinc-950">
+      {data.subjects.length === 0 ? (
+        <p className="text-center text-zinc-400 py-4">暂无数据</p>
+      ) : (
+        data.subjects.map(subject => {
+          const entities = entitiesBySubject.get(subject.id) || [];
+          const isExpanded = expandedSubjectIds.has(subject.id);
+          const isSelected = selectedSubjectIds.has(subject.id);
+          const hasEntities = entities.length > 0;
+          const groupedEntities = groupEntitiesByType(entities);
+
+          return (
+            <div key={subject.id} className="select-none">
+              <div className="flex items-center gap-1 p-1 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 rounded">
+                <button 
+                  onClick={() => hasEntities && toggleExpand(subject.id)}
+                  className={cn("p-1 text-zinc-400 hover:text-zinc-600 transition-colors", !hasEntities && "invisible")}
+                >
+                  {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                </button>
+                
+                <label className="flex items-center gap-2 flex-1 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={(e) => onToggleSubject(subject.id, entities.map(e => e.id), e.target.checked)}
+                    className="rounded border-zinc-300 w-4 h-4 text-blue-600 focus:ring-blue-500"
+                  />
+                  <Folder size={16} className="text-yellow-500" />
+                  <span className="text-sm font-medium text-zinc-700 dark:text-zinc-200">{subject.name}</span>
+                  <span className="text-xs text-zinc-400">({entities.length})</span>
+                </label>
+              </div>
+
+              {isExpanded && hasEntities && (
+                <div className="ml-8 space-y-1 border-l border-zinc-200 dark:border-zinc-800 pl-2 py-1">
+                  {Object.entries(groupedEntities).map(([type, items]) => {
+                    if (items.length === 0) return null;
+                    const groupKey = `${subject.id}-${type}`;
+                    const isTypeExpanded = expandedTypes.has(groupKey);
+                    
+                    // Check if all items in group are selected
+                    const allSelected = items.every(i => selectedEntityIds.has(i.id));
+                    const someSelected = items.some(i => selectedEntityIds.has(i.id));
+
+                    return (
+                      <div key={type}>
+                        <div className="flex items-center gap-1 p-1 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 rounded">
+                           <button 
+                            onClick={() => toggleTypeExpand(groupKey)}
+                            className="p-1 text-zinc-400 hover:text-zinc-600 transition-colors"
+                          >
+                            {isTypeExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                          </button>
+                          <label className="flex items-center gap-2 flex-1 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={allSelected}
+                              ref={input => {
+                                if (input) input.indeterminate = someSelected && !allSelected;
+                              }}
+                              onChange={(e) => {
+                                items.forEach(i => onToggleEntity(i.id, subject.id, e.target.checked));
+                              }}
+                              className="rounded border-zinc-300 w-3.5 h-3.5 text-blue-600 focus:ring-blue-500"
+                            />
+                            <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">{getTypeLabel(type)}</span>
+                            <span className="text-[10px] text-zinc-400">({items.length})</span>
+                          </label>
+                        </div>
+                        
+                        {isTypeExpanded && (
+                          <div className="ml-6 space-y-0.5 border-l border-zinc-200 dark:border-zinc-800 pl-2 py-1">
+                            {items.map(entity => (
+                              <label key={entity.id} className="flex items-center gap-2 p-1 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 rounded cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedEntityIds.has(entity.id)}
+                                  onChange={(e) => onToggleEntity(entity.id, subject.id, e.target.checked)}
+                                  className="rounded border-zinc-300 w-3 h-3 text-blue-600 focus:ring-blue-500"
+                                />
+                                {getEntityIcon(entity.type)}
+                                <div className="min-w-0 flex-1">
+                                  <div className="text-xs text-zinc-700 dark:text-zinc-300 truncate">{entity.title || '无标题'}</div>
+                                </div>
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+}
 
 export function Settings() {
   const { settings, loadSettings, updateSettings, isLoading } = useAIStore();
@@ -14,10 +195,17 @@ export function Settings() {
   const [models, setModels] = useState<string[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
 
-  // Export Modal State
+  // Export State
   const [showExportModal, setShowExportModal] = useState(false);
-  const [exportSubjects, setExportSubjects] = useState<any[]>([]);
-  const [selectedSubjectIds, setSelectedSubjectIds] = useState<Set<string>>(new Set());
+  const [exportData, setExportData] = useState<{ subjects: any[], entities: any[] }>({ subjects: [], entities: [] });
+  const [selectedExportSubjects, setSelectedExportSubjects] = useState<Set<string>>(new Set());
+  const [selectedExportEntities, setSelectedExportEntities] = useState<Set<string>>(new Set());
+
+  // Import State
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importData, setImportData] = useState<StudyStudioData | null>(null);
+  const [selectedImportSubjects, setSelectedImportSubjects] = useState<Set<string>>(new Set());
+  const [selectedImportEntities, setSelectedImportEntities] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     loadSettings();
@@ -34,21 +222,26 @@ export function Settings() {
     }
   };
 
+  // --- Export Logic ---
+
   const openExportModal = async () => {
     const subjects = await db.subjects.toArray();
-    setExportSubjects(subjects);
-    setSelectedSubjectIds(new Set(subjects.map(s => s.id)));
+    const entities = await db.entities.toArray();
+    setExportData({ subjects, entities });
+    
+    // Default select all
+    setSelectedExportSubjects(new Set(subjects.map(s => s.id)));
+    setSelectedExportEntities(new Set(entities.map(e => e.id)));
+    
     setShowExportModal(true);
   };
 
   const handleConfirmExport = async () => {
     try {
-      const isFullExport = selectedSubjectIds.size === exportSubjects.length;
-      if (isFullExport) {
-        await DataManager.downloadBackup();
-      } else {
-        await DataManager.downloadBackup({ subjectIds: Array.from(selectedSubjectIds) });
-      }
+      await DataManager.downloadBackup({ 
+        subjectIds: Array.from(selectedExportSubjects),
+        entityIds: Array.from(selectedExportEntities)
+      });
       showAlert('数据备份文件已开始下载', { title: '导出成功' });
       setShowExportModal(false);
     } catch (e) {
@@ -56,34 +249,83 @@ export function Settings() {
     }
   };
 
-  const toggleSubject = (id: string) => {
-    const newSet = new Set(selectedSubjectIds);
-    if (newSet.has(id)) newSet.delete(id);
-    else newSet.add(id);
-    setSelectedSubjectIds(newSet);
-  };
+  // --- Import Logic ---
 
-  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const confirmed = await showConfirm(
-      "导入操作将合并数据到当前数据库。\n\n如果遇到 ID 冲突（如已存在的笔记），系统将自动重命名导入的内容并保留原有数据。\n\n是否继续？",
-      { title: "确认导入" }
-    );
-
-    if (confirmed) {
-      try {
-        await DataManager.importData(file);
-        showAlert('数据已成功导入，页面将刷新。', { title: '导入成功' });
-        setTimeout(() => window.location.reload(), 1500);
-      } catch (e) {
-        showAlert('导入失败: ' + e, { title: '错误' });
-      }
+    try {
+      const data = await DataManager.parseImportFile(file);
+      setImportData(data);
+      
+      // Default select all
+      setSelectedImportSubjects(new Set(data.subjects.map(s => s.id)));
+      setSelectedImportEntities(new Set(data.entities.map(e => e.id)));
+      
+      setShowImportModal(true);
+    } catch (e) {
+      showAlert('文件解析失败: ' + e, { title: '错误' });
     }
+    e.target.value = ''; // Reset
+  };
 
-    // Reset input
-    e.target.value = '';
+  const handleConfirmImport = async () => {
+    if (!importData) return;
+    try {
+      await DataManager.importStudyData(importData, {
+        subjectIds: Array.from(selectedImportSubjects),
+        entityIds: Array.from(selectedImportEntities)
+      });
+      showAlert('数据已成功导入，页面将刷新。', { title: '导入成功' });
+      setTimeout(() => window.location.reload(), 1500);
+    } catch (e) {
+      showAlert('导入失败: ' + e, { title: '错误' });
+    }
+  };
+
+  // --- Shared Tree Logic ---
+
+  const handleToggleSubject = (mode: 'export' | 'import') => (id: string, entityIds: string[], checked: boolean) => {
+    const setSubjects = mode === 'export' ? setSelectedExportSubjects : setSelectedImportSubjects;
+    const setEntities = mode === 'export' ? setSelectedExportEntities : setSelectedImportEntities;
+    const currentSubjects = mode === 'export' ? selectedExportSubjects : selectedImportSubjects;
+    const currentEntities = mode === 'export' ? selectedExportEntities : selectedImportEntities;
+
+    // Toggle Subject
+    const newSubjects = new Set(currentSubjects);
+    if (checked) newSubjects.add(id);
+    else newSubjects.delete(id);
+    setSubjects(newSubjects);
+
+    // Toggle All Children Entities
+    const newEntities = new Set(currentEntities);
+    entityIds.forEach(eid => {
+      if (checked) newEntities.add(eid);
+      else newEntities.delete(eid);
+    });
+    setEntities(newEntities);
+  };
+
+  const handleToggleEntity = (mode: 'export' | 'import') => (id: string, subjectId: string, checked: boolean) => {
+    const setSubjects = mode === 'export' ? setSelectedExportSubjects : setSelectedImportSubjects;
+    const setEntities = mode === 'export' ? setSelectedExportEntities : setSelectedImportEntities;
+    const currentSubjects = mode === 'export' ? selectedExportSubjects : selectedImportSubjects;
+    const currentEntities = mode === 'export' ? selectedExportEntities : selectedImportEntities;
+
+    // Toggle Entity
+    const newEntities = new Set(currentEntities);
+    if (checked) newEntities.add(id);
+    else newEntities.delete(id);
+    setEntities(newEntities);
+
+    // If Entity Checked -> Ensure Subject Checked
+    if (checked) {
+      const newSubjects = new Set(currentSubjects);
+      newSubjects.add(subjectId);
+      setSubjects(newSubjects);
+    }
+    // If Entity Unchecked -> We keep subject checked (optional choice)
   };
 
   const fetchModels = async () => {
@@ -195,23 +437,24 @@ export function Settings() {
               onClick={openExportModal}
               className="flex items-center gap-2 px-4 py-2 bg-zinc-200 dark:bg-zinc-700 text-zinc-800 dark:text-zinc-200 rounded hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors"
             >
-              <Download size={18} />
-              导出数据备份
+              <Upload size={18} />
+              导出数据
             </button>
 
             <label className="flex items-center gap-2 px-4 py-2 bg-zinc-200 dark:bg-zinc-700 text-zinc-800 dark:text-zinc-200 rounded hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors cursor-pointer">
-              <Upload size={18} />
-              导入备份文件
-              <input type="file" accept=".json" onChange={handleImport} className="hidden" />
+              <Download size={18} />
+              导入数据
+              <input type="file" accept=".json" onChange={handleImportFile} className="hidden" />
             </label>
           </div>
         </div>
       </div>
 
+      {/* Export Modal */}
       <Modal
         isOpen={showExportModal}
         onClose={() => setShowExportModal(false)}
-        title="导出数据"
+        title="选择导出内容"
         footer={
           <div className="flex gap-2">
             <button
@@ -224,45 +467,58 @@ export function Settings() {
               onClick={handleConfirmExport}
               className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
             >
-              确认导出
+              确认导出 ({selectedExportEntities.size} 项)
             </button>
           </div>
         }
       >
         <div className="space-y-4">
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">请选择要导出的学科（默认全选）：</p>
-          <div className="space-y-1 max-h-60 overflow-y-auto border border-zinc-200 dark:border-zinc-700 p-2 rounded-lg">
-            <label className="flex items-center gap-3 p-2 hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded cursor-pointer select-none text-zinc-700 dark:text-zinc-200">
-              <input
-                type="checkbox"
-                checked={exportSubjects.length > 0 && selectedSubjectIds.size === exportSubjects.length}
-                onChange={() => {
-                  if (selectedSubjectIds.size === exportSubjects.length) setSelectedSubjectIds(new Set());
-                  else setSelectedSubjectIds(new Set(exportSubjects.map(s => s.id)));
-                }}
-                className="rounded border-zinc-300 w-4 h-4 text-blue-600 focus:ring-blue-500"
-              />
-              <span className="font-medium">全选</span>
-            </label>
-            <div className="border-t border-zinc-100 dark:border-zinc-700 my-1"></div>
-            {exportSubjects.length === 0 ? (
-              <p className="text-center text-zinc-400 py-2">暂无学科数据</p>
-            ) : (
-              exportSubjects.map(subject => (
-                <label key={subject.id} className="flex items-center gap-3 p-2 hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded cursor-pointer select-none text-zinc-700 dark:text-zinc-200">
-                  <input
-                    type="checkbox"
-                    checked={selectedSubjectIds.has(subject.id)}
-                    onChange={() => toggleSubject(subject.id)}
-                    className="rounded border-zinc-300 w-4 h-4 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span>{subject.name}</span>
-                </label>
-              ))
-            )}
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">请勾选需要导出的学科及内容：</p>
+          <DataSelectionTree 
+            data={exportData}
+            selectedSubjectIds={selectedExportSubjects}
+            selectedEntityIds={selectedExportEntities}
+            onToggleSubject={handleToggleSubject('export')}
+            onToggleEntity={handleToggleEntity('export')}
+          />
+        </div>
+      </Modal>
+
+      {/* Import Modal */}
+      <Modal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        title="选择导入内容"
+        footer={
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowImportModal(false)}
+              className="px-4 py-2 text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800 rounded transition-colors"
+            >
+              取消
+            </button>
+            <button
+              onClick={handleConfirmImport}
+              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+            >
+              确认导入 ({selectedImportEntities.size} 项)
+            </button>
           </div>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">解析成功，请勾选需要导入的内容：</p>
+          {importData && (
+            <DataSelectionTree 
+              data={importData}
+              selectedSubjectIds={selectedImportSubjects}
+              selectedEntityIds={selectedImportEntities}
+              onToggleSubject={handleToggleSubject('import')}
+              onToggleEntity={handleToggleEntity('import')}
+            />
+          )}
           <p className="text-xs text-zinc-400">
-            注：导出将包含所选学科下的所有笔记、思维导图、关联关系以及对话记录。
+            注：导入操作会自动处理 ID 冲突，创建副本并重命名，不会覆盖现有数据。
           </p>
         </div>
       </Modal>
