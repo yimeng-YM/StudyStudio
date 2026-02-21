@@ -3,7 +3,7 @@ import { useAIStore } from '@/store/useAIStore';
 import { getModels } from '@/services/ai';
 import { DataManager, StudyStudioData } from '@/services/dataManager';
 import { useDialog } from '@/components/ui/DialogProvider';
-import { Upload, Download, ChevronRight, ChevronDown, Check, Folder, FileText, Database, GitBranch } from 'lucide-react';
+import { Upload, Download, ChevronRight, ChevronDown, Folder, FileText, Database, GitBranch } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { db } from '@/db';
 import { cn } from '@/lib/utils';
@@ -191,7 +191,7 @@ function DataSelectionTree({
 export function Settings() {
   const { settings, loadSettings, updateSettings, isLoading } = useAIStore();
   const [localSettings, setLocalSettings] = useState(settings);
-  const { showConfirm, showAlert } = useDialog();
+  const { showAlert } = useDialog();
   const [models, setModels] = useState<string[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
 
