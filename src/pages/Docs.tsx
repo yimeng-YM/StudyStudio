@@ -15,7 +15,10 @@ import {
   Cpu,
   MousePointer2,
   ChevronRight,
-  ExternalLink
+  ExternalLink,
+  Plus,
+  Settings,
+  Trash2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -91,6 +94,39 @@ export const Docs = () => {
                   <p className="text-slate-600 dark:text-slate-400">
                     在空白的思维导图或笔记中，使用“AI 生成”功能，快速勾勒知识雏形，告别从零开始的焦虑。
                   </p>
+                </div>
+              </div>
+            </div>
+          )
+        },
+        {
+          id: 'subject-mgmt',
+          title: '学科管理',
+          icon: <Settings className="w-4 h-4" />,
+          content: (
+            <div className="space-y-6">
+              <p>学科是 StudyStudio 的核心组织单位。您可以根据需要灵活管理学科空间。</p>
+              <div className="space-y-4">
+                <div className="flex gap-4 items-start">
+                  <div className="p-2 bg-blue-500/10 text-blue-500 rounded-lg shrink-0"><Plus className="w-5 h-5" /></div>
+                  <div>
+                    <h4 className="font-bold mb-1">创建学科</h4>
+                    <p className="text-sm text-slate-600 dark:text-slate-400">在侧边栏点击“添加学科”按钮，输入名称并选择一个代表性的图标即可创建。</p>
+                  </div>
+                </div>
+                <div className="flex gap-4 items-start">
+                  <div className="p-2 bg-amber-500/10 text-amber-500 rounded-lg shrink-0"><PenTool className="w-5 h-5" /></div>
+                  <div>
+                    <h4 className="font-bold mb-1">修改名称与图标</h4>
+                    <p className="text-sm text-slate-600 dark:text-slate-400">进入对应学科页面后，点击顶部导航栏左侧的<strong>学科名称或图标</strong>，即可唤起编辑弹窗，修改后保存即可。</p>
+                  </div>
+                </div>
+                <div className="flex gap-4 items-start">
+                  <div className="p-2 bg-rose-500/10 text-rose-500 rounded-lg shrink-0"><Trash2 className="w-5 h-5" /></div>
+                  <div>
+                    <h4 className="font-bold mb-1">删除学科</h4>
+                    <p className="text-sm text-slate-600 dark:text-slate-400">在上述编辑弹窗的左下角，点击“删除学科”按钮。系统会要求您进行确认，以防止误操作。</p>
+                  </div>
                 </div>
               </div>
             </div>
