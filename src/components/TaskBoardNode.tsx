@@ -44,16 +44,16 @@ export const TaskBoardNode = memo(({ data, selected }: NodeProps<TaskBlockData>)
   };
 
   return (
-    <div className={`bg-white/90 dark:bg-zinc-900/90 backdrop-blur-xl rounded-2xl shadow-xl border-2 min-w-[280px] transition-all duration-300 ${selected ? 'border-primary ring-2 ring-primary/20' : 'border-zinc-100 dark:border-zinc-800'}`}>
-      {/* 4-side Handles */}
-      <Handle type="target" position={Position.Top} id="top" className="w-2 h-2 bg-zinc-300 dark:bg-zinc-600 rounded-full !border-0" />
-      <Handle type="source" position={Position.Top} id="top-src" className="w-2 h-2 bg-zinc-300 dark:bg-zinc-600 rounded-full !border-0" />
-      <Handle type="target" position={Position.Right} id="right" className="w-2 h-2 bg-zinc-300 dark:bg-zinc-600 rounded-full !border-0" />
-      <Handle type="source" position={Position.Right} id="right-src" className="w-2 h-2 bg-zinc-300 dark:bg-zinc-600 rounded-full !border-0" />
-      <Handle type="target" position={Position.Bottom} id="bottom" className="w-2 h-2 bg-zinc-300 dark:bg-zinc-600 rounded-full !border-0" />
-      <Handle type="source" position={Position.Bottom} id="bottom-src" className="w-2 h-2 bg-zinc-300 dark:bg-zinc-600 rounded-full !border-0" />
-      <Handle type="target" position={Position.Left} id="left" className="w-2 h-2 bg-zinc-300 dark:bg-zinc-600 rounded-full !border-0" />
-      <Handle type="source" position={Position.Left} id="left-src" className="w-2 h-2 bg-zinc-300 dark:bg-zinc-600 rounded-full !border-0" />
+    <div className={`group/card bg-white/90 dark:bg-zinc-900/90 backdrop-blur-xl rounded-2xl shadow-xl border-2 min-w-[280px] transition-all duration-300 ${selected ? 'border-primary ring-2 ring-primary/20' : 'border-zinc-100 dark:border-zinc-800'}`}>
+      {/* 4-side Handles - 默认隐藏，hover时显示 */}
+      <Handle type="target" position={Position.Top} id="top" className="w-2 h-2 bg-zinc-300 dark:bg-zinc-600 rounded-full !border-0 opacity-0 group-hover/card:opacity-100 transition-opacity" />
+      <Handle type="source" position={Position.Top} id="top-src" className="w-2 h-2 bg-zinc-300 dark:bg-zinc-600 rounded-full !border-0 opacity-0 group-hover/card:opacity-100 transition-opacity" />
+      <Handle type="target" position={Position.Right} id="right" className="w-2 h-2 bg-zinc-300 dark:bg-zinc-600 rounded-full !border-0 opacity-0 group-hover/card:opacity-100 transition-opacity" />
+      <Handle type="source" position={Position.Right} id="right-src" className="w-2 h-2 bg-zinc-300 dark:bg-zinc-600 rounded-full !border-0 opacity-0 group-hover/card:opacity-100 transition-opacity" />
+      <Handle type="target" position={Position.Bottom} id="bottom" className="w-2 h-2 bg-zinc-300 dark:bg-zinc-600 rounded-full !border-0 opacity-0 group-hover/card:opacity-100 transition-opacity" />
+      <Handle type="source" position={Position.Bottom} id="bottom-src" className="w-2 h-2 bg-zinc-300 dark:bg-zinc-600 rounded-full !border-0 opacity-0 group-hover/card:opacity-100 transition-opacity" />
+      <Handle type="target" position={Position.Left} id="left" className="w-2 h-2 bg-zinc-300 dark:bg-zinc-600 rounded-full !border-0 opacity-0 group-hover/card:opacity-100 transition-opacity" />
+      <Handle type="source" position={Position.Left} id="left-src" className="w-2 h-2 bg-zinc-300 dark:bg-zinc-600 rounded-full !border-0 opacity-0 group-hover/card:opacity-100 transition-opacity" />
 
       <div className="p-4 border-b border-primary/10 bg-gradient-to-r from-primary/5 to-transparent rounded-t-2xl flex justify-between items-center gap-2">
         <input
