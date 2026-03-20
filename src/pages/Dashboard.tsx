@@ -1,9 +1,9 @@
 import { useMemo, useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/db';
-import { BookOpen, CheckSquare, FileText, Trash2, ArrowUp, ArrowDown, Clock, GripVertical, SortAsc, CalendarDays } from 'lucide-react';
+import { BookOpen, CheckSquare, FileText, ArrowUp, ArrowDown, Clock, GripVertical, SortAsc, CalendarDays } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
-import { useDialog } from '@/components/ui/DialogProvider';
+import { ICON_MAP } from '@/lib/icons';
 import { useAIStore } from '@/store/useAIStore';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
@@ -98,15 +98,8 @@ export function Dashboard() {
             .reverse()
             .toArray()
     );
-    const { showPrompt } = useDialog();
     const location = useLocation();
     const { setFloatingWindowOpen, setGlobalSessionId } = useAIStore();
-
-    const deleteSubject = (e: React.MouseEvent, id: string) => {
-        import('@/lib/subjectUtils').then(({ deleteSubjectWithConfirm }) => {
-            deleteSubjectWithConfirm(e, id, showPrompt);
-        });
-    };
 
     useEffect(() => {
         if (location.state?.openChatSessionId) {
@@ -367,7 +360,10 @@ export function Dashboard() {
                                 >
                                     <div className="flex items-start justify-between">
                                         <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-blue-600 mb-4">
-                                            <BookOpen size={24} />
+                                            {(() => {
+                                                const Icon = ICON_MAP[subject.icon || 'BookOpen'] || BookOpen;
+                                                return <Icon size={24} />;
+                                            })()}
                                         </div>
                                         <div className="flex items-center gap-1">
                                             {sortMode === 'manual' && (
@@ -384,13 +380,6 @@ export function Dashboard() {
                                                     ><ArrowDown size={14} /></button>
                                                 </div>
                                             )}
-                                            <button
-                                                onClick={(e) => deleteSubject(e, subject.id)}
-                                                className="p-2 text-zinc-300 hover:text-red-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors"
-                                                title="删除学科"
-                                            >
-                                                <Trash2 size={18} />
-                                            </button>
                                         </div>
                                     </div>
                                     <div>

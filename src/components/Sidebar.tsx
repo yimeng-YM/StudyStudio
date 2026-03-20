@@ -3,17 +3,15 @@ import { NavLink } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/db';
 import { cn } from '@/lib/utils';
-import { LayoutDashboard, BookOpen, Settings, Plus, Sparkles, Trash2, ArrowUp, ArrowDown, SortAsc, Clock, GripVertical, HelpCircle } from 'lucide-react';
+import { LayoutDashboard, BookOpen, Settings, Plus, Sparkles, ArrowUp, ArrowDown, SortAsc, Clock, GripVertical, HelpCircle } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
-import { useDialog } from '@/components/ui/DialogProvider';
 import { ThemeToggle } from '@/components/ThemeToggle';
 
 
 
 import { useResizable } from '@/hooks/useResizable';
 import { ResizeHandle } from '@/components/ui/ResizeHandle';
-
-// ... (existing imports)
+import { ICON_MAP, ICON_OPTIONS } from '@/lib/icons';
 
 export function Sidebar() {
   const { width, startResizing } = useResizable({
@@ -60,14 +58,8 @@ export function Sidebar() {
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newSubjectName, setNewSubjectName] = useState('');
+  const [selectedIcon, setSelectedIcon] = useState('BookOpen');
   const [logoError, setLogoError] = useState(false);
-  const { showPrompt } = useDialog();
-
-  const deleteSubject = (e: React.MouseEvent, id: string) => {
-    import('@/lib/subjectUtils').then(({ deleteSubjectWithConfirm }) => {
-      deleteSubjectWithConfirm(e, id, showPrompt);
-    });
-  };
 
   const moveSubject = async (e: React.MouseEvent, id: string, direction: 'up' | 'down') => {
     e.preventDefault();
@@ -95,14 +87,17 @@ export function Sidebar() {
       await db.subjects.add({
         id: crypto.randomUUID(),
         name: newSubjectName,
+        icon: selectedIcon,
         createdAt: now,
         lastAccessed: now,
         order: now
       });
       setIsAddModalOpen(false);
       setNewSubjectName('');
+      setSelectedIcon('BookOpen');
     }
   };
+
 
   const [isCollapsed, setIsCollapsed] = useState(false);
 
@@ -194,7 +189,10 @@ export function Sidebar() {
               title={isCollapsed ? subject.name : undefined}
             >
               <div className="flex items-center gap-2 overflow-hidden">
-                <BookOpen size={18} className="shrink-0" />
+                {(() => {
+                  const Icon = ICON_MAP[subject.icon || 'BookOpen'] || BookOpen;
+                  return <Icon size={18} className="shrink-0" />;
+                })()}
                 {!isCollapsed && <span className="truncate">{subject.name}</span>}
               </div>
               {!isCollapsed && (
@@ -205,13 +203,6 @@ export function Sidebar() {
                       <button onClick={(e) => moveSubject(e, subject.id, 'down')} disabled={idx === (subjects?.length || 0) - 1} className="text-muted-foreground hover:text-foreground disabled:opacity-0"><ArrowDown size={10} /></button>
                     </div>
                   )}
-                  <button
-                    onClick={(e) => deleteSubject(e, subject.id)}
-                    className="p-1 text-muted-foreground hover:text-destructive transition-all"
-                    title="删除学科"
-                  >
-                    <Trash2 size={14} />
-                  </button>
                 </div>
               )}
             </NavLink>
@@ -291,15 +282,44 @@ export function Sidebar() {
           </>
         }
       >
-        <input
-          className="w-full border rounded p-2 bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-primary"
-          placeholder="输入学科名称..."
-          value={newSubjectName}
-          onChange={e => setNewSubjectName(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && addSubject()}
-          autoFocus
-        />
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">学科名称</label>
+            <input
+              className="w-full border rounded p-2 bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-primary"
+              placeholder="输入学科名称..."
+              value={newSubjectName}
+              onChange={e => setNewSubjectName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && addSubject()}
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">选择图标</label>
+            <div className="grid grid-cols-6 gap-2 max-h-48 overflow-y-auto p-2 border rounded dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950">
+              {ICON_OPTIONS.map(iconName => {
+                const Icon = ICON_MAP[iconName];
+                return (
+                  <button
+                    key={iconName}
+                    onClick={() => setSelectedIcon(iconName)}
+                    className={cn(
+                      "p-2 rounded-lg flex items-center justify-center transition-all",
+                      selectedIcon === iconName
+                        ? "bg-primary text-primary-foreground scale-110 shadow-sm"
+                        : "text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800"
+                    )}
+                    title={iconName}
+                  >
+                    <Icon size={20} />
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
       </Modal>
+
     </>
   );
 }

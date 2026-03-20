@@ -3,6 +3,7 @@ import Dexie, { Table } from 'dexie';
 export interface Subject {
   id: string;
   name: string;
+  icon?: string;
   description?: string;
   createdAt: number;
   lastAccessed?: number;
