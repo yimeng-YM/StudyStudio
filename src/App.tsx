@@ -4,6 +4,7 @@ import { Dashboard } from '@/pages/Dashboard';
 import { SubjectView } from '@/pages/SubjectView';
 import { Settings } from '@/pages/Settings';
 import { AIChat } from '@/pages/AIChat';
+import { Docs } from '@/pages/Docs';
 import { DialogProvider } from '@/components/ui/DialogProvider';
 import { useStudyLogger } from '@/hooks/useStudyLogger';
 
@@ -19,6 +20,7 @@ function App() {
             <Route path="subject/:id" element={<SubjectView />} />
             <Route path="settings" element={<Settings />} />
             <Route path="ai-chat" element={<AIChat />} />
+            <Route path="docs" element={<Docs />} />
           </Route>
         </Routes>
       </HashRouter>
