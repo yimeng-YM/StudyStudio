@@ -395,9 +395,9 @@ export function TasksModule({ subjectId, initialSessionId }: TasksModuleProps) {
     {
     "action": "create_task_blocks",
     "blocks": [
-        { 
-        "id": "block1", "title": "Block Title", 
-        "items": ["Task 1", "Task 2"] 
+        {
+        "id": "block1", "title": "Block Title",
+        "items": ["Task 1", "Task 2"]
         },
         { "id": "block2", "title": "Sub Tasks", "items": ["Sub 1"] }
     ],
@@ -407,6 +407,7 @@ export function TasksModule({ subjectId, initialSessionId }: TasksModuleProps) {
     }
     \`\`\`
     (Note: Linking to specific items requires knowing item IDs, which is hard for AI unless updating existing ones. Linking blocks genericly is fine).
+    Do NOT include any comments (like // or /* */) inside the JSON block.
 
     To UPDATE/DELETE:
     ... (same as before)

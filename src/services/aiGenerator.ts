@@ -2,20 +2,21 @@ import { AISettings } from '@/db';
 import { getAICompletion } from './ai';
 import * as dagre from 'dagre';
 import { Node, Edge } from 'reactflow';
+import { parseAIJson } from '@/lib/utils';
 
 export async function generateMindMapData(topic: string, settings: AISettings): Promise<{ nodes: Node[], edges: Edge[] }> {
-  const prompt = `Create a detailed mind map for the topic: "${topic}". 
-  Return ONLY a JSON array of objects representing nodes. 
-  Each object must have "id" (unique string), "label" (string), and optional "parentId" (string, referring to id of parent). 
-  The root node should have no parentId. 
-  Ensure at least 10-15 nodes with meaningful hierarchy. 
+  const prompt = `Create a detailed mind map for the topic: "${topic}".
+  Return ONLY a JSON array of objects representing nodes.
+  Each object must have "id" (unique string), "label" (string), and optional "parentId" (string, referring to id of parent).
+  The root node should have no parentId.
+  Ensure at least 10-15 nodes with meaningful hierarchy.
+  Do NOT include any comments (like // or /* */) inside the JSON.
   No markdown code blocks.`;
   
   const response = await getAICompletion([{ role: 'user', content: prompt }], settings);
   let rawNodes: any[];
   try {
-    const clean = response.replace(/```json/g, '').replace(/```/g, '').trim();
-    rawNodes = JSON.parse(clean);
+    rawNodes = parseAIJson(response);
   } catch (e) {
     throw new Error("AI returned invalid JSON: " + response.slice(0, 100));
   }
@@ -52,12 +53,11 @@ export async function generateMindMapData(topic: string, settings: AISettings): 
 }
 
 export async function generateTasksData(goal: string, settings: AISettings): Promise<string[]> {
-  const prompt = `Generate a list of 5-10 actionable tasks for the goal: "${goal}". Return ONLY a JSON array of strings. Example: ["Task 1", "Task 2"]. No markdown code blocks.`;
+  const prompt = `Generate a list of 5-10 actionable tasks for the goal: "${goal}". Return ONLY a JSON array of strings. Example: ["Task 1", "Task 2"]. Do NOT include any comments (like // or /* */) inside the JSON. No markdown code blocks.`;
   
   const response = await getAICompletion([{ role: 'user', content: prompt }], settings);
   try {
-    const clean = response.replace(/```json/g, '').replace(/```/g, '').trim();
-    return JSON.parse(clean);
+    return parseAIJson(response);
   } catch (e) {
     throw new Error("AI returned invalid JSON");
   }

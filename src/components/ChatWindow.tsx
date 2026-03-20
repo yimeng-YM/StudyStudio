@@ -5,6 +5,7 @@ import { Send, Paperclip, X, Trash2, Plus, History, MessageSquare, Sparkles } fr
 import { MessageRenderer } from './MessageRenderer';
 import { db, ChatSession } from '@/db';
 import { processFile } from '@/lib/fileProcessor';
+import { parseAIJson } from '@/lib/utils';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useDialog } from '@/components/ui/DialogProvider';
 
@@ -266,7 +267,7 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
               if (!potentialJson) continue;
 
               try {
-                const parsed = JSON.parse(potentialJson);
+                const parsed = parseAIJson(potentialJson);
                 // Validate if it looks like a command
                 if (Array.isArray(parsed) || (parsed.action && typeof parsed.action === 'string')) {
                   found = true;
@@ -290,7 +291,7 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
           const lastClose = assistantContent.lastIndexOf(']');
           if (firstOpen !== -1 && lastClose > firstOpen) {
             try {
-              const parsed = JSON.parse(assistantContent.substring(firstOpen, lastClose + 1));
+              const parsed = parseAIJson(assistantContent.substring(firstOpen, lastClose + 1));
               if (Array.isArray(parsed)) {
                 parsed.forEach(cmd => onAICommand(cmd));
                 found = true;
@@ -302,7 +303,7 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
             const lastCloseObj = assistantContent.lastIndexOf('}');
             if (firstOpenObj !== -1 && lastCloseObj > firstOpenObj) {
               try {
-                const parsed = JSON.parse(assistantContent.substring(firstOpenObj, lastCloseObj + 1));
+                const parsed = parseAIJson(assistantContent.substring(firstOpenObj, lastCloseObj + 1));
                 onAICommand(parsed);
                 found = true;
               } catch (e) { /* ignore */ }

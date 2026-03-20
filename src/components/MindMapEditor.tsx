@@ -489,6 +489,7 @@ To update the mind map, respond with a JSON block in the following format:
 }
 \`\`\`
 Ensure specific positions for nodes so they don't overlap.
+Do NOT include any comments (like // or /* */) inside the JSON block.
 If user asks to generate a new map, provide a complete new structure.
 If user asks to modify, provide the updated full structure (nodes + edges).
 `;

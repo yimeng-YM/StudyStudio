@@ -13,6 +13,7 @@ import { FileText, FileSpreadsheet, FileCode, ChevronDown, ChevronRight } from '
 import { db } from '@/db';
 import mermaid from 'mermaid';
 import { useTheme } from '@/hooks/useTheme';
+import { parseAIJson } from '@/lib/utils';
 
 function useIsDark() {
   const { theme } = useTheme();
@@ -81,7 +82,7 @@ function extractMetadata(text: string): [any | null, string] {
   const match = text.match(regex);
   if (match) {
     try {
-      return [JSON.parse(match[1]), text.replace(match[0], '')];
+      return [parseAIJson(match[1]), text.replace(match[0], '')];
     } catch (e) {
       return [null, text];
     }

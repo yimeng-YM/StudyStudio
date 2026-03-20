@@ -650,16 +650,6 @@ function QuizEditor({ quiz, isEditingTitle, setIsEditingTitle, editTitle, setEdi
     }
   };
 
-  const moveQuestion = async (index: number, direction: 'up' | 'down') => {
-    if (direction === 'up' && index === 0) return;
-    if (direction === 'down' && index === questions.length - 1) return;
-    
-    const newQuestions = [...questions];
-    const targetIndex = direction === 'up' ? index - 1 : index + 1;
-    [newQuestions[index], newQuestions[targetIndex]] = [newQuestions[targetIndex], newQuestions[index]];
-    await updateQuestions(newQuestions);
-  };
-
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -732,25 +722,6 @@ function QuizEditor({ quiz, isEditingTitle, setIsEditingTitle, editTitle, setEdi
                 />
               )}
 
-              {/* Reorder Controls (only visible when not editing) */}
-              {!editingQuestionId && (
-                <div className="absolute right-2 top-2 opacity-0 group-hover/item:opacity-100 transition-opacity flex flex-col gap-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded shadow-sm">
-                  <button 
-                    onClick={() => moveQuestion(index, 'up')}
-                    disabled={index === 0}
-                    className="p-1 text-zinc-400 hover:text-zinc-600 disabled:opacity-30"
-                  >
-                    <ArrowUp size={14} />
-                  </button>
-                  <button 
-                    onClick={() => moveQuestion(index, 'down')}
-                    disabled={index === questions.length - 1}
-                    className="p-1 text-zinc-400 hover:text-zinc-600 disabled:opacity-30"
-                  >
-                    <ArrowDown size={14} />
-                  </button>
-                </div>
-              )}
             </div>
           ))
         )}
@@ -925,6 +896,41 @@ export function QuizModule({ subjectId }: QuizModuleProps) {
                   <div className="font-medium truncate text-slate-800 dark:text-slate-200">{quiz.title}</div>
                   <div className="text-xs text-slate-500">{new Date(quiz.updatedAt).toLocaleDateString()} · {(quiz.content as QuizContent)?.questions?.length || 0} 题</div>
                 </div>
+                {/* Manual Sort Controls */}
+                {sortMode === 'manual' && quizzes && quizzes.length > 1 && (
+                  <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                    <button 
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        if (idx > 0 && quizzes) {
+                          const prevOrder = quizzes[idx - 1].order || 0;
+                          const currOrder = quiz.order || 0;
+                          await db.entities.update(quizzes[idx - 1].id, { order: currOrder });
+                          await db.entities.update(quiz.id, { order: prevOrder });
+                        }
+                      }}
+                      disabled={idx === 0}
+                      className="p-0.5 text-zinc-400 hover:text-zinc-600 disabled:opacity-20 disabled:cursor-not-allowed"
+                    >
+                      <ArrowUp size={12} />
+                    </button>
+                    <button 
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        if (idx < quizzes.length - 1 && quizzes) {
+                          const nextOrder = quizzes[idx + 1].order || 0;
+                          const currOrder = quiz.order || 0;
+                          await db.entities.update(quizzes[idx + 1].id, { order: currOrder });
+                          await db.entities.update(quiz.id, { order: nextOrder });
+                        }
+                      }}
+                      disabled={idx === quizzes.length - 1}
+                      className="p-0.5 text-zinc-400 hover:text-zinc-600 disabled:opacity-20 disabled:cursor-not-allowed"
+                    >
+                      <ArrowDown size={12} />
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ))}

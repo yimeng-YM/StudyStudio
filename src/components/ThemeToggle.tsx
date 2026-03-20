@@ -58,7 +58,7 @@ export function ThemeToggle() {
       onClick={toggleThemeWithAnimation}
       className={`
         relative flex items-center justify-center w-10 h-10 rounded-full transition-colors duration-300
-        ${isDark ? 'bg-slate-700 hover:bg-slate-600 text-yellow-400' : 'bg-slate-200 hover:bg-slate-300 text-slate-700'}
+        ${isDark ? 'bg-zinc-800 hover:bg-zinc-700 text-yellow-400' : 'bg-slate-200 hover:bg-slate-300 text-slate-700'}
         shadow-sm focus:outline-none
       `}
       title={isDark ? '切换到亮色模式' : '切换到深色模式'}

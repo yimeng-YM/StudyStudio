@@ -5,8 +5,11 @@ import { SubjectView } from '@/pages/SubjectView';
 import { Settings } from '@/pages/Settings';
 import { AIChat } from '@/pages/AIChat';
 import { DialogProvider } from '@/components/ui/DialogProvider';
+import { useStudyLogger } from '@/hooks/useStudyLogger';
 
 function App() {
+  useStudyLogger();
+
   return (
     <DialogProvider>
       <HashRouter>

@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/db';
-import { BookOpen, CheckSquare, FileText, Trash2, ArrowUp, ArrowDown, Clock, GripVertical, SortAsc } from 'lucide-react';
+import { BookOpen, CheckSquare, FileText, Trash2, ArrowUp, ArrowDown, Clock, GripVertical, SortAsc, CalendarDays } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useAIStore } from '@/store/useAIStore';
@@ -11,6 +11,51 @@ import { motion } from 'framer-motion';
 export function Dashboard() {
     const subjectCount = useLiveQuery(() => db.subjects.count());
     const noteCount = useLiveQuery(() => db.entities.where({ type: 'note' }).count());
+
+    const [currentTime, setCurrentTime] = useState(new Date());
+
+    useEffect(() => {
+        const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+        return () => clearInterval(timer);
+    }, []);
+
+    const todayStr = currentTime.getFullYear() + '-' + 
+               String(currentTime.getMonth() + 1).padStart(2, '0') + '-' + 
+               String(currentTime.getDate()).padStart(2, '0');
+
+    const todayRecord = useLiveQuery(() => db.studyRecords?.get(todayStr), [todayStr]);
+    const todayDuration = todayRecord?.duration || 0;
+    const formatDuration = (mins: number) => {
+        if (mins < 60) return `${mins} 分钟`;
+        const h = Math.floor(mins / 60);
+        const m = mins % 60;
+        return `${h} 小时 ${m} 分钟`;
+    };
+
+    const calendarData = useLiveQuery(async () => {
+        if (!db.studyRecords) return [];
+        const records = await db.studyRecords.toArray();
+        const map = new Map<string, number>();
+        records.forEach(r => map.set(r.date, r.duration));
+        
+        const days = [];
+        const today = new Date();
+        for (let i = 29; i >= 0; i--) {
+            const d = new Date(today);
+            d.setDate(today.getDate() - i);
+            const dStr = d.getFullYear() + '-' + 
+                         String(d.getMonth() + 1).padStart(2, '0') + '-' + 
+                         String(d.getDate()).padStart(2, '0');
+            days.push({
+                date: dStr,
+                duration: map.get(dStr) || 0
+            });
+        }
+        return days;
+    }, []);
+
+    const timeString = currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const dateString = currentTime.toLocaleDateString([], { month: 'long', day: 'numeric', weekday: 'long' });
 
     const [sortMode, setSortMode] = useState<'name' | 'lastAccessed' | 'manual'>(() =>
         (localStorage.getItem('dashboardSortMode') as any) || 'lastAccessed');
@@ -171,6 +216,40 @@ export function Dashboard() {
                     <p className="text-zinc-600 dark:text-zinc-400">这里是你的学习概览。</p>
                 </div>
 
+                {/* Time & Study Duration Row */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="bg-gradient-to-br from-blue-500 to-blue-600 p-6 rounded-xl shadow-md text-white flex flex-col justify-center relative overflow-hidden"
+                    >
+                        <div className="relative z-10">
+                            <div className="text-sm text-blue-100 mb-1">{dateString}</div>
+                            <div className="text-4xl font-bold tracking-tight">{timeString}</div>
+                        </div>
+                        <div className="absolute -right-6 -top-6 text-blue-400/30">
+                            <Clock size={120} />
+                        </div>
+                    </motion.div>
+
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.1 }}
+                        className="bg-white dark:bg-zinc-900/50 p-6 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 flex items-center justify-between"
+                    >
+                        <div>
+                            <div className="text-sm text-zinc-500 dark:text-zinc-500 mb-1">今日沉浸时间</div>
+                            <div className="text-3xl font-bold text-zinc-900 dark:text-zinc-100">
+                                {formatDuration(todayDuration)}
+                            </div>
+                        </div>
+                        <div className="p-4 bg-zinc-100 dark:bg-zinc-800 rounded-full text-zinc-700 dark:text-zinc-300">
+                            <Clock size={32} />
+                        </div>
+                    </motion.div>
+                </div>
+
                 {/* Stats Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <motion.div
@@ -218,6 +297,42 @@ export function Dashboard() {
                 </div>
 
                 <div className="space-y-8">
+                    {/* Calendar Heatmap */}
+                    <div className="space-y-4">
+                        <div className="flex items-center gap-2">
+                            <CalendarDays className="text-zinc-800 dark:text-zinc-200" size={20} />
+                            <h2 className="text-xl font-bold text-zinc-800 dark:text-zinc-200">学习打卡日历</h2>
+                        </div>
+                        <div className="bg-white dark:bg-zinc-900/50 p-6 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 overflow-x-auto">
+                            <div className="flex gap-2 min-w-max">
+                                {calendarData?.map((day) => {
+                                    let colorClass = "bg-zinc-100 dark:bg-zinc-800/50";
+                                    if (day.duration > 0) colorClass = "bg-blue-200 dark:bg-blue-900/40";
+                                    if (day.duration > 30) colorClass = "bg-blue-300 dark:bg-blue-800/60";
+                                    if (day.duration > 60) colorClass = "bg-blue-400 dark:bg-blue-700/80";
+                                    if (day.duration > 120) colorClass = "bg-blue-500 dark:bg-blue-600";
+                                    
+                                    return (
+                                        <div 
+                                            key={day.date} 
+                                            className={cn("w-6 h-6 rounded-md transition-colors", colorClass)}
+                                            title={`${day.date}: ${day.duration} 分钟`}
+                                        />
+                                    );
+                                })}
+                            </div>
+                            <div className="mt-4 flex items-center gap-2 text-xs text-zinc-500">
+                                <span>较少</span>
+                                <div className="w-3 h-3 rounded-sm bg-zinc-100 dark:bg-zinc-800/50" />
+                                <div className="w-3 h-3 rounded-sm bg-blue-200 dark:bg-blue-900/40" />
+                                <div className="w-3 h-3 rounded-sm bg-blue-300 dark:bg-blue-800/60" />
+                                <div className="w-3 h-3 rounded-sm bg-blue-400 dark:bg-blue-700/80" />
+                                <div className="w-3 h-3 rounded-sm bg-blue-500 dark:bg-blue-600" />
+                                <span>较多</span>
+                            </div>
+                        </div>
+                    </div>
+
                     {/* Recent Tasks */}
                     <div className="space-y-4">
                         <h2 className="text-xl font-bold text-zinc-800 dark:text-zinc-200">待办事项</h2>

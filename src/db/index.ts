@@ -67,6 +67,12 @@ export interface Attachment {
   createdAt: number;
 }
 
+export interface StudyRecord {
+  date: string; // YYYY-MM-DD
+  duration: number; // in minutes
+  lastActive: number; // timestamp
+}
+
 export class StudyStudioDB extends Dexie {
   subjects!: Table<Subject>;
   entities!: Table<Entity>;
@@ -75,6 +81,7 @@ export class StudyStudioDB extends Dexie {
   chatSessions!: Table<ChatSession>;
   chatMessages!: Table<ChatMessage>;
   attachments!: Table<Attachment>;
+  studyRecords!: Table<StudyRecord>;
 
   constructor() {
     super('StudyStudioDB');
@@ -120,6 +127,10 @@ export class StudyStudioDB extends Dexie {
 
     this.version(7).stores({
       chatSessions: 'id, title, entityId, sourceType, createdAt, updatedAt'
+    });
+
+    this.version(8).stores({
+      studyRecords: 'date'
     });
   }
 }
