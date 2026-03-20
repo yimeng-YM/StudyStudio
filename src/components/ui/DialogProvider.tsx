@@ -6,6 +6,7 @@ interface DialogOptions {
   message: string;
   type?: 'alert' | 'confirm' | 'prompt';
   defaultValue?: string;
+  matchValue?: string; // 只有当输入匹配此值时，确认按钮才可用
   confirmText?: string;
   cancelText?: string;
   onConfirm?: (value?: string) => void;
@@ -40,6 +41,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const handleConfirm = useCallback(() => {
+    if (dialog?.matchValue && inputValue !== dialog.matchValue) return;
     if (resolvePromise) {
       if (dialog?.type === 'prompt') {
         resolvePromise(inputValue);
@@ -111,7 +113,8 @@ export function DialogProvider({ children }: { children: ReactNode }) {
                   className="w-full border rounded-lg px-4 py-2 bg-zinc-50 dark:bg-zinc-950 border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleConfirm()}
+                  onKeyDown={(e) => e.key === 'Enter' && (!dialog.matchValue || inputValue === dialog.matchValue) && handleConfirm()}
+                  placeholder={dialog.matchValue ? `请输入 "${dialog.matchValue}" 以确认` : ""}
                 />
               )}
             </div>
@@ -127,7 +130,8 @@ export function DialogProvider({ children }: { children: ReactNode }) {
               )}
               <button
                 onClick={handleConfirm}
-                className="px-4 py-2 bg-primary text-primary-foreground hover:opacity-90 rounded-lg transition-all shadow hover:shadow-md font-medium"
+                disabled={dialog.type === 'prompt' && !!dialog.matchValue && inputValue !== dialog.matchValue}
+                className="px-4 py-2 bg-primary text-primary-foreground hover:opacity-90 rounded-lg transition-all shadow hover:shadow-md font-medium disabled:opacity-50 disabled:cursor-not-allowed disabled:grayscale"
               >
                 {dialog.confirmText || '确定'}
               </button>

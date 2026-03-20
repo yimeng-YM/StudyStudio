@@ -7,12 +7,16 @@ import { useDialog } from '@/components/ui/DialogProvider';
 import { useAIStore } from '@/store/useAIStore';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
+import { useDashboardContext } from '@/hooks/useUIContext';
 
 export function Dashboard() {
-    const subjectCount = useLiveQuery(() => db.subjects.count());
-    const noteCount = useLiveQuery(() => db.entities.where({ type: 'note' }).count());
+     // 注册仪表盘上下文
+     useDashboardContext();
+     
+     const subjectCount = useLiveQuery(() => db.subjects.count());
+     const noteCount = useLiveQuery(() => db.entities.where({ type: 'note' }).count());
 
-    const [currentTime, setCurrentTime] = useState(new Date());
+     const [currentTime, setCurrentTime] = useState(new Date());
 
     useEffect(() => {
         const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -94,27 +98,22 @@ export function Dashboard() {
             .reverse()
             .toArray()
     );
-    const { showConfirm } = useDialog();
+    const { showPrompt } = useDialog();
     const location = useLocation();
-    const { setContext, setFloatingWindowOpen } = useAIStore();
+    const { setFloatingWindowOpen, setGlobalSessionId } = useAIStore();
+
+    const deleteSubject = (e: React.MouseEvent, id: string) => {
+        import('@/lib/subjectUtils').then(({ deleteSubjectWithConfirm }) => {
+            deleteSubjectWithConfirm(e, id, showPrompt);
+        });
+    };
 
     useEffect(() => {
         if (location.state?.openChatSessionId) {
-            setContext({
-                getSystemContext: () => "",
-                sessionId: location.state.openChatSessionId,
-                id: undefined,
-                onSessionChange: (id) => {
-                    setContext({
-                        getSystemContext: () => "",
-                        sessionId: id,
-                        id: undefined
-                    });
-                }
-            });
+            setGlobalSessionId(location.state.openChatSessionId);
             setFloatingWindowOpen(true);
         }
-    }, [location.state, setContext, setFloatingWindowOpen]);
+    }, [location.state, setGlobalSessionId, setFloatingWindowOpen]);
 
     const recentTasks = useMemo(() => {
         const tasks: { id: string, title: string }[] = [];
@@ -158,31 +157,6 @@ export function Dashboard() {
         }
         return count;
     }, [taskBoards, legacyTasks]);
-
-    const deleteSubject = async (e: React.MouseEvent, id: string) => {
-        e.preventDefault();
-        e.stopPropagation();
-
-        const confirmed = await showConfirm(
-            "确定要删除此学科吗？这将删除所有相关的笔记、导图和任务，且无法恢复。",
-            { title: "删除学科", confirmText: "删除", cancelText: "取消" }
-        );
-        if (!confirmed) return;
-
-        await db.transaction('rw', db.subjects, db.entities, db.chatSessions, db.chatMessages, async () => {
-            await db.subjects.delete(id);
-            const entities = await db.entities.where('subjectId').equals(id).toArray();
-            await db.entities.where('subjectId').equals(id).delete();
-
-            for (const ent of entities) {
-                const sessions = await db.chatSessions.where('entityId').equals(ent.id).toArray();
-                for (const sess of sessions) {
-                    await db.chatMessages.where('sessionId').equals(sess.id).delete();
-                    await db.chatSessions.delete(sess.id);
-                }
-            }
-        });
-    };
 
     const moveSubject = async (e: React.MouseEvent, id: string, direction: 'up' | 'down') => {
         e.preventDefault();

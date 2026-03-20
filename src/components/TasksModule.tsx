@@ -9,133 +9,130 @@ import ReactFlow, {
   Node,
   BackgroundVariant,
   Panel,
-  Edge
+  Edge,
+  ReactFlowProvider,
+  useReactFlow
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { db, Entity } from '@/db';
-import { Save, Plus, SaveAll } from 'lucide-react';
+import { Plus, Target } from 'lucide-react';
 import { TaskBoardNode, TaskBlockData } from './TaskBoardNode';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useTheme } from '@/hooks/useTheme';
 import { useAIStore } from '@/store/useAIStore';
 import { ViewControls } from './ViewControls';
+import { useUIContext } from '@/hooks/useUIContext';
 
 interface TasksModuleProps {
   subjectId: string;
   initialSessionId?: string | null;
 }
 
-const initialNodes: Node[] = [
-  { id: '1', type: 'taskBlock', position: { x: 100, y: 100 }, data: { title: '待办事项', items: [] } },
-];
-
 export function TasksModule({ subjectId, initialSessionId }: TasksModuleProps) {
+  return (
+    <ReactFlowProvider>
+      <TasksModuleInner subjectId={subjectId} initialSessionId={initialSessionId} />
+    </ReactFlowProvider>
+  );
+}
+
+function TasksModuleInner({ subjectId, initialSessionId }: TasksModuleProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [boardEntity, setBoardEntity] = useState<Entity | null>(null);
-  const [chatSessionId, setChatSessionId] = useState<string | null>(null);
-  const { showAlert, showConfirm } = useDialog();
+  const { showConfirm } = useDialog();
   const { theme } = useTheme();
-  const [autoSave, setAutoSave] = useState(true);
-  const { setContext, setFloatingWindowOpen } = useAIStore();
-  const loadingRef = useRef(false);
+  const { setFloatingWindowOpen, setGlobalSessionId } = useAIStore();
+  const { setCenter, getNode } = useReactFlow();
+
+  // 获取学科信息
+  const subject = useLiveQuery(() => db.subjects.get(subjectId), [subjectId]);
+
+  // 注册任务模块上下文
+  const getCustomContext = useMemo(() => {
+    return () => `用户正在查看任务看板。可以使用工具来更新任务。`;
+  }, []);
+  
+  useUIContext({
+    location: 'tasks_module',
+    subjectId,
+    subjectName: subject?.name,
+    contextId: `tasks-module-${subjectId}`,
+    getCustomContext
+  });
 
   useEffect(() => {
     if (initialSessionId) {
-      setChatSessionId(initialSessionId);
+      setGlobalSessionId(initialSessionId);
       setFloatingWindowOpen(true);
     }
-  }, [initialSessionId, setFloatingWindowOpen]);
+  }, [initialSessionId, setFloatingWindowOpen, setGlobalSessionId]);
 
   // Context for AI
-  const mindMapEntity = useLiveQuery(() => db.entities.where({ subjectId, type: 'mindmap' }).first(), [subjectId]);
-  const noteEntities = useLiveQuery(() => db.entities.where({ subjectId, type: 'note' }).toArray(), [subjectId]);
-
   const nodeTypes = useMemo(() => ({ taskBlock: TaskBoardNode }), []);
 
+  const liveEntity = useLiveQuery(
+    () => db.entities.where({ subjectId, type: 'task_board' }).first(),
+    [subjectId]
+  );
+
+  const lastSaveTimeRef = useRef<number>(0);
+
   useEffect(() => {
-    if (loadingRef.current) return;
-    loadingRef.current = true;
-
-    const load = async () => {
-      try {
-        // Try to load existing task_board
-        const existing = await db.entities
-          .where({ subjectId, type: 'task_board' })
-          .first();
-
-        if (existing) {
-          setBoardEntity(existing);
-          if (existing.content) {
-            setNodes(existing.content.nodes || []);
-            setEdges(existing.content.edges || []);
-          }
-          if (existing.content.chatSessionId) {
-            setChatSessionId(existing.content.chatSessionId);
-          }
-        } else {
-          // Double check to prevent race conditions
-          const checkAgain = await db.entities
-            .where({ subjectId, type: 'task_board' })
-            .first();
-          
-          if (checkAgain) {
-             setBoardEntity(checkAgain);
-             if (checkAgain.content) {
-                setNodes(checkAgain.content.nodes || []);
-                setEdges(checkAgain.content.edges || []);
-             }
-             if (checkAgain.content.chatSessionId) {
-                setChatSessionId(checkAgain.content.chatSessionId);
-             }
-             return;
-          }
-
-          // Migration logic: Check for old 'task' entities
-          const oldTasks = await db.entities.where({ subjectId, type: 'task' }).toArray();
-          let initNodes = [...initialNodes];
-
-          if (oldTasks.length > 0) {
-            initNodes[0].data.items = oldTasks.map(t => ({
-              id: t.id, // preserve ID if possible or new UUID
-              text: t.title,
-              completed: t.content?.completed || t.content?.status === 'done' || false
-            }));
-          }
+    if (liveEntity) {
+      setBoardEntity(liveEntity);
+      // Sync if the DB version is newer than our last local save
+      if (liveEntity.updatedAt > lastSaveTimeRef.current) {
+        if (liveEntity.content) {
+          setNodes(liveEntity.content.nodes || []);
+          setEdges(liveEntity.content.edges || []);
+        }
+        lastSaveTimeRef.current = liveEntity.updatedAt;
+      }
+    } else {
+      // Migration logic: Check for old 'task' entities
+      db.entities.where({ subjectId, type: 'task' }).toArray().then(oldTasks => {
+        // 只在有旧任务数据时才创建任务看板
+        if (oldTasks.length > 0) {
+          const initNodes = [{
+            id: '1',
+            type: 'taskBlock',
+            position: { x: 100, y: 100 },
+            data: {
+              title: '待办事项',
+              items: oldTasks.map(t => ({
+                id: t.id,
+                text: t.title,
+                completed: t.content?.completed || t.content?.status === 'done' || false
+              }))
+            }
+          }];
 
           const newEntity: Entity = {
             id: crypto.randomUUID(),
             subjectId,
-            type: 'task_board', // New type
+            type: 'task_board',
             title: 'Task Board',
             content: { nodes: initNodes, edges: [] },
             createdAt: Date.now(),
             updatedAt: Date.now()
           };
 
-          await db.entities.add(newEntity);
-          setBoardEntity(newEntity);
-          setNodes(initNodes);
-          setChatSessionId(null);
+          db.entities.add(newEntity).then(() => {
+            setBoardEntity(newEntity);
+            setNodes(initNodes);
+          });
         }
-      } finally {
-        loadingRef.current = false;
-      }
-    };
-    load();
-  }, [subjectId, setNodes, setEdges]);
-
-  const handleSessionChange = useCallback(async (newSessionId: string) => {
-    setChatSessionId(newSessionId);
-    if (boardEntity) {
-      const content = { ...boardEntity.content, chatSessionId: newSessionId };
-      await db.entities.update(boardEntity.id, { content });
+        // 如果没有旧任务数据，不自动创建空的任务看板
+      });
     }
-  }, [boardEntity]);
+  }, [liveEntity, subjectId, setNodes, setEdges]);
 
   const save = useCallback(async () => {
     if (boardEntity) {
+      const now = Date.now();
+      lastSaveTimeRef.current = now;
       // Strip functions from data before saving
       const cleanNodes = nodes.map(n => ({
         ...n,
@@ -146,19 +143,19 @@ export function TasksModule({ subjectId, initialSessionId }: TasksModuleProps) {
       }));
 
       await db.entities.update(boardEntity.id, {
-        content: { nodes: cleanNodes, edges, chatSessionId }, // persist current chatSessionId
-        updatedAt: Date.now()
+        content: { nodes: cleanNodes, edges },
+        updatedAt: now
       });
       console.log('Saved task board');
     }
-  }, [boardEntity, nodes, edges, chatSessionId]);
+  }, [boardEntity, nodes, edges]);
 
-  // Auto-save
+  // Auto-save (always enabled)
   useEffect(() => {
-    if (!boardEntity || !autoSave) return;
+    if (!boardEntity) return;
     const timer = setTimeout(save, 2000);
     return () => clearTimeout(timer);
-  }, [nodes, edges, save, boardEntity, autoSave]);
+  }, [nodes, edges, save, boardEntity]);
 
   const onNodeDataChange = useCallback((id: string, dataPatch: Partial<TaskBlockData>) => {
     setNodes(nds => nds.map(node => {
@@ -226,6 +223,14 @@ export function TasksModule({ subjectId, initialSessionId }: TasksModuleProps) {
 
   const onConnect = useCallback((params: Connection) => setEdges((eds) => addEdge(params, eds)), [setEdges]);
 
+  // Jump to a specific task block
+  const jumpToNode = useCallback((nodeId: string) => {
+    const node = getNode(nodeId);
+    if (node) {
+      setCenter(node.position.x + 150, node.position.y + 100, { zoom: 1, duration: 800 });
+    }
+  }, [getNode, setCenter]);
+
   const onEdgeClick = useCallback((event: React.MouseEvent, edge: Edge) => {
     event.stopPropagation();
     showConfirm('确定要删除这条连接线吗？', { title: '删除连接' }).then(confirmed => {
@@ -274,192 +279,83 @@ export function TasksModule({ subjectId, initialSessionId }: TasksModuleProps) {
   }, [nodes, edges, setNodes]);
 
 
-  // AI Command Handler
-  const handleAICommand = useCallback(async (command: any) => {
-    if (command.action === 'create_task_blocks' && Array.isArray(command.blocks)) {
-      const newNodes: Node[] = command.blocks.map((block: any, i: number) => ({
-        id: block.id || crypto.randomUUID(), // Allow AI to specify ID for linking
-        type: 'taskBlock',
-        position: { x: 100 + i * 320, y: 100 },
-        data: {
-          title: block.title || 'AI Generated List',
-          items: Array.isArray(block.items) ? block.items.map((txt: string) => ({
-            id: crypto.randomUUID(),
-            text: txt,
-            completed: false
-          })) : []
-        }
-      }));
-
-      let newEdges: Edge[] = [];
-      if (Array.isArray(command.edges)) {
-        newEdges = command.edges.map((e: any) => ({
-          id: `e-${e.source}-${e.target}`,
-          source: e.source,
-          target: e.target,
-          sourceHandle: e.sourceHandle,
-          targetHandle: e.targetHandle
-        }));
-      }
-
-      setNodes(nds => [...nds, ...newNodes]);
-      setEdges(eds => [...eds, ...newEdges]);
-      showAlert(`已生成 ${newNodes.length} 个任务块`, { title: '成功' });
-
-    } else if (command.action === 'delete_task_block' && command.title) {
-      // Fuzzy delete by title
-      setNodes(nds => {
-        const toDelete = nds.filter(n => n.data.title?.includes(command.title));
-        if (toDelete.length > 0) {
-          return nds.filter(n => !toDelete.includes(n));
-        }
-        return nds;
-      });
-    } else if (command.action === 'update_task_block' && command.blockTitle) {
-      setNodes(nds => nds.map(n => {
-        if (n.data.title?.includes(command.blockTitle)) {
-          let newItems = [...(n.data.items || [])];
-
-          if (Array.isArray(command.addItems)) {
-            const itemsToAdd = command.addItems.map((txt: string) => ({
-              id: crypto.randomUUID(),
-              text: txt,
-              completed: false
-            }));
-            newItems = [...newItems, ...itemsToAdd];
-          }
-
-          if (Array.isArray(command.removeItems)) {
-            newItems = newItems.filter(item =>
-              !command.removeItems.some((rm: string) => item.text.includes(rm))
-            );
-          }
-
-          return {
-            ...n,
-            data: {
-              ...n.data,
-              items: newItems,
-              title: command.newTitle || n.data.title
-            }
-          };
-        }
-        return n;
-      }));
-      showAlert('任务块已更新', { title: '成功' });
-    }
-  }, [setNodes, setEdges, showAlert]);
-
-  // Context refs
-  const nodesRef = useRef(nodes);
-  const mindMapRef = useRef(mindMapEntity);
-  const notesRef = useRef(noteEntities);
-
-  useEffect(() => {
-    nodesRef.current = nodes;
-    mindMapRef.current = mindMapEntity;
-    notesRef.current = noteEntities;
-  }, [nodes, mindMapEntity, noteEntities]);
-
-  // Register AI Context
-  useEffect(() => {
-    if (!boardEntity) return; // Wait for entity
-
-    const getSystemContext = () => {
-      const _nodes = nodesRef.current;
-      const _mindMap = mindMapRef.current;
-      const _notes = notesRef.current;
-
-      let context = `You are a Task Management Assistant helping user organize tasks based on their study material.\n\n`;
-
-      const currentBoard = _nodes.map(n =>
-        `Block: ${n.data.title} (ID: ${n.id})\nItems: ${n.data.items?.map((i: any) => i.text + (i.completed ? '[x]' : '[ ]')).join(', ')}`
-      ).join('\n\n');
-      context += `Current Task Board:\n${currentBoard}\n\n`;
-
-      if (_mindMap && _mindMap.content && _mindMap.content.nodes) {
-        const mapNodes = _mindMap.content.nodes as any[];
-        const structure = mapNodes.map(n => n.data.label).join(', ');
-        context += `Related Mind Map Topics:\n${structure}\n\n`;
-      }
-
-      if (_notes && _notes.length > 0) {
-        const notesSummary = _notes.map(n => `Note "${n.title}": ${n.content.slice(0, 100)}...`).join('\n');
-        context += `Related Notes Previews:\n${notesSummary}\n\n`;
-      }
-
-      context += `
-    Based on the mind map and notes, suggest tasks or study plans.
-    To CREATE task blocks, respond with a JSON block:
-    \`\`\`json
-    {
-    "action": "create_task_blocks",
-    "blocks": [
-        {
-        "id": "block1", "title": "Block Title",
-        "items": ["Task 1", "Task 2"]
-        },
-        { "id": "block2", "title": "Sub Tasks", "items": ["Sub 1"] }
-    ],
-    "edges": [
-        { "source": "block1", "target": "block2", "sourceHandle": "item_id_if_known", "targetHandle": "left" }
-    ]
-    }
-    \`\`\`
-    (Note: Linking to specific items requires knowing item IDs, which is hard for AI unless updating existing ones. Linking blocks genericly is fine).
-    Do NOT include any comments (like // or /* */) inside the JSON block.
-
-    To UPDATE/DELETE:
-    ... (same as before)
-    `;
-      return context;
-    };
-
-    setContext({
-      id: boardEntity.id, // Use REAL entity ID
-      sourceType: 'task',
-      sessionId: chatSessionId,
-      onSessionChange: handleSessionChange,
-      getSystemContext,
-      handleCommand: handleAICommand
-    });
-
-    return () => setContext(null);
-  }, [boardEntity, chatSessionId, handleSessionChange, handleAICommand, setContext]);
-
-
   return (
-    <div style={{ width: '100%', height: '100%' }} className="relative bg-zinc-50 dark:bg-black">
-      <ReactFlow
-        nodes={nodesWithHandlers}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
-        onEdgeClick={onEdgeClick}
-        nodeTypes={nodeTypes}
-        fitView
-      >
-        <ViewControls />
-        <MiniMap
-          nodeColor={theme === 'dark' ? '#27272a' : '#e2e8f0'}
-          maskColor={theme === 'dark' ? 'rgba(9, 9, 11, 0.7)' : 'rgba(240, 242, 245, 0.7)'}
-          style={{ backgroundColor: theme === 'dark' ? '#000000' : '#fff' }}
-        />
-        <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
-        <Panel position="top-right" className="flex gap-2">
-          {/* AI Button Removed */}
-          <button onClick={addBlock} className="bg-white/80 dark:bg-zinc-900/80 backdrop-blur p-2.5 rounded-xl shadow-sm border border-zinc-200/50 dark:border-zinc-800/50 hover:bg-white dark:hover:bg-zinc-800 hover:scale-105 transition-all text-zinc-700 dark:text-zinc-200" title="添加任务块">
-            <Plus size={20} />
-          </button>
-          <button onClick={() => setAutoSave(!autoSave)} className={`bg-white/80 dark:bg-zinc-900/80 backdrop-blur p-2.5 rounded-xl shadow-sm border border-zinc-200/50 dark:border-zinc-800/50 hover:bg-white dark:hover:bg-zinc-800 hover:scale-105 transition-all ${autoSave ? 'text-green-500' : 'text-zinc-400'}`} title={autoSave ? "自动保存已开启" : "自动保存已关闭"}>
-            <SaveAll size={20} />
-          </button>
-          <button onClick={save} className="bg-white/80 dark:bg-zinc-900/80 backdrop-blur p-2.5 rounded-xl shadow-sm border border-zinc-200/50 dark:border-zinc-800/50 hover:bg-white dark:hover:bg-zinc-800 hover:scale-105 transition-all text-zinc-700 dark:text-zinc-200" title="手动保存">
-            <Save size={20} />
-          </button>
-        </Panel>
-      </ReactFlow>
+    <div className="flex h-full relative">
+      <div className="flex-1 relative bg-white dark:bg-zinc-950 rounded-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden shadow-sm">
+        <ReactFlow
+          nodes={nodesWithHandlers}
+          edges={edges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={onConnect}
+          onEdgeClick={onEdgeClick}
+          nodeTypes={nodeTypes}
+          fitView
+        >
+          <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
+          
+          {/* Top Navigation Bar */}
+          <Panel position="top-center" className="flex items-center gap-2 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md px-4 py-2 rounded-full border border-zinc-200 dark:border-zinc-800 shadow-lg mt-4 max-w-[80vw] overflow-x-auto no-scrollbar">
+            <button
+              onClick={addBlock}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-full text-xs font-medium hover:bg-blue-700 transition-colors shrink-0"
+            >
+              <Plus size={14} /> 添加任务块
+            </button>
+            
+            {nodes.length > 0 && (
+              <>
+                <div className="w-px h-4 bg-zinc-200 dark:bg-zinc-800 mx-1 shrink-0" />
+                
+                {nodes.map(node => (
+                  <button
+                    key={node.id}
+                    onClick={() => jumpToNode(node.id)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-full text-xs font-medium text-zinc-700 dark:text-zinc-300 transition-all shrink-0 border border-transparent hover:border-blue-200 dark:hover:border-blue-800"
+                  >
+                    <Target size={12} className="text-blue-500" />
+                    {node.data.title || '未命名'}
+                  </button>
+                ))}
+              </>
+            )}
+            
+            {nodes.length === 0 && (
+              <span className="text-xs text-zinc-400 px-2">暂无任务块</span>
+            )}
+          </Panel>
+
+          {/* View Controls - Bottom Left */}
+          <Panel position="bottom-left" className="mb-4 ml-4">
+            <ViewControls />
+          </Panel>
+          
+          <MiniMap
+            nodeColor={() => {
+              if (theme === 'dark') return '#555';
+              return '#eee';
+            }}
+            maskColor={theme === 'dark' ? 'rgba(0, 0, 0, 0.7)' : 'rgba(240, 240, 240, 0.6)'}
+            style={{
+              borderRadius: '12px',
+              overflow: 'hidden',
+              border: theme === 'dark' ? '1px solid #333' : '1px solid #e2e2e2',
+              backgroundColor: theme === 'dark' ? '#1a1a1a' : '#fff'
+            }}
+            className="shadow-lg"
+          />
+          
+          {nodes.length === 0 && (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="bg-white/50 dark:bg-zinc-900/50 backdrop-blur-sm p-6 rounded-2xl border border-dashed border-zinc-300 dark:border-zinc-700 text-center">
+                <Plus className="mx-auto mb-2 text-zinc-400" size={32} />
+                <p className="text-zinc-500 dark:text-zinc-400 font-medium">任务看板还是空的</p>
+                <p className="text-zinc-400 dark:text-zinc-500 text-xs mt-1">点击顶部的"添加任务块"开始，或让AI为你生成任务计划</p>
+              </div>
+            </div>
+          )}
+        </ReactFlow>
+      </div>
     </div>
   );
 }

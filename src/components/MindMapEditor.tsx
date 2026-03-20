@@ -9,17 +9,22 @@ import ReactFlow, {
   Node,
   Edge,
   BackgroundVariant,
-  Panel
+  Panel,
+  ReactFlowProvider,
+  useReactFlow
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { db, Entity } from '@/db';
-import { Save, Plus, Undo, Redo, SaveAll } from 'lucide-react';
+import { Plus, Target, ArrowRight, ArrowDown, GitBranch } from 'lucide-react';
 import { CustomNode } from './CustomNode';
 import { Modal } from './ui/Modal';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useTheme } from '@/hooks/useTheme';
 import { useAIStore } from '@/store/useAIStore';
 import { ViewControls } from './ViewControls';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { useMindMapContext } from '@/hooks/useUIContext';
+import * as dagre from 'dagre';
 
 interface MindMapEditorProps {
   subjectId: string;
@@ -27,32 +32,39 @@ interface MindMapEditorProps {
   initialSessionId?: string | null;
 }
 
-const initialNodes: Node[] = [
-  { id: '1', position: { x: 250, y: 250 }, data: { label: '中心主题' }, type: 'custom' },
-];
+const initialNodes: Node[] = [];
 
-export function MindMapEditor({ subjectId, onNavigate, initialSessionId }: MindMapEditorProps) {
+export function MindMapEditor(props: MindMapEditorProps) {
+  return (
+    <ReactFlowProvider>
+      <MindMapInner {...props} />
+    </ReactFlowProvider>
+  );
+}
+
+function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditorProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-  const [mindMapEntity, setMindMapEntity] = useState<Entity | null>(null);
-  const [chatSessionId, setChatSessionId] = useState<string | null>(null);
+  const { setCenter } = useReactFlow();
+  const [selectedMindMapId, setSelectedMindMapId] = useState<string | null>(null);
   const { showAlert, showConfirm, showPrompt } = useDialog();
   const { theme } = useTheme();
-  const { setContext, setFloatingWindowOpen } = useAIStore();
+  const { setFloatingWindowOpen, setGlobalSessionId } = useAIStore();
+
+  // 获取学科信息
+  const subject = useLiveQuery(() => db.subjects.get(subjectId), [subjectId]);
 
   useEffect(() => {
     if (initialSessionId) {
-      setChatSessionId(initialSessionId);
+      setGlobalSessionId(initialSessionId);
       setFloatingWindowOpen(true);
     }
-  }, [initialSessionId, setFloatingWindowOpen]);
+  }, [initialSessionId, setFloatingWindowOpen, setGlobalSessionId]);
 
-  // History & AutoSave
   const [history, setHistory] = useState<{ nodes: Node[], edges: Edge[] }[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
-  const [autoSave, setAutoSave] = useState(true);
+  const [autoSave] = useState(true);
 
-  // Task Modal State
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [taskLabelToAdd, setTaskLabelToAdd] = useState('');
   const [taskItemsToAdd, setTaskItemsToAdd] = useState<string[]>([]);
@@ -60,19 +72,65 @@ export function MindMapEditor({ subjectId, onNavigate, initialSessionId }: MindM
   const [selectedBlockId, setSelectedBlockId] = useState<string>('new');
   const [newBlockName, setNewBlockName] = useState('新任务清单');
 
-  // Custom Node Types
   const nodeTypes = useMemo(() => ({ custom: CustomNode }), []);
 
-  // Refs for AI Context
-  const nodesRef = useRef(nodes);
-  const edgesRef = useRef(edges);
+  const mindMaps = useLiveQuery(
+    () => db.entities.where({ subjectId, type: 'mindmap' }).toArray(),
+    [subjectId]
+  );
 
+  const selectedMindMap = useMemo(() => 
+    mindMaps?.find((m: any) => m.id === selectedMindMapId) || null,
+    [mindMaps, selectedMindMapId]
+  );
+
+  // Auto-select or create first mindmap
   useEffect(() => {
-    nodesRef.current = nodes;
-    edgesRef.current = edges;
-  }, [nodes, edges]);
+    if (mindMaps && mindMaps.length > 0 && !selectedMindMapId) {
+      setSelectedMindMapId(mindMaps[0].id);
+    } else if (mindMaps && mindMaps.length === 0) {
+      const id = crypto.randomUUID();
+      const now = Date.now();
+      db.entities.add({
+        id,
+        subjectId,
+        type: 'mindmap',
+        title: '我的思维导图',
+        content: { nodes: initialNodes, edges: [] },
+        createdAt: now,
+        updatedAt: now,
+        lastAccessed: now,
+        order: now
+      }).then(() => setSelectedMindMapId(id));
+    }
+  }, [mindMaps, selectedMindMapId, subjectId]);
 
-  // Snapshot helper
+  const lastSaveTimeRef = useRef<number>(0);
+
+  // Synchronize from DB whenever the selected mindmap changes externally
+  useEffect(() => {
+    if (selectedMindMap) {
+      // Sync if the DB version is newer than our last local save
+      if (selectedMindMap.updatedAt > lastSaveTimeRef.current) {
+        const content = selectedMindMap.content || { nodes: initialNodes, edges: [] };
+        
+        setNodes((content.nodes || []).map((n: any) => ({
+          ...n,
+          type: 'custom'
+        })));
+        setEdges(content.edges || []);
+        
+        // Update history if this is an external change or first load
+        if (history.length <= 1 || selectedMindMap.updatedAt > lastSaveTimeRef.current + 1000) {
+          setHistory([{ nodes: content.nodes || [], edges: content.edges || [] }]);
+          setHistoryIndex(0);
+        }
+        
+        lastSaveTimeRef.current = selectedMindMap.updatedAt;
+      }
+    }
+  }, [selectedMindMap, setNodes, setEdges]);
+
   const takeSnapshot = useCallback((newNodes?: Node[], newEdges?: Edge[]) => {
     setHistory(prev => {
       const currentNodes = newNodes || nodes;
@@ -83,107 +141,22 @@ export function MindMapEditor({ subjectId, onNavigate, initialSessionId }: MindM
     setHistoryIndex(prev => prev + 1);
   }, [nodes, edges, historyIndex]);
 
-  // Initial Snapshot
-  useEffect(() => {
-    if (history.length === 0 && nodes.length > 0) {
-      setHistory([{ nodes, edges }]);
-      setHistoryIndex(0);
-    }
-  }, [nodes, edges, history.length]);
-
-  const loadingRef = useRef(false);
-
-  useEffect(() => {
-    if (loadingRef.current) return;
-    loadingRef.current = true;
-
-    const load = async () => {
-      try {
-        const existing = await db.entities
-          .where({ subjectId, type: 'mindmap' })
-          .first();
-
-        if (existing) {
-          setMindMapEntity(existing);
-          if (existing.content.chatSessionId) {
-            setChatSessionId(existing.content.chatSessionId);
-          }
-
-          if (existing.content) {
-            const loadedNodes = (existing.content.nodes || initialNodes).map((n: any) => ({
-              ...n,
-              type: 'custom'
-            }));
-            setNodes(loadedNodes);
-            setEdges(existing.content.edges || []);
-          }
-        } else {
-          // Double check
-          const checkAgain = await db.entities.where({ subjectId, type: 'mindmap' }).first();
-          if (checkAgain) {
-             setMindMapEntity(checkAgain);
-             // Load logic...
-             if (checkAgain.content) {
-               setNodes((checkAgain.content.nodes || initialNodes).map((n: any) => ({ ...n, type: 'custom' })));
-               setEdges(checkAgain.content.edges || []);
-             }
-             return;
-          }
-
-          const newEntity: Entity = {
-            id: crypto.randomUUID(),
-            subjectId,
-            type: 'mindmap',
-            title: 'Main Map',
-            content: { nodes: initialNodes, edges: [] },
-            createdAt: Date.now(),
-            updatedAt: Date.now()
-          };
-          await db.entities.add(newEntity);
-          setMindMapEntity(newEntity);
-          setNodes(initialNodes);
-        }
-      } finally {
-        loadingRef.current = false;
-      }
-    };
-    load();
-  }, [subjectId, setNodes, setEdges]);
-
-  // Load task board when modal opens
-  useEffect(() => {
-    if (isTaskModalOpen) {
-      db.entities.where({ subjectId, type: 'task_board' }).first().then(ent => {
-        setTaskBoardEntity(ent || null);
-        setSelectedBlockId('new');
-      });
-    }
-  }, [isTaskModalOpen, subjectId]);
-
-  const handleSessionChange = useCallback(async (newSessionId: string) => {
-    setChatSessionId(newSessionId);
-    if (mindMapEntity) {
-      const content = { ...mindMapEntity.content, chatSessionId: newSessionId };
-      await db.entities.update(mindMapEntity.id, { content });
-    }
-  }, [mindMapEntity]);
-
   const save = useCallback(async () => {
-    if (mindMapEntity) {
-      await db.entities.update(mindMapEntity.id, {
+    if (selectedMindMapId) {
+      const now = Date.now();
+      lastSaveTimeRef.current = now;
+      await db.entities.update(selectedMindMapId, {
         content: { nodes, edges },
-        updatedAt: Date.now()
+        updatedAt: now
       });
-      console.log('Saved mindmap');
     }
-  }, [mindMapEntity, nodes, edges]);
+  }, [selectedMindMapId, nodes, edges]);
 
-  // Auto-save
   useEffect(() => {
-    if (!mindMapEntity || !autoSave) return;
+    if (!selectedMindMapId || !autoSave) return;
     const timer = setTimeout(save, 2000);
     return () => clearTimeout(timer);
-  }, [nodes, edges, save, mindMapEntity, autoSave]);
+  }, [nodes, edges, save, selectedMindMapId, autoSave]);
 
   const handleUndo = useCallback(() => {
     if (historyIndex > 0) {
@@ -203,7 +176,28 @@ export function MindMapEditor({ subjectId, onNavigate, initialSessionId }: MindM
     }
   }, [history, historyIndex, setNodes, setEdges]);
 
-  // --- Node Actions ---
+  // Find root nodes (nodes with no incoming edges)
+  const rootNodes = useMemo(() => {
+    const targets = new Set(edges.map(e => e.target));
+    return nodes.filter(n => !targets.has(n.id));
+  }, [nodes, edges]);
+
+  const jumpToNode = useCallback((nodeId: string) => {
+    const node = nodes.find(n => n.id === nodeId);
+    if (node) {
+      setCenter(node.position.x + 75, node.position.y + 25, { zoom: 1.2, duration: 800 });
+    }
+  }, [nodes, setCenter]);
+
+  // Load task board when modal opens
+  useEffect(() => {
+    if (isTaskModalOpen) {
+      db.entities.where({ subjectId, type: 'task_board' }).first().then(ent => {
+        setTaskBoardEntity(ent || null);
+        setSelectedBlockId('new');
+      });
+    }
+  }, [isTaskModalOpen, subjectId]);
 
   const handleAddChild = useCallback((parentId: string) => {
     const parent = nodes.find(n => n.id === parentId);
@@ -224,6 +218,8 @@ export function MindMapEditor({ subjectId, onNavigate, initialSessionId }: MindM
       id: `e${parentId}-${id}`,
       source: parentId,
       target: id,
+      sourceHandle: 'right-s',
+      targetHandle: 'left-t'
     };
 
     const newNodes = nodes.concat(newNode);
@@ -258,7 +254,9 @@ export function MindMapEditor({ subjectId, onNavigate, initialSessionId }: MindM
     const newEdge: Edge = {
       id: `e${parentId}-${id}`,
       source: parentId,
-      target: id
+      target: id,
+      sourceHandle: 'right-s',
+      targetHandle: 'left-t'
     };
 
     const newNodes = nodes.concat(newNode);
@@ -270,7 +268,7 @@ export function MindMapEditor({ subjectId, onNavigate, initialSessionId }: MindM
 
   }, [nodes, edges, setNodes, setEdges, handleAddChild, takeSnapshot]);
 
-  const handleDelete = useCallback((id: string) => {
+  const handleDeleteNode = useCallback((id: string) => {
     const newNodes = nodes.filter((n) => n.id !== id);
     const newEdges = edges.filter((e) => e.source !== id && e.target !== id);
     takeSnapshot(newNodes, newEdges);
@@ -313,7 +311,6 @@ export function MindMapEditor({ subjectId, onNavigate, initialSessionId }: MindM
     setTaskLabelToAdd(node.data.label);
     setNewBlockName(node.data.label);
 
-    // Find children to populate items
     const childEdges = edges.filter(e => e.source === nodeId);
     const childNodes = nodes.filter(n => childEdges.some(e => e.target === n.id));
     const childItems = childNodes.map(n => n.data.label);
@@ -324,30 +321,21 @@ export function MindMapEditor({ subjectId, onNavigate, initialSessionId }: MindM
 
   const confirmAddTask = async () => {
     let entity = taskBoardEntity;
-    let nodes = entity?.content?.nodes || [];
-    let edges = entity?.content?.edges || [];
-    let chatSessionId = entity?.content?.chatSessionId;
+    let boardNodes = entity?.content?.nodes || [];
+    let boardEdges = entity?.content?.edges || [];
 
     if (!entity) {
       const id = crypto.randomUUID();
-      chatSessionId = crypto.randomUUID();
-      await db.chatSessions.add({
-        id: chatSessionId,
-        title: `Task Board Chat`,
-        entityId: id,
-        createdAt: Date.now(),
-        updatedAt: Date.now()
-      });
       entity = {
         id,
         subjectId,
         type: 'task_board',
         title: 'Task Board',
-        content: { nodes: [], edges: [], chatSessionId },
+        content: { nodes: [], edges: [] },
         createdAt: Date.now(),
         updatedAt: Date.now()
       };
-      nodes = [];
+      boardNodes = [];
     }
 
     const itemsToAdd = taskItemsToAdd.length > 0
@@ -361,13 +349,13 @@ export function MindMapEditor({ subjectId, onNavigate, initialSessionId }: MindM
         position: { x: Math.random() * 200 + 100, y: Math.random() * 200 + 100 },
         data: { title: newBlockName, items: itemsToAdd }
       };
-      nodes.push(newNode);
+      boardNodes.push(newNode);
     } else {
-      const nodeIndex = nodes.findIndex((n: any) => n.id === selectedBlockId);
+      const nodeIndex = boardNodes.findIndex((n: any) => n.id === selectedBlockId);
       if (nodeIndex !== -1) {
-        const node = nodes[nodeIndex];
+        const node = boardNodes[nodeIndex];
         const items = node.data.items || [];
-        nodes[nodeIndex] = {
+        boardNodes[nodeIndex] = {
           ...node,
           data: { ...node.data, items: [...items, ...itemsToAdd] }
         };
@@ -376,7 +364,7 @@ export function MindMapEditor({ subjectId, onNavigate, initialSessionId }: MindM
 
     if (taskBoardEntity) {
       await db.entities.update(entity.id, {
-        content: { nodes, edges, chatSessionId: entity.content?.chatSessionId || chatSessionId },
+        content: { nodes: boardNodes, edges: boardEdges },
         updatedAt: Date.now()
       });
     } else {
@@ -389,20 +377,28 @@ export function MindMapEditor({ subjectId, onNavigate, initialSessionId }: MindM
     showAlert('已添加到任务清单', { title: '成功' });
   };
 
-  const handleAddRootNode = useCallback(() => {
+  const handleAddRootNode = useCallback(async () => {
+    const label = await showPrompt("输入新中心主题名称:", "中心主题");
+    if (!label) return;
+
     const id = crypto.randomUUID();
     const newNode: Node = {
       id,
       type: 'custom',
-      position: { x: window.innerWidth / 2 - 75, y: window.innerHeight / 2 - 25 },
-      data: { label: '中心主题' },
+      position: { 
+        x: nodes.length > 0 ? Math.max(...nodes.map(n => n.position.x)) + 400 : 250, 
+        y: 250 
+      },
+      data: { label },
     };
     const newNodes = nodes.concat(newNode);
     takeSnapshot(newNodes, edges);
     setNodes(newNodes);
-  }, [nodes, edges, setNodes, takeSnapshot]);
+    
+    // Jump to the new node after a short delay
+    setTimeout(() => jumpToNode(id), 100);
+  }, [nodes, edges, setNodes, takeSnapshot, showPrompt, jumpToNode]);
 
-  // Inject handlers into node data
   const nodesWithHandlers = useMemo(() => {
     return nodes.map((node) => ({
       ...node,
@@ -410,13 +406,12 @@ export function MindMapEditor({ subjectId, onNavigate, initialSessionId }: MindM
         ...node.data,
         onAddChild: () => handleAddChild(node.id),
         onAddSibling: () => handleAddSibling(node.id),
-        onDelete: () => handleDelete(node.id),
+        onDelete: () => handleDeleteNode(node.id),
         onNote: () => handleNote(node.data.label),
         onTask: () => handleTask(node.id),
       },
     }));
-  }, [nodes, handleAddChild, handleAddSibling, handleDelete, handleNote, handleTask]);
-
+  }, [nodes, handleAddChild, handleAddSibling, handleDeleteNode, handleNote, handleTask]);
 
   const onConnect = useCallback((params: Connection) => {
     const newEdges = addEdge(params, edges);
@@ -439,12 +434,134 @@ export function MindMapEditor({ subjectId, onNavigate, initialSessionId }: MindM
   }, [nodes, edges, setNodes, showPrompt, takeSnapshot]);
 
   const onNodeDragStop = useCallback(() => {
-    takeSnapshot(); // Use current state as drag is already applied
+    takeSnapshot();
   }, [takeSnapshot]);
 
-  const onEdgeClick = useCallback((event: React.MouseEvent, edge: Edge) => {
+  const onLayout = useCallback((direction: 'LR' | 'TB' | 'Radial') => {
+    const doDagreLayout = (targetNodes: Node[], targetEdges: Edge[], dir: 'LR' | 'RL' | 'TB') => {
+      const g = new dagre.graphlib.Graph();
+      g.setGraph({ 
+        rankdir: dir, 
+        nodesep: (dir === 'TB' ? 100 : 50), 
+        ranksep: (dir === 'TB' ? 50 : 80),
+        marginx: 50,
+        marginy: 50
+      });
+      g.setDefaultEdgeLabel(() => ({}));
+
+      targetNodes.forEach((node) => {
+        const width = Math.max(120, (node.data.label?.length || 0) * 12 + 30);
+        g.setNode(node.id, { width, height: 60 });
+      });
+
+      targetEdges.forEach((edge) => {
+        g.setEdge(edge.source, edge.target);
+      });
+
+      dagre.layout(g);
+      return g;
+    };
+
+    let newNodes: Node[] = [];
+    let newEdges: Edge[] = [];
+
+    if (direction === 'Radial') {
+      // 发散型：找到根节点，子节点平分左右
+      const roots = nodes.filter(n => !edges.some(e => e.target === n.id));
+      if (roots.length === 0) return;
+
+      const root = roots[0]; // 暂时只处理第一个根节点
+      const childrenEdges = edges.filter(e => e.source === root.id);
+      const mid = Math.ceil(childrenEdges.length / 2);
+      const rightEdges = childrenEdges.slice(0, mid);
+      const leftEdges = childrenEdges.slice(mid);
+
+      const getSubtree = (startEdges: Edge[]) => {
+        const nodeIds = new Set([root.id]);
+        const subtreeEdges: Edge[] = [];
+        const stack = [...startEdges];
+        
+        while (stack.length > 0) {
+          const edge = stack.pop()!;
+          subtreeEdges.push(edge);
+          nodeIds.add(edge.target);
+          edges.filter(e => e.source === edge.target).forEach(e => stack.push(e));
+        }
+        const subtreeNodes = nodes.filter(n => nodeIds.has(n.id));
+        return { nodes: subtreeNodes, edges: subtreeEdges };
+      };
+
+      const right = getSubtree(rightEdges);
+      const left = getSubtree(leftEdges);
+
+      const gRight = doDagreLayout(right.nodes, right.edges, 'LR');
+      const gLeft = doDagreLayout(left.nodes, left.edges, 'RL');
+
+      const rootPosRight = gRight.node(root.id);
+      const rootPosLeft = gLeft.node(root.id);
+
+      // 合并并平移左侧布局，使其根节点重合
+      const nodeMap = new Map();
+      
+      right.nodes.forEach(n => {
+        const dNode = gRight.node(n.id);
+        nodeMap.set(n.id, {
+          ...n,
+          position: { x: dNode.x - (dNode.width || 0) / 2, y: dNode.y - 30 }
+        });
+      });
+
+      left.nodes.forEach(n => {
+        if (n.id === root.id) return;
+        const dNode = gLeft.node(n.id);
+        // 基于右侧根节点位置平移
+        nodeMap.set(n.id, {
+          ...n,
+          position: { 
+            x: (dNode.x - (dNode.width || 0) / 2) - (rootPosLeft.x - rootPosRight.x),
+            y: (dNode.y - 30) - (rootPosLeft.y - rootPosRight.y)
+          }
+        });
+      });
+
+      newNodes = Array.from(nodeMap.values());
+      newEdges = edges.map(edge => {
+        const isLeft = left.edges.some(e => e.id === edge.id);
+        return {
+          ...edge,
+          sourceHandle: isLeft ? 'left-s' : 'right-s',
+          targetHandle: isLeft ? 'right-t' : 'left-t'
+        };
+      });
+
+    } else {
+      // 常规布局 (LR / TB)
+      const g = doDagreLayout(nodes, edges, direction);
+      newNodes = nodes.map((node) => {
+        const dNode = g.node(node.id);
+        return {
+          ...node,
+          position: { x: dNode.x - (dNode.width || 0) / 2, y: dNode.y - 30 },
+        };
+      });
+
+      newEdges = edges.map((edge) => ({
+        ...edge,
+        sourceHandle: direction === 'LR' ? 'right-s' : 'bottom-s',
+        targetHandle: direction === 'LR' ? 'left-t' : 'top-t'
+      }));
+    }
+
+    setNodes(newNodes);
+    setEdges(newEdges);
+    takeSnapshot(newNodes, newEdges);
+    
+    setTimeout(() => setCenter(0, 0, { zoom: 1, duration: 800 }), 100);
+  }, [nodes, edges, setNodes, setEdges, takeSnapshot, setCenter]);
+
+  const handleEdgeClick = useCallback((event: React.MouseEvent, edge: Edge) => {
     event.stopPropagation();
-    showConfirm('确定要删除这条连接线吗？', { title: '删除连接' }).then(confirmed => {
+    showConfirm('确定要删除这条连接线吗？', { title: '删除连接' }).then((confirmed: boolean) => {
       if (confirmed) {
         const newEdges = edges.filter(e => e.id !== edge.id);
         takeSnapshot(nodes, newEdges);
@@ -453,151 +570,197 @@ export function MindMapEditor({ subjectId, onNavigate, initialSessionId }: MindM
     });
   }, [edges, nodes, setEdges, showConfirm, takeSnapshot]);
 
-
-
-  const handleAICommand = useCallback(async (command: any) => {
-    if (command.action === 'update_map' && Array.isArray(command.nodes) && Array.isArray(command.edges)) {
-      const newNodes = command.nodes.map((n: any) => ({ ...n, type: 'custom' }));
-      const newEdges = command.edges;
-      takeSnapshot(newNodes, newEdges);
-      setNodes(newNodes);
-      setEdges(newEdges);
-      showAlert('思维导图已更新', { title: '成功' });
-    }
-  }, [setNodes, setEdges, showAlert, takeSnapshot]);
-
-  // Register AI Context
-  useEffect(() => {
-    if (!mindMapEntity) return; // Wait for entity
-
-    const getSystemContext = () => {
-      const currentNodes = nodesRef.current;
-      const currentEdges = edgesRef.current;
-      const structure = currentNodes.map(n => {
-        const children = currentEdges.filter(e => e.source === n.id).map(e => e.target);
-        return `${n.data.label} (ID: ${n.id}) -> Children: [${children.join(', ')}]`;
-      }).join('\n');
-
-      return `Current Mind Map Structure:\n${structure}\n
-You are a Mind Map Assistant. You can modify the mind map.
-To update the mind map, respond with a JSON block in the following format:
-\`\`\`json
-{
-  "action": "update_map",
-  "nodes": [ { "id": "...", "type": "custom", "position": { "x": 0, "y": 0 }, "data": { "label": "..." } } ],
-  "edges": [ { "id": "...", "source": "...", "target": "..." } ]
-}
-\`\`\`
-Ensure specific positions for nodes so they don't overlap.
-Do NOT include any comments (like // or /* */) inside the JSON block.
-If user asks to generate a new map, provide a complete new structure.
-If user asks to modify, provide the updated full structure (nodes + edges).
-`;
-    };
-
-    setContext({
-      id: mindMapEntity.id, // Use REAL entity ID
-      sourceType: 'mindmap',
-      sessionId: chatSessionId,
-      onSessionChange: handleSessionChange,
-      getSystemContext,
-      handleCommand: handleAICommand
-    });
-
-    return () => setContext(null);
-  }, [mindMapEntity, chatSessionId, handleSessionChange, handleAICommand, setContext]);
+  // 使用新的 useMindMapContext hook 来注册上下文
+  // 注意：不传递 nodes.length 以避免频繁更新导致无限循环
+  useMindMapContext(
+    subjectId,
+    subject?.name,
+    selectedMindMapId || undefined,
+    selectedMindMap?.title
+  );
 
   return (
-    <div style={{ width: '100%', height: '100%' }} className="relative">
-      <ReactFlow
-        nodes={nodesWithHandlers}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
-        onNodeDoubleClick={onNodeDoubleClick}
-        onNodeDragStop={onNodeDragStop}
-        onEdgeClick={onEdgeClick}
-        nodeTypes={nodeTypes}
-        fitView
-      >
-        <ViewControls />
-        <MiniMap
-          nodeColor={theme === 'dark' ? '#27272a' : '#e2e8f0'}
-          maskColor={theme === 'dark' ? 'rgba(9, 9, 11, 0.7)' : 'rgba(240, 242, 245, 0.7)'}
-          style={{ backgroundColor: theme === 'dark' ? '#000000' : '#fff' }}
-        />
-        <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
-        <Panel position="top-right" className="flex gap-2">
-          <button onClick={handleUndo} disabled={historyIndex <= 0} className="bg-white dark:bg-zinc-800 p-2 rounded shadow hover:bg-zinc-50 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 disabled:opacity-50" title="撤销">
-            <Undo size={20} />
-          </button>
-          <button onClick={handleRedo} disabled={historyIndex >= history.length - 1} className="bg-white dark:bg-zinc-800 p-2 rounded shadow hover:bg-zinc-50 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 disabled:opacity-50" title="恢复">
-            <Redo size={20} />
-          </button>
-          <div className="w-px bg-zinc-300 dark:bg-zinc-700 mx-1" />
-          <button onClick={handleAddRootNode} className="bg-white dark:bg-zinc-800 p-2 rounded shadow hover:bg-zinc-50 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200" title="添加根节点">
-            <Plus size={20} />
-          </button>
-          <button onClick={() => setAutoSave(!autoSave)} className={`bg-white dark:bg-zinc-800 p-2 rounded shadow hover:bg-zinc-50 dark:hover:bg-zinc-700 ${autoSave ? 'text-green-600' : 'text-zinc-400'}`} title={autoSave ? "自动保存已开启" : "自动保存已关闭"}>
-            <SaveAll size={20} />
-          </button>
-          <button onClick={save} className="bg-white dark:bg-zinc-800 p-2 rounded shadow hover:bg-zinc-50 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200" title="手动保存">
-            <Save size={20} />
-          </button>
-        </Panel>
-      </ReactFlow>
+    <div className="flex h-full relative">
+      {/* React Flow Editor */}
+      <div className="flex-1 relative bg-white dark:bg-zinc-950 rounded-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden shadow-sm">
+        {selectedMindMapId ? (
+          <ReactFlow
+            nodes={nodesWithHandlers}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            onNodeDoubleClick={onNodeDoubleClick}
+            onNodeDragStop={onNodeDragStop}
+            onEdgeClick={handleEdgeClick}
+            nodeTypes={nodeTypes}
+            fitView
+          >
+            <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
+            
+            {/* Top Navigation Bar */}
+            <Panel position="top-center" className="flex items-center gap-2 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md px-4 py-2 rounded-full border border-zinc-200 dark:border-zinc-800 shadow-lg mt-4 max-w-[80vw] overflow-x-auto no-scrollbar">
+              <button
+                onClick={handleAddRootNode}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-full text-xs font-medium hover:bg-blue-700 transition-colors shrink-0"
+              >
+                <Plus size={14} /> 新增中心主题
+              </button>
+              
+              <div className="w-px h-4 bg-zinc-200 dark:bg-zinc-800 mx-1 shrink-0" />
+              
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => onLayout('LR')}
+                  className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full text-zinc-500 hover:text-blue-500 transition-colors"
+                  title="水平整理"
+                >
+                  <ArrowRight size={16} />
+                </button>
+                <button
+                  onClick={() => onLayout('TB')}
+                  className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full text-zinc-500 hover:text-blue-500 transition-colors"
+                  title="垂直整理"
+                >
+                  <ArrowDown size={16} />
+                </button>
+                <button
+                  onClick={() => onLayout('Radial')}
+                  className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full text-zinc-500 hover:text-blue-500 transition-colors"
+                  title="发散整理"
+                >
+                  <GitBranch size={16} />
+                </button>
+              </div>
 
-      {/* Task Selection Modal */}
+              <div className="w-px h-4 bg-zinc-200 dark:bg-zinc-800 mx-1 shrink-0" />
+              
+              {rootNodes.map(node => (
+                <button
+                  key={node.id}
+                  onClick={() => jumpToNode(node.id)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-full text-xs font-medium text-zinc-700 dark:text-zinc-300 transition-all shrink-0 border border-transparent hover:border-blue-200 dark:hover:border-blue-800"
+                >
+                  <Target size={12} className="text-blue-500" />
+                  {node.data.label}
+                </button>
+              ))}
+              
+              {rootNodes.length === 0 && (
+                <span className="text-xs text-zinc-400 px-2">暂无中心主题</span>
+              )}
+            </Panel>
+
+            <Panel position="bottom-left" className="mb-4 ml-4">
+              <ViewControls
+                onUndo={handleUndo}
+                onRedo={handleRedo}
+                canUndo={historyIndex > 0}
+                canRedo={historyIndex < history.length - 1}
+              />
+            </Panel>
+            <MiniMap
+              nodeColor={() => {
+                if (theme === 'dark') return '#555';
+                return '#eee';
+              }}
+              maskColor={theme === 'dark' ? 'rgba(0, 0, 0, 0.7)' : 'rgba(240, 240, 240, 0.6)'}
+              style={{
+                borderRadius: '12px',
+                overflow: 'hidden',
+                border: theme === 'dark' ? '1px solid #333' : '1px solid #e2e2e2',
+                backgroundColor: theme === 'dark' ? '#1a1a1a' : '#fff'
+              }}
+              className="shadow-lg"
+            />
+            {nodes.length === 0 && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div className="bg-white/50 dark:bg-zinc-900/50 backdrop-blur-sm p-6 rounded-2xl border border-dashed border-zinc-300 dark:border-zinc-700 text-center">
+                  <Plus className="mx-auto mb-2 text-zinc-400" size={32} />
+                  <p className="text-zinc-500 dark:text-zinc-400 font-medium">思维导图还是空的</p>
+                  <p className="text-zinc-400 dark:text-zinc-500 text-xs mt-1">点击顶部的“新增中心主题”开始</p>
+                </div>
+              </div>
+            )}
+          </ReactFlow>
+        ) : (
+          <div className="flex flex-col items-center justify-center h-full text-zinc-500 gap-4">
+            <div className="w-16 h-16 bg-zinc-100 dark:bg-zinc-800 rounded-full flex items-center justify-center">
+              <Plus size={32} />
+            </div>
+            <p>正在加载或创建思维导图...</p>
+          </div>
+        )}
+      </div>
+
       <Modal
         isOpen={isTaskModalOpen}
         onClose={() => setIsTaskModalOpen(false)}
         title="添加到任务清单"
-        footer={
-          <>
-            <button onClick={() => setIsTaskModalOpen(false)} className="px-4 py-2 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded transition-colors">取消</button>
-            <button onClick={confirmAddTask} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors">确定</button>
-          </>
-        }
       >
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">选中节点</label>
-            <div className="p-2 bg-zinc-100 dark:bg-zinc-800 rounded text-zinc-800 dark:text-zinc-200 border dark:border-zinc-700">
-              {taskLabelToAdd}
-            </div>
-            {taskItemsToAdd.length > 0 && (
-              <div className="mt-2 text-xs text-zinc-500">
-                包含 {taskItemsToAdd.length} 个子节点，将自动添加为子任务。
-              </div>
-            )}
+            <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+              任务列表名称
+            </label>
+            <input
+              type="text"
+              value={newBlockName}
+              onChange={(e) => setNewBlockName(e.target.value)}
+              className="w-full px-3 py-2 border rounded-lg dark:bg-zinc-900 dark:border-zinc-700"
+              placeholder="例如: 重点掌握"
+            />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">选择任务块</label>
+            <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+              选择目标清单
+            </label>
             <select
-              className="w-full border rounded p-2 bg-white dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
               value={selectedBlockId}
               onChange={(e) => setSelectedBlockId(e.target.value)}
+              className="w-full px-3 py-2 border rounded-lg dark:bg-zinc-900 dark:border-zinc-700"
             >
-              <option value="new">-- 新建任务块 --</option>
-              {taskBoardEntity?.content?.nodes?.map((node: any) => (
-                <option key={node.id} value={node.id}>{node.data.title || '未命名任务块'}</option>
+              <option value="new">+ 新建清单</option>
+              {taskBoardEntity?.content?.nodes?.map((n: any) => (
+                <option key={n.id} value={n.id}>{n.data.title}</option>
               ))}
             </select>
           </div>
 
-          {selectedBlockId === 'new' && (
-            <div>
-              <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">新任务块名称</label>
-              <input
-                className="w-full border rounded p-2 bg-white dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                value={newBlockName}
-                onChange={(e) => setNewBlockName(e.target.value)}
-                placeholder="例如：待办事项"
-              />
+          <div className="bg-zinc-50 dark:bg-zinc-900/50 p-3 rounded-lg border dark:border-zinc-800">
+            <div className="text-xs text-zinc-500 mb-2 uppercase tracking-wider font-semibold">将添加以下项:</div>
+            <div className="space-y-1">
+              {taskItemsToAdd.length > 0 ? (
+                taskItemsToAdd.map((item, idx) => (
+                  <div key={idx} className="text-sm flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                    {item}
+                  </div>
+                ))
+              ) : (
+                <div className="text-sm flex items-center gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                  {taskLabelToAdd}
+                </div>
+              )}
             </div>
-          )}
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              onClick={() => setIsTaskModalOpen(false)}
+              className="px-4 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
+            >
+              取消
+            </button>
+            <button
+              onClick={confirmAddTask}
+              className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+            >
+              确认添加
+            </button>
+          </div>
         </div>
       </Modal>
     </div>

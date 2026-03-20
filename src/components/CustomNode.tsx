@@ -9,8 +9,38 @@ export const CustomNode = memo(({ data, isConnectable }: NodeProps) => {
         <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{data.label}</div>
       </div>
 
-      <Handle type="target" position={Position.Top} isConnectable={isConnectable} className="!bg-zinc-400" />
-      <Handle type="source" position={Position.Bottom} isConnectable={isConnectable} className="!bg-zinc-400" />
+      {/* 四向连接点 (双向支持，强制完全重合以解决对齐问题) */}
+      {/* Top */}
+      <Handle type="target" position={Position.Top} id="top-t" isConnectable={isConnectable} 
+        style={{ left: '50%', transform: 'translateX(-50%)', top: -4 }}
+        className="!bg-zinc-400 w-2 h-2 border-none" />
+      <Handle type="source" position={Position.Top} id="top-s" isConnectable={isConnectable} 
+        style={{ left: '50%', transform: 'translateX(-50%)', top: -4 }}
+        className="w-2 h-2 border-none opacity-0" />
+      
+      {/* Bottom */}
+      <Handle type="target" position={Position.Bottom} id="bottom-t" isConnectable={isConnectable} 
+        style={{ left: '50%', transform: 'translateX(-50%)', bottom: -4 }}
+        className="!bg-zinc-400 w-2 h-2 border-none" />
+      <Handle type="source" position={Position.Bottom} id="bottom-s" isConnectable={isConnectable} 
+        style={{ left: '50%', transform: 'translateX(-50%)', bottom: -4 }}
+        className="w-2 h-2 border-none opacity-0" />
+      
+      {/* Left */}
+      <Handle type="target" position={Position.Left} id="left-t" isConnectable={isConnectable} 
+        style={{ top: '50%', transform: 'translateY(-50%)', left: -4 }}
+        className="!bg-zinc-400 w-2 h-2 border-none" />
+      <Handle type="source" position={Position.Left} id="left-s" isConnectable={isConnectable} 
+        style={{ top: '50%', transform: 'translateY(-50%)', left: -4 }}
+        className="w-2 h-2 border-none opacity-0" />
+      
+      {/* Right */}
+      <Handle type="target" position={Position.Right} id="right-t" isConnectable={isConnectable} 
+        style={{ top: '50%', transform: 'translateY(-50%)', right: -4 }}
+        className="!bg-zinc-400 w-2 h-2 border-none" />
+      <Handle type="source" position={Position.Right} id="right-s" isConnectable={isConnectable} 
+        style={{ top: '50%', transform: 'translateY(-50%)', right: -4 }}
+        className="w-2 h-2 border-none opacity-0" />
 
       {/* Action Buttons - Visible on hover */}
       <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 flex gap-1 bg-white dark:bg-zinc-800 p-1 rounded-md shadow-lg border dark:border-zinc-700 opacity-0 group-hover:opacity-100 transition-opacity z-10">

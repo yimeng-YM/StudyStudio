@@ -58,9 +58,9 @@ export const DataManager = {
       const allRelations = await db.relations.toArray();
       relations = allRelations.filter(r => exportEntityIds.has(r.sourceId) && exportEntityIds.has(r.targetId));
 
-      // 4. Chat Sessions (仅导出关联到选中实体的会话)
+      // 4. Chat Sessions (导出所有会话，因为现在不再绑定 entityId)
       const allSessions = await db.chatSessions.toArray();
-      chatSessions = allSessions.filter(s => s.entityId && exportEntityIds.has(s.entityId));
+      chatSessions = allSessions;
       const sessionIds = new Set(chatSessions.map(s => s.id));
 
       // 5. Chat Messages
@@ -228,12 +228,6 @@ export const DataManager = {
       if (data.chatSessions) {
         const newSessions = [];
         for (const item of data.chatSessions) {
-          if (!item.entityId || !importEntityIds.has(item.entityId)) continue;
-
-          if (item.entityId && idMap.has(item.entityId)) {
-            item.entityId = idMap.get(item.entityId);
-          }
-
           const oldId = item.id;
           const existing = await db.chatSessions.get(oldId);
           if (existing) {

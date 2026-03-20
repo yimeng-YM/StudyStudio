@@ -12,7 +12,9 @@ export function AIFloatingWindow() {
         setFloatingWindowOpen,
         setFloatingWindowPosition,
         setFloatingWindowSize,
-        currentContext
+        currentContext,
+        globalSessionId,
+        setGlobalSessionId
     } = useAIStore();
 
     const [windowPos, setWindowPos] = useState({ x: 0, y: 0 });
@@ -178,21 +180,24 @@ export function AIFloatingWindow() {
 
             {/* Window */}
             <AnimatePresence>
-                {isFloatingWindowOpen && (
-                    <motion.div
-                        initial={{ opacity: 0, scale: 0.5 }}
-                        animate={{ opacity: 1, scale: 1, x: 0, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.5 }}
-                        transition={{ type: "spring", bounce: 0.2, duration: 0.3 }}
-                        className="fixed z-[60] bg-white dark:bg-zinc-950 border dark:border-zinc-800 shadow-2xl rounded-xl overflow-hidden flex flex-col"
-                        style={{
-                            left: windowPos.x,
-                            top: windowPos.y,
-                            width: floatingWindowSize.width,
-                            height: floatingWindowSize.height,
-                            transformOrigin: transformOrigin
-                        }}
-                    >
+                <motion.div
+                    initial={{ opacity: 0, scale: 0.5 }}
+                    animate={{ 
+                        opacity: isFloatingWindowOpen ? 1 : 0, 
+                        scale: isFloatingWindowOpen ? 1 : 0.5,
+                        pointerEvents: isFloatingWindowOpen ? 'auto' : 'none'
+                    }}
+                    transition={{ type: "spring", bounce: 0.2, duration: 0.3 }}
+                    className="fixed z-[60] bg-white dark:bg-zinc-950 border dark:border-zinc-800 shadow-2xl rounded-xl overflow-hidden flex flex-col"
+                    style={{
+                        left: windowPos.x,
+                        top: windowPos.y,
+                        width: floatingWindowSize.width,
+                        height: floatingWindowSize.height,
+                        transformOrigin: transformOrigin,
+                        visibility: isFloatingWindowOpen ? 'visible' : 'hidden'
+                    }}
+                >
                         {/* Header */}
                         <div
                             className="p-3 bg-zinc-50 dark:bg-zinc-900 border-b dark:border-zinc-800 flex items-center justify-between cursor-move select-none shrink-0"
@@ -221,12 +226,8 @@ export function AIFloatingWindow() {
                         {/* Content */}
                         <div className="flex-1 overflow-hidden relative bg-white dark:bg-zinc-950">
                             <ChatWindow
-                                sessionId={currentContext?.sessionId}
-                                entityId={currentContext?.id}
-                                sourceType={currentContext?.sourceType}
-                                systemContext={currentContext?.getSystemContext}
-                                onAICommand={currentContext?.handleCommand}
-                                onSessionChange={currentContext?.onSessionChange}
+                                sessionId={globalSessionId}
+                                onSessionChange={setGlobalSessionId}
                                 placeholder={currentContext ? "针对当前内容提问，或输入指令..." : "你好，我是你的智能学习助手。"}
                             />
                         </div>
@@ -245,7 +246,6 @@ export function AIFloatingWindow() {
                             </svg>
                         </div>
                     </motion.div>
-                )}
             </AnimatePresence>
         </>
     );

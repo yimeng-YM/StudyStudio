@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, Entity } from '@/db';
 import {
@@ -11,6 +11,7 @@ import { DataManager } from '@/services/dataManager';
 import { cn } from '@/lib/utils';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { MessageRenderer } from '@/components/MessageRenderer';
+import { useUIContext } from '@/hooks/useUIContext';
 
 interface QuizModuleProps {
   subjectId: string;
@@ -41,15 +42,44 @@ function getQuestionTypeLabel(type: string) {
   return map[type] || type;
 }
 
-function formatAnswer(answer: any, question: Question) {
-  if (question.type === 'single_choice') {
-    return `选项 ${String.fromCharCode(65 + parseInt(answer))}`;
+function normalizeAnswerToIndexArray(answer: any): string[] {
+  if (answer === null || answer === undefined) return [];
+  
+  let rawList: any[] = [];
+  if (Array.isArray(answer)) {
+    rawList = answer;
+  } else if (typeof answer === 'string') {
+    // Handle comma-separated strings "0,1" or "A,B"
+    rawList = answer.split(',').map(s => s.trim()).filter(s => s !== '');
+  } else {
+    rawList = [answer];
   }
-  if (question.type === 'multiple_choice' && Array.isArray(answer)) {
-    return answer.map((i: string) => String.fromCharCode(65 + parseInt(i))).sort().join(', ');
+
+  return rawList.map(item => {
+    const s = String(item).trim().toUpperCase();
+    // If it's a letter A-Z, convert to 0-25
+    if (/^[A-Z]$/.test(s)) {
+      return String(s.charCodeAt(0) - 65);
+    }
+    // Otherwise assume it's already a numeric string index
+    return s;
+  });
+}
+
+function formatAnswer(answer: any, question: Question) {
+  if (question.type === 'single_choice' || question.type === 'multiple_choice') {
+    const indices = normalizeAnswerToIndexArray(answer);
+    if (indices.length === 0) return '无';
+    return indices
+      .map(idx => {
+        const val = parseInt(idx);
+        return isNaN(val) ? idx : String.fromCharCode(65 + val);
+      })
+      .sort()
+      .join(', ');
   }
   if (question.type === 'true_false') {
-    return answer ? '正确' : '错误';
+    return answer === true || String(answer).toLowerCase() === 'true' ? '正确' : '错误';
   }
   return String(answer || '无');
 }
@@ -237,14 +267,15 @@ function QuestionViewer({ question, index, onEdit, onDelete }: { question: Quest
   // Logic to determine correctness for objective questions
   let isCorrect = false;
   if (isSubmitted && isObjective) {
-    if (question.type === 'single_choice') {
-      isCorrect = String(userAnswer) === String(question.answer);
-    } else if (question.type === 'true_false') {
-      isCorrect = String(userAnswer) === String(question.answer);
+    const normalizedUser = normalizeAnswerToIndexArray(userAnswer).sort();
+    const normalizedCorrect = normalizeAnswerToIndexArray(question.answer).sort();
+    
+    if (question.type === 'single_choice' || question.type === 'true_false') {
+      // For single/TF, just check if the first item matches (allowing for slight AI variations)
+      isCorrect = normalizedUser.length > 0 && normalizedCorrect.length > 0 && normalizedUser[0] === normalizedCorrect[0];
     } else if (question.type === 'multiple_choice') {
-      const user = Array.isArray(userAnswer) ? userAnswer.map(String).sort() : [];
-      const correct = Array.isArray(question.answer) ? question.answer.map(String).sort() : [];
-      isCorrect = JSON.stringify(user) === JSON.stringify(correct);
+      isCorrect = normalizedUser.length === normalizedCorrect.length && 
+                  normalizedUser.every((val, i) => val === normalizedCorrect[i]);
     }
   }
 
@@ -277,16 +308,14 @@ function QuestionViewer({ question, index, onEdit, onDelete }: { question: Quest
             {(question.type === 'single_choice' || question.type === 'multiple_choice') && (
               <div className="space-y-2">
                 {question.options?.map((opt, i) => {
-                  const isSelected = question.type === 'single_choice' 
-                    ? String(userAnswer) === String(i)
-                    : (Array.isArray(userAnswer) && userAnswer.includes(String(i)));
+                  const normalizedUser = normalizeAnswerToIndexArray(userAnswer);
+                  const isSelected = normalizedUser.includes(String(i));
                   
                   // For submitted objective questions, highlight correct/incorrect
                   let optionClass = "border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800";
                   if (isSubmitted) {
-                    const isAnswer = question.type === 'single_choice' 
-                      ? String(question.answer) === String(i)
-                      : (Array.isArray(question.answer) && question.answer.includes(String(i)));
+                    const normalizedCorrect = normalizeAnswerToIndexArray(question.answer);
+                    const isAnswer = normalizedCorrect.includes(String(i));
                     
                     if (isAnswer) optionClass = "border-green-500 bg-green-50 dark:bg-green-900/20";
                     else if (isSelected && !isAnswer) optionClass = "border-red-500 bg-red-50 dark:bg-red-900/20";
@@ -300,11 +329,11 @@ function QuestionViewer({ question, index, onEdit, onDelete }: { question: Quest
                       key={i} 
                       onClick={() => {
                         if (isSubmitted) return;
+                        const sIdx = String(i);
                         if (question.type === 'single_choice') {
-                          setUserAnswer(String(i));
+                          setUserAnswer([sIdx]);
                         } else {
-                          const current = Array.isArray(userAnswer) ? userAnswer : [];
-                          const sIdx = String(i);
+                          const current = Array.isArray(userAnswer) ? userAnswer.map(String) : normalizeAnswerToIndexArray(userAnswer);
                           if (current.includes(sIdx)) {
                             setUserAnswer(current.filter((x: string) => x !== sIdx));
                           } else {
@@ -469,21 +498,21 @@ function QuestionEditor({ question, onSave, onCancel }: { question: Question, on
               <div key={idx} className="flex items-start gap-2">
                 <button
                   onClick={() => {
+                    const sLetter = String.fromCharCode(65 + idx);
                     if (question.type === 'single_choice') {
-                      setAnswer(String(idx));
+                      setAnswer(sLetter);
                     } else {
-                      const current = Array.isArray(answer) ? answer : [];
-                      const sIdx = String(idx);
-                      if (current.includes(sIdx)) {
-                        setAnswer(current.filter((i: string) => i !== sIdx));
+                      const current = normalizeAnswerToIndexArray(answer).map(i => String.fromCharCode(65 + parseInt(i)));
+                      if (current.includes(sLetter)) {
+                        setAnswer(current.filter(l => l !== sLetter));
                       } else {
-                        setAnswer([...current, sIdx]);
+                        setAnswer([...current, sLetter]);
                       }
                     }
                   }}
                   className={cn(
                     "w-6 h-6 flex items-center justify-center border rounded text-xs transition-colors shrink-0 mt-1",
-                    (question.type === 'single_choice' ? String(answer) === String(idx) : (Array.isArray(answer) && answer.includes(String(idx))))
+                    normalizeAnswerToIndexArray(answer).includes(String(idx))
                       ? "bg-green-500 text-white border-green-600"
                       : "bg-white dark:bg-zinc-800 border-zinc-300 dark:border-zinc-600 text-zinc-500 hover:border-zinc-400"
                   )}
@@ -745,6 +774,22 @@ export function QuizModule({ subjectId }: QuizModuleProps) {
     (localStorage.getItem('quizSortMode') as any) || 'lastAccessed');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>(() =>
     (localStorage.getItem('quizSortDirection') as any) || 'desc');
+
+  // 获取学科信息
+  const subject = useLiveQuery(() => db.subjects.get(subjectId), [subjectId]);
+
+  // 注册题库模块上下文
+  const getCustomContext = useMemo(() => {
+    return () => `用户正在查看题库模块。可以使用工具来管理题目。`;
+  }, []);
+  
+  useUIContext({
+    location: 'quiz_module',
+    subjectId,
+    subjectName: subject?.name,
+    contextId: `quiz-module-${subjectId}`,
+    getCustomContext
+  });
 
   useEffect(() => {
     localStorage.setItem('quizSortMode', sortMode);

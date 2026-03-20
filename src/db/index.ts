@@ -40,13 +40,14 @@ export interface AISettings {
   baseUrl: string;
   model: string;
   namingModel?: string;
+  maxTokens?: number;
+  temperature?: number;
 }
 
 export interface ChatSession {
   id: string;
   title: string;
-  entityId?: string;
-  sourceType?: 'general' | 'mindmap' | 'note' | 'task';
+  mode?: 'plan' | 'act';
   createdAt: number;
   updatedAt: number;
 }
@@ -54,8 +55,11 @@ export interface ChatSession {
 export interface ChatMessage {
   id: string;
   sessionId: string;
-  role: 'system' | 'user' | 'assistant';
+  role: 'system' | 'user' | 'assistant' | 'tool';
   content: any;
+  tool_calls?: any[];
+  tool_call_id?: string;
+  name?: string;
   createdAt: number;
 }
 
@@ -131,6 +135,11 @@ export class StudyStudioDB extends Dexie {
 
     this.version(8).stores({
       studyRecords: 'date'
+    });
+
+    this.version(9).stores({
+      chatSessions: 'id, title, mode, createdAt, updatedAt',
+      chatMessages: 'id, sessionId, role, createdAt'
     });
   }
 }

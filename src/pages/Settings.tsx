@@ -207,6 +207,9 @@ export function Settings() {
   const [selectedImportSubjects, setSelectedImportSubjects] = useState<Set<string>>(new Set());
   const [selectedImportEntities, setSelectedImportEntities] = useState<Set<string>>(new Set());
 
+  // Advanced Settings State
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
   useEffect(() => {
     loadSettings();
   }, []);
@@ -391,7 +394,7 @@ export function Settings() {
                 value={localSettings.model}
                 onChange={e => setLocalSettings({ ...localSettings, model: e.target.value })}
                 list="model-options"
-                placeholder="gpt-3.5-turbo"
+                placeholder="请输入模型名称..."
               />
               <datalist id="model-options">
                 {models.map(m => <option key={m} value={m} />)}
@@ -406,18 +409,60 @@ export function Settings() {
             </div>
           </div>
 
+          {/* Advanced Settings Toggle */}
           <div className="border-t dark:border-zinc-800 pt-4 mt-4">
-            <h3 className="text-sm font-medium mb-2 text-zinc-700 dark:text-zinc-300">自动化配置</h3>
-            <div>
-              <label className="block text-xs text-zinc-500 mb-1">对话自动命名模型 (留空则使用主模型)</label>
-              <input
-                className="w-full border rounded px-3 py-2 bg-white dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
-                value={localSettings.namingModel || ''}
-                onChange={e => setLocalSettings({ ...localSettings, namingModel: e.target.value })}
-                placeholder="例如: gpt-3.5-turbo-0125 (推荐使用更快速便宜的模型)"
-                list="model-options"
-              />
-            </div>
+            <button
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="flex items-center gap-2 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-blue-600 transition-colors"
+            >
+              {showAdvanced ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              高级设置 (Advanced Settings)
+            </button>
+
+            {showAdvanced && (
+              <div className="mt-4 space-y-4 pl-4 border-l-2 border-zinc-200 dark:border-zinc-800 animate-in fade-in slide-in-from-top-2 duration-200">
+                <div>
+                  <label className="block text-xs text-zinc-500 mb-1">回复长度 (Max Tokens)</label>
+                  <input
+                    type="number"
+                    className="w-full border rounded px-3 py-2 bg-white dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
+                    value={localSettings.maxTokens || 4096}
+                    onChange={e => setLocalSettings({ ...localSettings, maxTokens: parseInt(e.target.value) || 0 })}
+                    placeholder="4096"
+                  />
+                  <p className="text-[10px] text-zinc-400 mt-1">控制 AI 回复的最大长度，建议 1024 - 8192</p>
+                </div>
+
+                <div>
+                  <label className="block text-xs text-zinc-500 mb-1">回复温度 (Temperature: {localSettings.temperature ?? 0.7})</label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="2"
+                    step="0.1"
+                    className="w-full h-2 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                    value={localSettings.temperature ?? 0.7}
+                    onChange={e => setLocalSettings({ ...localSettings, temperature: parseFloat(e.target.value) })}
+                  />
+                  <div className="flex justify-between text-[10px] text-zinc-400 mt-1">
+                    <span>精准 (0.0)</span>
+                    <span>创意 (1.0)</span>
+                    <span>极致创意 (2.0)</span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs text-zinc-500 mb-1">对话自动命名模型 (留空则使用主模型)</label>
+                  <input
+                    className="w-full border rounded px-3 py-2 bg-white dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
+                    value={localSettings.namingModel || ''}
+                    onChange={e => setLocalSettings({ ...localSettings, namingModel: e.target.value })}
+                    placeholder="请输入模型名称...(推荐使用更快速便宜的模型)"
+                    list="model-options"
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           <button

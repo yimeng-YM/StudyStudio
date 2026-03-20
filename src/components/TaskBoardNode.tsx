@@ -1,14 +1,12 @@
 import { memo, useState } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
-import { Plus, X, Check, Trash2 } from 'lucide-react';
+import { Plus, X, Check, Trash2, GitBranch } from 'lucide-react';
 
 export interface TaskItem {
   id: string;
   text: string;
   completed: boolean;
 }
-
-import { GitBranch } from 'lucide-react';
 
 export interface TaskBlockData {
   title: string;

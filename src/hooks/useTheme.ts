@@ -10,7 +10,7 @@ interface ThemeStore {
 }
 
 const useThemeStore = create<ThemeStore>((set) => ({
-  theme: (localStorage.getItem('theme') as Theme) || 'system',
+  theme: (localStorage.getItem('theme') as Theme) || 'light',
   setTheme: (theme) => {
     localStorage.setItem('theme', theme);
     updateDomClass(theme);
@@ -43,7 +43,7 @@ const updateDomClass = (theme: Theme) => {
 };
 
 // Initialize DOM class on script load (optional but good for preventing flash)
-const initialTheme = (localStorage.getItem('theme') as Theme) || 'system';
+const initialTheme = (localStorage.getItem('theme') as Theme) || 'light';
 updateDomClass(initialTheme);
 
 // Hook wrapper for compatibility

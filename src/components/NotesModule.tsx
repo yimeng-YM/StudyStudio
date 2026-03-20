@@ -1,9 +1,9 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, Entity } from '@/db';
 import {
   Plus, Trash, Edit, Save, ArrowUp, ArrowDown, SortAsc, Clock, GripVertical,
-  Image as ImageIcon, Undo, Redo,
+  ImageIcon, Undo, Redo,
   Bold, Italic, Strikethrough, List, ListOrdered, Heading1, Heading2, Heading3,
   Quote, Code, Link as LinkIcon
 } from 'lucide-react';
@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useHistory } from '@/hooks/useHistory';
 import { useAIStore } from '@/store/useAIStore';
+import { useNotesContext } from '@/hooks/useUIContext';
 
 interface NotesModuleProps {
   subjectId: string;
@@ -25,14 +26,17 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>(() =>
     (localStorage.getItem('notesSortDirection') as any) || 'desc');
 
-  const { setContext, setFloatingWindowOpen } = useAIStore();
+  const { setFloatingWindowOpen, setGlobalSessionId } = useAIStore();
+
+  // 获取学科信息
+  const subject = useLiveQuery(() => db.subjects.get(subjectId), [subjectId]);
 
   useEffect(() => {
     if (initialSessionId) {
-      setChatSessionId(initialSessionId);
+      setGlobalSessionId(initialSessionId);
       setFloatingWindowOpen(true);
     }
-  }, [initialSessionId, setFloatingWindowOpen]);
+  }, [initialSessionId, setFloatingWindowOpen, setGlobalSessionId]);
 
   useEffect(() => {
     localStorage.setItem('notesSortMode', sortMode);
@@ -65,11 +69,6 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
     });
   }, [subjectId, sortMode, sortDirection]);
 
-  const mindMap = useLiveQuery(
-    () => db.entities.where({ subjectId, type: 'mindmap' }).first(),
-    [subjectId]
-  );
-
   const [selectedNote, setSelectedNote] = useState<Entity | null>(null);
   const [isEditing, setIsEditing] = useState(false);
 
@@ -85,35 +84,43 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
   } = useHistory('');
 
   const [editTitle, setEditTitle] = useState('');
-  const [chatSessionId, setChatSessionId] = useState<string | null>(null);
-  const { showAlert, showConfirm } = useDialog();
+  const { showConfirm } = useDialog();
 
   // Clear chat session if no initial note/session
   useEffect(() => {
     if (!initialNoteId && !initialSessionId) {
-      setChatSessionId(null);
+      // Don't clear globalSessionId automatically on tab switch
     }
   }, [initialNoteId, initialSessionId]);
 
   useEffect(() => {
-    if (initialNoteId && notes) {
-      const target = notes.find(n => n.id === initialNoteId);
-      if (target) {
-        setSelectedNote(target);
-        resetEditContent(target.content);
-        setEditTitle(target.title);
-        setIsEditing(false);
-        // Only set if not overridden by initialSessionId
-        if (!initialSessionId) {
-          if (target.chatSessionId) {
-            setChatSessionId(target.chatSessionId);
-          } else {
-            setChatSessionId(null);
+    if (notes) {
+      // Priority 1: Use initialNoteId if provided and changing
+      if (initialNoteId) {
+        const target = notes.find(n => n.id === initialNoteId);
+        if (target && target.id !== selectedNote?.id) {
+          setSelectedNote(target);
+          resetEditContent(target.content);
+          setEditTitle(target.title);
+          setIsEditing(false);
+          if (!initialSessionId && target.chatSessionId) {
+            setGlobalSessionId(target.chatSessionId);
           }
+          return;
+        }
+      }
+
+      // Priority 2: Sync currently selected note if it changed in DB
+      if (selectedNote) {
+        const current = notes.find(n => n.id === selectedNote.id);
+        if (current && current.updatedAt > selectedNote.updatedAt && !isEditing) {
+          setSelectedNote(current);
+          resetEditContent(current.content);
+          setEditTitle(current.title);
         }
       }
     }
-  }, [initialNoteId, notes, resetEditContent, initialSessionId]);
+  }, [initialNoteId, notes, selectedNote?.id, selectedNote?.updatedAt, isEditing, resetEditContent, initialSessionId, setGlobalSessionId]);
 
   const createNote = async () => {
     const id = crypto.randomUUID();
@@ -134,7 +141,6 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
     resetEditContent(newNote.content);
     setEditTitle(newNote.title);
     setIsEditing(true);
-    setChatSessionId(null); // New note, new session
   };
 
   const moveNote = async (e: React.MouseEvent, id: string, direction: 'up' | 'down') => {
@@ -178,7 +184,6 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
         setIsEditing(false);
         resetEditContent('');
         setEditTitle('');
-        setChatSessionId(null);
       }
     }
   };
@@ -285,141 +290,14 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
     e.target.value = '';
   };
 
-  const handleAICommand = useCallback(async (command: any) => {
-    if (command.action === 'update_note' && typeof command.content === 'string') {
-      if (!selectedNote) {
-        showAlert("在此模式下，AI 只能创建新笔记，无法修改现有笔记。", { title: "操作受限" });
-        return;
-      }
-
-      setEditContent(command.content);
-      setIsEditing(true);
-
-      // Auto-save
-      await db.entities.update(selectedNote.id, {
-        content: command.content,
-        updatedAt: Date.now()
-      });
-
-      const updated = await db.entities.get(selectedNote.id);
-      setSelectedNote(updated || null);
-      showAlert('笔记已由 AI 更新并保存', { title: 'AI 助手' });
-    } else if (command.action === 'create_notes' && Array.isArray(command.notes)) {
-      const now = Date.now();
-      const newNotes = command.notes.map((n: any, index: number) => ({
-        id: crypto.randomUUID(),
-        subjectId,
-        type: 'note',
-        title: n.title || 'New Note',
-        content: n.content || '',
-        createdAt: now,
-        updatedAt: now,
-        lastAccessed: now,
-        order: now + index
-      }));
-
-      await db.transaction('rw', db.entities, async () => {
-        for (const note of newNotes) {
-          await db.entities.add(note);
-        }
-      });
-
-      showAlert(`已生成 ${newNotes.length} 篇新笔记`, { title: 'AI 助手' });
-    }
-  }, [selectedNote, subjectId, showAlert, setEditContent]);
-
-  // AI Context Refs
-  const notesRef = useRef(notes);
-  const mindMapRef = useRef(mindMap);
-  const selectedNoteRef = useRef(selectedNote);
-  const editContentRef = useRef(editContent);
-  const editTitleRef = useRef(editTitle);
-  const isEditingRef = useRef(isEditing);
-
-  useEffect(() => {
-    notesRef.current = notes;
-    mindMapRef.current = mindMap;
-    selectedNoteRef.current = selectedNote;
-    editContentRef.current = editContent;
-    editTitleRef.current = editTitle;
-    isEditingRef.current = isEditing;
-  }, [notes, mindMap, selectedNote, editContent, editTitle, isEditing]);
-
-  // Register AI Context
-  useEffect(() => {
-    const getSystemContext = () => {
-      const _notes = notesRef.current;
-      const _mindMap = mindMapRef.current;
-      const _selectedNote = selectedNoteRef.current;
-      const _editContent = editContentRef.current;
-      const _editTitle = editTitleRef.current;
-      const _isEditing = isEditingRef.current;
-
-      let context = "You are an AI assistant helping with study notes.\n";
-
-      if (_mindMap && _mindMap.content && _mindMap.content.nodes) {
-        const nodes = _mindMap.content.nodes as any[];
-        const structure = nodes.map(n => n.data.label).join(', ');
-        context += `\nContext - Related Mind Map Structure:\n${structure}\n`;
-      }
-
-      if (_notes && _notes.length > 0) {
-        context += `\nContext - Existing Note Titles:\n${_notes.map(n => n.title).join(', ')}\n`;
-      }
-
-      if (_selectedNote) {
-        const currentContent = _isEditing ? _editContent : _selectedNote.content;
-        const currentTitle = _isEditing ? _editTitle : _selectedNote.title;
-        context += `\nContext - Current Note:\nTitle: ${currentTitle}\nContent:\n${currentContent}\n`;
-      }
-
-      context += `
-Please assist the user in managing study notes. You can CREATE new notes or UPDATE the current note (if selected).
-
-To CREATE multiple new notes, respond with:
-\`\`\`json
-{
-  "action": "create_notes",
-  "notes": [
-    { "title": "Note 1", "content": "# Content 1..." },
-    { "title": "Note 2", "content": "# Content 2..." }
-  ]
-}
-\`\`\`
-`;
-
-      if (_selectedNote) {
-        context += `
-To UPDATE the current note, respond with:
-\`\`\`json
-{
-  "action": "update_note",
-  "content": "# New Title\\n\\nNew content..."
-}
-\`\`\`
-IMPORTANT: When updating a note, you MUST provide the COMPLETE content. Do NOT omit any parts. The content you provide will COMPLETELY REPLACE the existing note.
-`;
-      }
-
-      return context;
-    };
-
-    setContext({
-      id: selectedNote ? selectedNote.id : undefined,
-      sourceType: selectedNote ? 'note' : 'general',
-      sessionId: chatSessionId,
-      onSessionChange: async (sid) => {
-        if (selectedNote) {
-          await db.entities.update(selectedNote.id, { chatSessionId: sid });
-        }
-        setChatSessionId(sid);
-      },
-      getSystemContext,
-      handleCommand: handleAICommand
-    });
-
-    return () => setContext(null);
-  }, [subjectId, chatSessionId, handleAICommand, setContext, selectedNote]);
+  // 使用新的 useNotesContext hook 来注册上下文
+  useNotesContext(
+    subjectId,
+    subject?.name,
+    selectedNote?.id,
+    selectedNote?.title,
+    isEditing
+  );
 
   return (
     <div className="flex h-full gap-4 relative">
@@ -430,7 +308,6 @@ IMPORTANT: When updating a note, you MUST provide the COMPLETE content. Do NOT o
         setEditContent={setEditContent}
         setEditTitle={setEditTitle}
         setIsEditing={setIsEditing}
-        setChatSessionId={setChatSessionId}
         createNote={createNote}
         moveNote={moveNote}
         sortMode={sortMode}
@@ -549,7 +426,7 @@ IMPORTANT: When updating a note, you MUST provide the COMPLETE content. Do NOT o
   );
 }
 
-function NotesList({ notes, selectedNote, setSelectedNote, setEditContent, setEditTitle, setIsEditing, setChatSessionId, createNote, moveNote, sortMode, setSortMode, sortDirection, setSortDirection }: any) {
+function NotesList({ notes, selectedNote, setSelectedNote, setEditContent, setEditTitle, setIsEditing, createNote, moveNote, sortMode, setSortMode, sortDirection, setSortDirection }: any) {
   return (
     <div className="w-80 border-r pr-4 flex flex-col relative shrink-0">
       <div className="flex flex-col gap-2 mb-4">
@@ -594,7 +471,6 @@ function NotesList({ notes, selectedNote, setSelectedNote, setEditContent, setEd
               setEditContent(note.content);
               setEditTitle(note.title);
               setIsEditing(false);
-              setChatSessionId(note.chatSessionId || null);
               await db.entities.update(note.id, { lastAccessed: Date.now() });
             }}
             className={cn(
