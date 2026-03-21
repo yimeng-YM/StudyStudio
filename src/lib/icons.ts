@@ -51,6 +51,11 @@ import {
   Anchor
 } from 'lucide-react';
 
+/**
+ * 预定义的系统图标映射表。
+ * 将图标的字符串名称映射到对应的 lucide-react 组件上，
+ * 方便在系统（如学科配置、主题自定义等场景）中通过名称动态渲染对应的图标组件。
+ */
 export const ICON_MAP: Record<string, any> = {
   BookOpen,
   GraduationCap,
@@ -104,4 +109,8 @@ export const ICON_MAP: Record<string, any> = {
   Anchor
 };
 
+/**
+ * 所有可用图标名称的数组集合。
+ * 通常用于在界面中生成图标选择器的选项列表。
+ */
 export const ICON_OPTIONS = Object.keys(ICON_MAP);

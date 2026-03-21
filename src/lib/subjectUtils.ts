@@ -1,13 +1,14 @@
 import { db } from '@/db';
 
 /**
- * 删除学科及其所有关联实体
- * 包含二次确认（需要用户输入学科名称）
- * 
- * @param e 触发事件的鼠标事件
- * @param id 要删除的学科 ID
- * @param showPrompt 显示输入对话框的函数
- * @returns Promise<boolean> 是否成功删除
+ * 安全删除指定学科及其所有关联的数据实体。
+ * 在执行删除操作前，会弹窗要求用户输入学科的完整名称进行二次确认，以防止误删。
+ * 一旦确认，将在同一个数据库事务中级联删除该学科及挂载在它下面的所有笔记、导图和任务等实体。
+ *
+ * @param e - 触发删除的 React 鼠标事件对象，内部会调用阻止冒泡和默认行为
+ * @param id - 需要删除的目标学科的唯一标识 ID
+ * @param showPrompt - 用于显示输入对话框的 UI 回调函数，由外部（通常是全局弹窗上下文）提供
+ * @returns 若用户成功确认并完成删除操作则返回 true；若取消、输入不匹配或学科不存在则返回 false
  */
 export async function deleteSubjectWithConfirm(
   e: React.MouseEvent,

@@ -16,6 +16,10 @@ import { useTheme } from '@/hooks/useTheme';
 import { parseAIJson } from '@/lib/utils';
 import { Modal } from './ui/Modal';
 
+/**
+ * 内部 Hook：获取当前应用是否处于深色模式
+ * 考虑了系统主题设置和手动切换
+ */
 function useIsDark() {
   const { theme } = useTheme();
   const [isDark, setIsDark] = useState(false);
@@ -40,13 +44,14 @@ function useIsDark() {
   return isDark;
 }
 
-// Initialize mermaid
+// 初始化 Mermaid 图表引擎
 mermaid.initialize({
   startOnLoad: false,
   theme: 'default',
   securityLevel: 'loose',
 });
 
+// 工具调用名称映射表（中文）
 const TOOL_NAMES: Record<string, string> = {
   'get_subjects': '获取科目列表',
   'get_subject_details': '获取科目详情',
@@ -71,6 +76,9 @@ const TOOL_NAMES: Record<string, string> = {
   'apply_diff': '应用代码差异'
 };
 
+/**
+ * 根据工具名称和参数生成易读的描述文字
+ */
 const getToolDescription = (name: string, args: string) => {
   try {
     const parsed = JSON.parse(args);
@@ -97,10 +105,12 @@ const getToolDescription = (name: string, args: string) => {
   }
 };
 
+/**
+ * 格式化工具参数以便在预览界面显示
+ */
 function formatToolArgs(args: string): string {
   try {
     const parsed = JSON.parse(args);
-    // If it's a creation/edit tool, try to extract the main content
     if (parsed.content) {
       if (typeof parsed.content === 'string') return parsed.content;
       return JSON.stringify(parsed.content, null, 2);
@@ -114,6 +124,10 @@ function formatToolArgs(args: string): string {
   }
 }
 
+/**
+ * 工具调用渲染组件
+ * 在对话中以卡片形式展示 AI 正在执行的工具操作
+ */
 export function ToolCallRenderer({ toolCalls, results = {} }: { toolCalls: ToolCall[], results?: Record<string, string> }) {
   const [selectedToolCall, setSelectedToolCall] = useState<ToolCall | null>(null);
   const isDark = useIsDark();
@@ -166,6 +180,7 @@ export function ToolCallRenderer({ toolCalls, results = {} }: { toolCalls: ToolC
         );
       })}
 
+      {/* 工具详情模态框 */}
       <Modal
         isOpen={!!selectedToolCall}
         onClose={() => setSelectedToolCall(null)}
@@ -213,7 +228,7 @@ export function ToolCallRenderer({ toolCalls, results = {} }: { toolCalls: ToolC
 }
 
 export function ToolResultRenderer(_props: { name: string, result: string }) {
-  return null; // We now render results inline in ToolCallRenderer
+  return null; // 结果现在直接集成在 ToolCallRenderer 中显示
 }
 
 interface MessageRendererProps {
@@ -221,6 +236,14 @@ interface MessageRendererProps {
   isUser?: boolean;
 }
 
+/**
+ * 消息渲染主组件
+ * 
+ * 核心功能：
+ * 1. 结构化处理：支持纯文本字符串或多模态内容数组。
+ * 2. Markdown 解析：集成 ReactMarkdown 实现基础格式渲染。
+ * 3. 复杂逻辑分发：根据内容类型（文字、图片等）调用对应的子组件。
+ */
 export function MessageRenderer({ content, isUser }: MessageRendererProps) {
   if (!content) return null;
 
@@ -249,6 +272,9 @@ export function MessageRenderer({ content, isUser }: MessageRendererProps) {
   return <MarkdownText content={content} isUser={isUser} />;
 }
 
+/**
+ * 从文本中提取特殊的元数据标记（例如文件预览信息）
+ */
 function extractMetadata(text: string): [any | null, string] {
   const regex = /<<<FILE_METADATA=(.*?)>>>\n?/;
   const match = text.match(regex);
@@ -262,7 +288,10 @@ function extractMetadata(text: string): [any | null, string] {
   return [null, text];
 }
 
-// Async Image Component for loading from Dexie
+/**
+ * 异步图片组件
+ * 支持从 Dexie (IndexedDB) 加载 attachment: 协议的本地图片数据
+ */
 function AsyncImage(props: any) {
   const { src, alt, className } = props;
   const [imageSrc, setImageSrc] = useState<string | null>(null);
@@ -310,6 +339,10 @@ function AsyncImage(props: any) {
   return <img src={imageSrc} alt={alt} className={className} />;
 }
 
+/**
+ * Mermaid 图表组件
+ * 使用 mermaid.js 动态渲染流程图、时序图等
+ */
 function Mermaid({ chart }: { chart: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const [svg, setSvg] = useState('');
@@ -368,20 +401,35 @@ function Mermaid({ chart }: { chart: string }) {
   );
 }
 
+/**
+ * Markdown 文本渲染组件
+ * 
+ * 核心逻辑：
+ * 1. 扩展语法：支持从文本中提取文件预览元数据并展示为文件卡片。
+ * 2. 插件集成：
+ *    - remark-math & rehype-katex: 处理 LaTeX 数学公式渲染。
+ *    - remark-gfm: 支持 GitHub 风格的 Markdown（表格、任务列表等）。
+ *    - remark-breaks: 将换行符转换为 HTML 换行。
+ * 3. 代码高亮：使用 SyntaxHighlighter 对标准代码块进行着色，对 mermaid 代码块调用 Mermaid 组件。
+ * 4. 样式控制：根据发送者（用户/助手）和当前主题动态切换排版样式。
+ */
 function MarkdownText({ content, isUser }: { content: string; isUser?: boolean }) {
   const [metadata, contentToRender] = extractMetadata(content);
   const [isExpanded, setIsExpanded] = useState(false);
   const isDark = useIsDark();
 
+  // 自定义 Markdown 元素渲染逻辑
   const markdownComponents = {
     code({ node, inline, className, children, ...props }: any) {
       const match = /language-(\w+)/.exec(className || '');
       const language = match ? match[1] : '';
 
+      // Mermaid 流程图特殊处理
       if (!inline && (language === 'mermaid' || language === 'sequenceDiagram')) {
         return <Mermaid chart={String(children).replace(/\n$/, '')} />;
       }
 
+      // 标准代码块高亮
       return !inline && match ? (
         <SyntaxHighlighter
           {...props}
@@ -394,17 +442,20 @@ function MarkdownText({ content, isUser }: { content: string; isUser?: boolean }
           {String(children).replace(/\n$/, '')}
         </SyntaxHighlighter>
       ) : (
+        // 行内代码
         <code {...props} className={`${className} bg-slate-200 dark:bg-slate-700 rounded px-1 py-0.5 text-inherit`}>
           {children}
         </code>
       );
     },
+    // 自定义图片、表格渲染
     img: ({ node, ...props }: any) => <AsyncImage {...props} className="max-w-full h-auto rounded-lg" />,
     table: ({ node, ...props }: any) => <div className="overflow-x-auto my-4"><table {...props} className="min-w-full divide-y divide-slate-300 dark:divide-slate-700 border border-slate-200 dark:border-slate-700 table-auto" /></div>,
     th: ({ node, ...props }: any) => <th {...props} className="px-3 py-2 text-left text-sm font-semibold text-inherit border border-slate-200 dark:border-slate-700 whitespace-nowrap" />,
     td: ({ node, ...props }: any) => <td {...props} className="px-3 py-2 text-sm text-inherit border border-slate-200 dark:border-slate-700" />,
   };
 
+  // 如果包含文件元数据，渲染为可展开的文件预览卡片
   if (metadata) {
     let Icon = FileText;
     if (metadata.type === 'xlsx' || metadata.type === 'xls') Icon = FileSpreadsheet;
@@ -447,6 +498,7 @@ function MarkdownText({ content, isUser }: { content: string; isUser?: boolean }
     );
   }
 
+  // 默认文本渲染逻辑
   const userProseClass = isDark
     ? "prose max-w-none break-words"
     : "prose prose-invert max-w-none break-words";

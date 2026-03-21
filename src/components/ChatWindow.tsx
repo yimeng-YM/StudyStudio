@@ -7,6 +7,13 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useChatSession } from '@/hooks/useChatSession';
 
+/**
+ * 聊天窗口组件属性
+ * @property {string | null} [sessionId] - 当前对话会话 ID
+ * @property {(sessionId: string | null) => void} [onSessionChange] - 会话变更时的回调函数
+ * @property {string} [className] - 额外的 CSS 类名
+ * @property {string} [placeholder] - 输入框提示文字
+ */
 interface ChatWindowProps {
   sessionId?: string | null;
   onSessionChange?: (sessionId: string | null) => void;
@@ -14,10 +21,18 @@ interface ChatWindowProps {
   placeholder?: string;
 }
 
+/**
+ * 聊天窗口对外暴露的引用接口
+ * @property {() => void} reset - 重置聊天状态的方法
+ */
 export interface ChatWindowRef {
   reset: () => void;
 }
 
+/**
+ * AI 聊天窗口组件
+ * 提供消息流式渲染、文件上传、历史记录切换以及模式切换（快速执行/深度规划）功能。
+ */
 export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
   sessionId,
   onSessionChange,
@@ -25,20 +40,40 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
   placeholder
 }, ref) => {
   const { showConfirm, showAlert } = useDialog();
+  
+  // --- 状态管理 ---
+  /** 用户当前输入的文本内容 */
   const [input, setInput] = useState('');
+  /** 已选择待上传的文件列表，包含处理后的文本内容和图片 */
   const [selectedFiles, setSelectedFiles] = useState<{ name: string, content: string, images?: string[] }[]>([]);
+  /** 消息列表滚动容器引用，用于实现自动滚动 */
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  /** 文件选择输入框引用 */
   const fileInputRef = useRef<HTMLInputElement>(null);
+  /** 是否显示历史会话面板 */
   const [showHistory, setShowHistory] = useState(false);
+  /**
+   * Agent 运行模式
+   * 'act': 快速执行模式，直接响应
+   * 'plan': 深度规划模式，先思考后执行
+   */
   const [mode, setMode] = useState<'act' | 'plan'>('act');
   
+  /**
+   * 使用自定义 Hook 管理聊天会话
+   * 包含消息列表、加载状态、流式渲染状态文字以及发送消息等核心逻辑
+   */
   const { messages, loading, status, currentSessionId, sendMessage, clearSession, retry } = useChatSession(sessionId || null, mode);
 
-  // Fetch all sessions globally
+  /**
+   * 实时查询所有历史会话
+   * 使用 useLiveQuery 确保数据库更新时 UI 同步刷新
+   */
   const history = useLiveQuery<ChatSession[]>(
     () => db.chatSessions.reverse().sortBy('updatedAt')
   );
 
+  /** 暴露给父组件的实例方法 */
   useImperativeHandle(ref, () => ({
     reset: () => {
       clearSession();
@@ -46,14 +81,26 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
     }
   }));
 
+  /**
+   * 将消息列表滚动至底部
+   * 确保用户始终能看到最新的消息内容
+   */
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  /**
+   * 核心滚动逻辑：当消息列表更新（如流式渲染中新字符产生）时，自动触发滚动
+   */
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
 
+  /**
+   * 处理文件选择事件
+   * 调用 processFile 提取文件内容（如 PDF 文本、图片等）并加入待发送列表
+   * @param {React.ChangeEvent<HTMLInputElement>} e
+   */
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files.length > 0) {
@@ -76,17 +123,31 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
     }
   };
 
+  /**
+   * 开启新对话
+   * 清除当前会话状态并重置 UI
+   */
   const handleNewChat = () => {
     clearSession();
     setShowHistory(false);
     if (onSessionChange) onSessionChange(null);
   };
 
+  /**
+   * 切换至指定历史会话
+   * @param {string} id - 会话 ID
+   */
   const switchSession = (id: string) => {
     if (onSessionChange) onSessionChange(id);
     setShowHistory(false);
   };
 
+  /**
+   * 删除历史会话
+   * 级联删除会话及其所有关联的消息记录
+   * @param {React.MouseEvent} e - 事件对象，阻止冒泡
+   * @param {string} id - 会话 ID
+   */
   const deleteSession = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
 
@@ -101,6 +162,10 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
     }
   };
 
+  /**
+   * 发送消息处理函数
+   * 负责收集输入文本、附件，调用 sendMessage 发送至 AI，并处理会话 ID 的自动更新
+   */
   const handleSend = async () => {
     if ((!input.trim() && selectedFiles.length === 0)) return;
 

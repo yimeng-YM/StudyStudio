@@ -2,15 +2,25 @@ import { memo } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
 import { Plus, Trash2, FileText, GitBranchPlus, CheckSquare } from 'lucide-react';
 
+/**
+ * 自定义思维导图节点组件
+ * 
+ * 为 React Flow 提供定制化的节点 UI。
+ * 包含：
+ * 1. 节点标签展示。
+ * 2. 四向连接点（Handles）：支持从上下左右四个方向进行连线。
+ * 3. 悬浮操作栏：当鼠标悬浮在节点上时，显示添加子节点、添加同级节点、关联笔记、转为任务及删除等操作按钮。
+ */
 export const CustomNode = memo(({ data, isConnectable }: NodeProps) => {
   return (
     <div className="group relative">
+      {/* 节点主体容器 */}
       <div className="px-4 py-2 shadow-md rounded-md bg-white dark:bg-zinc-900 border-2 border-zinc-200 dark:border-zinc-800 hover:border-blue-500 transition-colors min-w-[100px] text-center">
         <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{data.label}</div>
       </div>
 
       {/* 四向连接点 (双向支持，强制完全重合以解决对齐问题) - 默认隐藏，hover时显示 */}
-      {/* Top */}
+      {/* 顶部连接点 */}
       <Handle type="target" position={Position.Top} id="top-t" isConnectable={isConnectable}
         style={{ left: '50%', transform: 'translateX(-50%)', top: -4 }}
         className="!bg-zinc-400 w-2 h-2 border-none opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -18,7 +28,7 @@ export const CustomNode = memo(({ data, isConnectable }: NodeProps) => {
         style={{ left: '50%', transform: 'translateX(-50%)', top: -4 }}
         className="w-2 h-2 border-none opacity-0 group-hover:opacity-100 transition-opacity" />
       
-      {/* Bottom */}
+      {/* 底部连接点 */}
       <Handle type="target" position={Position.Bottom} id="bottom-t" isConnectable={isConnectable}
         style={{ left: '50%', transform: 'translateX(-50%)', bottom: -4 }}
         className="!bg-zinc-400 w-2 h-2 border-none opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -26,7 +36,7 @@ export const CustomNode = memo(({ data, isConnectable }: NodeProps) => {
         style={{ left: '50%', transform: 'translateX(-50%)', bottom: -4 }}
         className="w-2 h-2 border-none opacity-0 group-hover:opacity-100 transition-opacity" />
       
-      {/* Left */}
+      {/* 左侧连接点 */}
       <Handle type="target" position={Position.Left} id="left-t" isConnectable={isConnectable}
         style={{ top: '50%', transform: 'translateY(-50%)', left: -4 }}
         className="!bg-zinc-400 w-2 h-2 border-none opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -34,7 +44,7 @@ export const CustomNode = memo(({ data, isConnectable }: NodeProps) => {
         style={{ top: '50%', transform: 'translateY(-50%)', left: -4 }}
         className="w-2 h-2 border-none opacity-0 group-hover:opacity-100 transition-opacity" />
       
-      {/* Right */}
+      {/* 右侧连接点 */}
       <Handle type="target" position={Position.Right} id="right-t" isConnectable={isConnectable}
         style={{ top: '50%', transform: 'translateY(-50%)', right: -4 }}
         className="!bg-zinc-400 w-2 h-2 border-none opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -42,7 +52,7 @@ export const CustomNode = memo(({ data, isConnectable }: NodeProps) => {
         style={{ top: '50%', transform: 'translateY(-50%)', right: -4 }}
         className="w-2 h-2 border-none opacity-0 group-hover:opacity-100 transition-opacity" />
 
-      {/* Action Buttons - Visible on hover */}
+      {/* 悬浮操作按钮组 */}
       <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 flex gap-1 bg-white dark:bg-zinc-800 p-1 rounded-md shadow-lg border dark:border-zinc-700 opacity-0 group-hover:opacity-100 transition-opacity z-10">
         <button
           className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded text-blue-600"
@@ -61,7 +71,7 @@ export const CustomNode = memo(({ data, isConnectable }: NodeProps) => {
         <button
           className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded text-amber-600"
           onClick={(e) => { e.stopPropagation(); data.onNote(); }}
-          title="转到笔记/详细知识"
+          title="查看/关联笔记"
         >
           <FileText size={14} />
         </button>
@@ -75,7 +85,7 @@ export const CustomNode = memo(({ data, isConnectable }: NodeProps) => {
         <button
           className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded text-red-600"
           onClick={(e) => { e.stopPropagation(); data.onDelete(); }}
-          title="删除"
+          title="删除节点"
         >
           <Trash2 size={14} />
         </button>

@@ -4,6 +4,18 @@ import { ChatWindow } from './ChatWindow';
 import { Sparkles, X, Minus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
+/**
+ * AI 悬浮窗口组件
+ * 
+ * 提供一个可拖拽、可调整大小的 AI 聊天界面。
+ * 包含一个独立的触发按钮和弹出式对话窗口。
+ * 
+ * 核心逻辑：
+ * 1. 窗口定位：根据触发按钮的位置动态计算窗口弹出位置，并确保不超出屏幕边界。
+ * 2. 拖拽处理：支持触发按钮和窗口标题栏的独立拖拽，通过全局鼠标事件监听实现平滑移动。
+ * 3. 尺寸调整：右下角提供调整手柄，允许用户自定义窗口大小。
+ * 4. 动画效果：使用 framer-motion 实现展开/收起的缩放和透明度渐变。
+ */
 export function AIFloatingWindow() {
     const {
         isFloatingWindowOpen,
@@ -29,7 +41,13 @@ export function AIFloatingWindow() {
     const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
     const [dragStartPos, setDragStartPos] = useState({ x: 0, y: 0 });
 
-    // Calculate Window Position and Origin on Open
+    /**
+     * 当窗口打开时，计算其相对于触发按钮的最佳弹出位置。
+     * 逻辑包含：
+     * - 水平方向：根据按钮在屏幕左右侧决定向左或向右展开。
+     * - 垂直方向：根据按钮在屏幕上下侧决定向上或向下展开。
+     * - 边界约束：确保窗口不会超出视口范围。
+     */
     useEffect(() => {
         if (isFloatingWindowOpen) {
             const btnSize = 60;
@@ -51,7 +69,7 @@ export function AIFloatingWindow() {
             let originY = 'top';
             let originX = 'left';
 
-            // Horizontal logic
+            // 水平定位逻辑
             if (btnX > centerX) {
                 targetX = btnX + btnSize - width;
                 originX = 'right';
@@ -60,7 +78,7 @@ export function AIFloatingWindow() {
                 originX = 'left';
             }
 
-            // Vertical logic
+            // 垂直定位逻辑
             if (btnY > centerY) {
                 targetY = btnY - height - 10;
                 originY = 'bottom';
@@ -69,7 +87,7 @@ export function AIFloatingWindow() {
                 originY = 'top';
             }
 
-            // Constraint check
+            // 边界检查与约束
             if (targetX > maxX) targetX = maxX;
             if (targetX < padding) targetX = padding;
             if (targetY > maxY) targetY = maxY;
@@ -80,8 +98,13 @@ export function AIFloatingWindow() {
         }
     }, [isFloatingWindowOpen, floatingWindowPosition, floatingWindowSize]);
 
-    // Drag Start
+    /**
+     * 初始化拖拽状态
+     * @param e 鼠标按下事件
+     * @param type 拖拽对象类型 ('button' | 'window')
+     */
     const startDrag = (e: React.MouseEvent, type: 'button' | 'window') => {
+        // 如果点击的是窗口内的按钮，不触发拖拽
         if (type === 'window' && e.target instanceof Element && e.target.closest('button')) return;
 
         setIsPreparingDrag(true);
@@ -96,15 +119,21 @@ export function AIFloatingWindow() {
         setDragStartPos({ x: e.clientX, y: e.clientY });
     };
 
+    /**
+     * 初始化尺寸调整状态
+     */
     const startResize = (e: React.MouseEvent) => {
         e.stopPropagation();
         setIsResizing(true);
     };
 
-    // Global Mouse Handling
+    /**
+     * 处理全局鼠标移动和松开事件，实现平滑的拖拽和缩放体验
+     */
     useEffect(() => {
         const handleMouseMove = (e: MouseEvent) => {
             if (isPreparingDrag) {
+                // 只有移动超过 3px 才判定为拖拽，防止误触
                 const dist = Math.sqrt(Math.pow(e.clientX - dragStartPos.x, 2) + Math.pow(e.clientY - dragStartPos.y, 2));
                 if (dist > 3) {
                     setIsPreparingDrag(false);
@@ -120,6 +149,7 @@ export function AIFloatingWindow() {
                     setWindowPos({ x: newX, y: newY });
                 }
             } else if (isResizing) {
+                // 限制最小尺寸为 300x400
                 setFloatingWindowSize(
                     Math.max(300, e.clientX - windowPos.x),
                     Math.max(400, e.clientY - windowPos.y)
@@ -145,6 +175,7 @@ export function AIFloatingWindow() {
         };
     }, [isPreparingDrag, isDragging, isResizing, dragType, dragStartPos, dragOffset, windowPos, setFloatingWindowPosition, setFloatingWindowSize, setWindowPos]);
 
+    // 拖拽或缩放时的全屏遮罩，防止鼠标进入 iframe 或被其他元素拦截
     const overlay = (isDragging || isResizing) && (
         <div
             className="fixed inset-0 z-[100]"
@@ -156,7 +187,7 @@ export function AIFloatingWindow() {
         <>
             {overlay}
 
-            {/* Trigger Button - Always Visible & Independent Position */}
+            {/* 触发按钮 - 始终可见且可独立拖拽位置 */}
             <div
                 className="fixed z-50 cursor-move"
                 style={{
@@ -178,7 +209,7 @@ export function AIFloatingWindow() {
                 </motion.button>
             </div>
 
-            {/* Window */}
+            {/* AI 对话窗口 */}
             <AnimatePresence>
                 <motion.div
                     initial={{ opacity: 0, scale: 0.5 }}
@@ -198,7 +229,7 @@ export function AIFloatingWindow() {
                         visibility: isFloatingWindowOpen ? 'visible' : 'hidden'
                     }}
                 >
-                        {/* Header */}
+                        {/* 标题栏 - 支持拖拽窗口位置 */}
                         <div
                             className="p-3 bg-zinc-50 dark:bg-zinc-900 border-b dark:border-zinc-800 flex items-center justify-between cursor-move select-none shrink-0"
                             onMouseDown={(e) => startDrag(e, 'window')}
@@ -216,14 +247,14 @@ export function AIFloatingWindow() {
                                 <button
                                     onClick={() => setFloatingWindowOpen(false)}
                                     className="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-500 transition-colors"
-                                    title="关闭"
+                                    title="最小化"
                                 >
                                     <Minus size={16} />
                                 </button>
                             </div>
                         </div>
 
-                        {/* Content */}
+                        {/* 聊天内容区域 */}
                         <div className="flex-1 overflow-hidden relative bg-white dark:bg-zinc-950">
                             <ChatWindow
                                 sessionId={globalSessionId}
@@ -232,7 +263,7 @@ export function AIFloatingWindow() {
                             />
                         </div>
 
-                        {/* Resize Handle */}
+                        {/* 调整大小手柄 */}
                         <div
                             className="absolute bottom-0 right-0 w-6 h-6 cursor-nwse-resize z-[70] flex items-end justify-end p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-tl transition-colors"
                             onMouseDown={startResize}

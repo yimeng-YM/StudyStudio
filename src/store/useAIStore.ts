@@ -1,43 +1,55 @@
 import { create } from 'zustand';
 import { db, AISettings } from '@/db';
 
-// 界面位置类型
+/**
+ * 界面位置类型
+ * 标识用户当前所处的应用界面模块
+ */
 export type UILocation =
-  | 'dashboard'           // 仪表盘/首页
-  | 'subject_view'        // 学科详情页
-  | 'mindmap_editor'      // 思维导图编辑器
-  | 'notes_module'        // 知识笔记模块
-  | 'quiz_module'         // 题库模块
-  | 'tasks_module'        // 任务列表模块
-  | 'settings'            // 设置页面
-  | 'ai_chat';            // AI 聊天页面
+  | 'dashboard'
+  | 'subject_view'
+  | 'mindmap_editor'
+  | 'notes_module'
+  | 'quiz_module'
+  | 'tasks_module'
+  | 'settings'
+  | 'ai_chat';
 
-// 界面上下文信息
+/**
+ * 界面上下文信息
+ * 结构化提供 AI 当前所处环境的信息，辅助 AI 理解用户的意图和操作上下文
+ */
 export interface UIContextInfo {
-  location: UILocation;           // 当前界面位置
-  subjectId?: string;             // 当前学科 ID
-  subjectName?: string;           // 当前学科名称
-  activeTab?: string;             // 当前激活的标签页
-  entityId?: string;              // 当前实体 ID（如笔记ID、导图ID等）
-  entityName?: string;            // 当前实体名称
-  entityType?: string;            // 当前实体类型
-  additionalInfo?: Record<string, any>;  // 额外信息
+  location: UILocation;
+  subjectId?: string;
+  subjectName?: string;
+  activeTab?: string;
+  entityId?: string;
+  entityName?: string;
+  entityType?: string;
+  additionalInfo?: Record<string, any>;
 }
 
+/**
+ * AI 上下文配置
+ * 聚合了界面上下文信息以及获取系统特定上下文的方法，防止不同组件覆盖时丢失关键信息
+ */
 export interface AIContext {
   getSystemContext: () => string;
-  id?: string; // Optional identifier to prevent overwriting by same component
-  // 新增：结构化的界面上下文
+  id?: string;
   uiContext?: UIContextInfo;
 }
 
+/**
+ * AI 状态管理 Store 接口
+ * 集中管理 AI 的系统配置、悬浮对话窗状态、以及全局会话和上下文数据
+ */
 interface AIStore {
   settings: AISettings | null;
   isLoading: boolean;
   loadSettings: () => Promise<void>;
   updateSettings: (settings: Partial<AISettings>) => Promise<void>;
 
-  // Floating Window State
   isFloatingWindowOpen: boolean;
   isFloatingWindowMinimized: boolean;
   floatingWindowPosition: { x: number; y: number };
@@ -48,16 +60,20 @@ interface AIStore {
   setFloatingWindowPosition: (x: number, y: number) => void;
   setFloatingWindowSize: (width: number, height: number) => void;
 
-  // Context Management
   currentContext: AIContext | null;
   setContext: (context: AIContext | null) => void;
 
-  // Global Chat Session
   globalSessionId: string | null;
   setGlobalSessionId: (id: string | null) => void;
 }
 
-// 将 UIContextInfo 转换为可读的系统提示文本
+/**
+ * 将结构化的界面上下文转换为供 AI 模型读取的提示词文本
+ * 解析当前的路由、实体状态等，以便 AI 能够基于自然语言理解用户意图
+ *
+ * @param uiContext - 结构化的界面上下文信息
+ * @returns 格式化后的上下文系统提示词片段
+ */
 export function formatUIContextForPrompt(uiContext: UIContextInfo | undefined): string {
   if (!uiContext) return '';
 
@@ -107,18 +123,22 @@ export function formatUIContextForPrompt(uiContext: UIContextInfo | undefined): 
   return context;
 }
 
-// 获取完整的上下文系统提示
+/**
+ * 获取完整的系统上下文提示词
+ * 结合了结构化的界面上下文与各组件自定义的系统上下文逻辑
+ *
+ * @param context - 当前的全局 AI 上下文
+ * @returns 拼接后的完整系统提示词
+ */
 export function getFullContextPrompt(context: AIContext | null): string {
   if (!context) return '';
 
   let prompt = '';
 
-  // 添加结构化的界面上下文
   if (context.uiContext) {
     prompt += formatUIContextForPrompt(context.uiContext);
   }
 
-  // 添加自定义上下文
   const customContext = context.getSystemContext();
   if (customContext) {
     prompt += `\n\n## 组件特定上下文\n${customContext}`;
@@ -127,11 +147,14 @@ export function getFullContextPrompt(context: AIContext | null): string {
   return prompt;
 }
 
+/**
+ * 全局 AI 状态管理的 Zustand Store
+ * 负责维护持久化设置、悬浮窗的交互状态以及跨组件的会话流转逻辑
+ */
 export const useAIStore = create<AIStore>((set, get) => ({
   settings: null,
   isLoading: true,
 
-  // Default Window State
   isFloatingWindowOpen: false,
   isFloatingWindowMinimized: false,
   floatingWindowPosition: { x: window.innerWidth - 420, y: 100 },

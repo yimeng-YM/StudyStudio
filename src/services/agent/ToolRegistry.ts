@@ -2,6 +2,10 @@ import * as readTools from './tools/readTools';
 import * as writeTools from './tools/writeTools';
 import { ToolCall } from '@/services/ai';
 
+/**
+ * 集中注册和管理 AI 可调用的所有前端本地工具。
+ * 将声明的函数名称与实际执行的方法实现（分别来自 readTools 和 writeTools）进行映射。
+ */
 export const ToolRegistry = {
   get_subjects: readTools.get_subjects,
   get_subject_details: readTools.get_subject_details,
@@ -19,13 +23,18 @@ export const ToolRegistry = {
   create_taskboard: writeTools.create_taskboard,
   update_taskboard: writeTools.update_taskboard,
   
-  // 流程控制工具
+  // 流程控制工具，用于在对话中辅助 AI 管理任务流状态
   present_plan: async (_args: { plan_summary: string }) => ({ status: 'success', message: 'Plan presented to user, awaiting confirmation.' }),
   start_execution: async () => ({ status: 'success', message: 'Execution started.' }),
 };
 
 /**
- * Execute a tool call
+ * 统一的工具调用执行器。
+ * 接收 AI 生成的结构化工具调用请求，解析参数并路由到对应的本地实现函数。
+ * 
+ * @param toolCall - 包含函数名称和序列化 JSON 参数的工具调用对象
+ * @returns 对应工具函数执行后的返回结果（通常会再转为字符串喂给 AI 形成闭环）
+ * @throws 当请求了未在 ToolRegistry 中注册的工具时抛出异常
  */
 export async function executeTool(toolCall: ToolCall): Promise<any> {
   const toolName = toolCall.function.name;
@@ -39,7 +48,11 @@ export async function executeTool(toolCall: ToolCall): Promise<any> {
   return await tool(toolArgs);
 }
 
-// Tool Usage Guide - Emphasizing extensive content generation
+/**
+ * 工具使用的最佳实践指南（注入给大模型的提示词片段）。
+ * 明确了各个核心内容生成工具在实际调用时应遵循的格式标准和质量下限，
+ * 特别强调了内容的丰富度（如题型分布、导图层级、任务节点数量），防止大模型偷懒。
+ */
 export const TOOL_USAGE_GUIDE = `
 ## Tool Usage Best Practices
 

@@ -26,6 +26,12 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useMindMapContext } from '@/hooks/useUIContext';
 import * as dagre from 'dagre';
 
+/**
+ * 思维导图编辑器组件属性
+ * @property {string} subjectId - 关联的学科ID
+ * @property {Function} [onNavigate] - 模块间导航回调函数
+ * @property {string | null} [initialSessionId] - 初始AI会话ID，用于打开指定的AI聊天
+ */
 interface MindMapEditorProps {
   subjectId: string;
   onNavigate?: (tab: 'mindmap' | 'notes' | 'tasks', params?: { noteId?: string }) => void;
@@ -43,15 +49,18 @@ export function MindMapEditor(props: MindMapEditorProps) {
 }
 
 function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditorProps) {
+  /** @type {[Node[], Function, Function]} 画布节点状态管理 */
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  /** @type {[Edge[], Function, Function]} 画布连线状态管理 */
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const { setCenter } = useReactFlow();
+  /** @type {[string | null, Function]} 当前选中的思维导图记录ID */
   const [selectedMindMapId, setSelectedMindMapId] = useState<string | null>(null);
   const { showAlert, showConfirm, showPrompt } = useDialog();
   const { theme } = useTheme();
   const { setFloatingWindowOpen, setGlobalSessionId } = useAIStore();
 
-  // 获取学科信息
+  /** 获取当前学科信息 */
   const subject = useLiveQuery(() => db.subjects.get(subjectId), [subjectId]);
 
   useEffect(() => {
@@ -61,15 +70,24 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
     }
   }, [initialSessionId, setFloatingWindowOpen, setGlobalSessionId]);
 
+  /** @type {[{ nodes: Node[], edges: Edge[] }[], Function]} 撤销/重做历史记录栈 */
   const [history, setHistory] = useState<{ nodes: Node[], edges: Edge[] }[]>([]);
+  /** @type {[number, Function]} 当前所处的历史记录索引 */
   const [historyIndex, setHistoryIndex] = useState(-1);
+  /** @type {[boolean, Function]} 是否开启自动保存 */
   const [autoSave] = useState(true);
 
+  /** @type {[boolean, Function]} 转换为任务模态框显示状态 */
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+  /** @type {[string, Function]} 待添加的任务标签 */
   const [taskLabelToAdd, setTaskLabelToAdd] = useState('');
+  /** @type {[string[], Function]} 待添加的子任务项集合 */
   const [taskItemsToAdd, setTaskItemsToAdd] = useState<string[]>([]);
+  /** @type {[Entity | null, Function]} 任务看板数据库实体对象 */
   const [taskBoardEntity, setTaskBoardEntity] = useState<Entity | null>(null);
+  /** @type {[string, Function]} 选择添加到的目标任务块ID */
   const [selectedBlockId, setSelectedBlockId] = useState<string>('new');
+  /** @type {[string, Function]} 新建任务清单名称 */
   const [newBlockName, setNewBlockName] = useState('新任务清单');
 
   const nodeTypes = useMemo(() => ({ custom: CustomNode }), []);
@@ -84,7 +102,10 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
     [mindMaps, selectedMindMapId]
   );
 
-  // Auto-select or create first mindmap
+  /**
+   * 自动选择或初始化第一个思维导图数据
+   * 若当前学科下没有思维导图记录，则自动生成一条默认记录并选中
+   */
   useEffect(() => {
     if (mindMaps && mindMaps.length > 0 && !selectedMindMapId) {
       setSelectedMindMapId(mindMaps[0].id);
@@ -107,10 +128,13 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
 
   const lastSaveTimeRef = useRef<number>(0);
 
-  // Synchronize from DB whenever the selected mindmap changes externally
+  /**
+   * 监听选中的思维导图数据变化并同步至本地状态
+   * 只有当数据库中的更新时间大于本地最后保存时间时才会触发节点和连线状态更新，
+   * 同时初始化历史记录（用于撤销/重做机制）。
+   */
   useEffect(() => {
     if (selectedMindMap) {
-      // Sync if the DB version is newer than our last local save
       if (selectedMindMap.updatedAt > lastSaveTimeRef.current) {
         const content = selectedMindMap.content || { nodes: initialNodes, edges: [] };
         
@@ -120,7 +144,6 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
         })));
         setEdges(content.edges || []);
         
-        // Update history if this is an external change or first load
         if (history.length <= 1 || selectedMindMap.updatedAt > lastSaveTimeRef.current + 1000) {
           setHistory([{ nodes: content.nodes || [], edges: content.edges || [] }]);
           setHistoryIndex(0);
@@ -131,6 +154,12 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
     }
   }, [selectedMindMap, setNodes, setEdges]);
 
+  /**
+   * 保存当前导图快照至历史记录栈中
+   * 用于实现撤销(Undo)与重做(Redo)功能
+   * @param {Node[]} [newNodes] - 最新节点数组
+   * @param {Edge[]} [newEdges] - 最新连线数组
+   */
   const takeSnapshot = useCallback((newNodes?: Node[], newEdges?: Edge[]) => {
     setHistory(prev => {
       const currentNodes = newNodes || nodes;
@@ -141,6 +170,9 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
     setHistoryIndex(prev => prev + 1);
   }, [nodes, edges, historyIndex]);
 
+  /**
+   * 将当前思维导图节点和连线状态持久化到数据库
+   */
   const save = useCallback(async () => {
     if (selectedMindMapId) {
       const now = Date.now();
@@ -176,12 +208,18 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
     }
   }, [history, historyIndex, setNodes, setEdges]);
 
-  // Find root nodes (nodes with no incoming edges)
+  /**
+   * 识别思维导图的根节点集合（没有入边的节点）
+   */
   const rootNodes = useMemo(() => {
     const targets = new Set(edges.map(e => e.target));
     return nodes.filter(n => !targets.has(n.id));
   }, [nodes, edges]);
 
+  /**
+   * 视口平滑移动至指定节点所在位置
+   * @param {string} nodeId - 目标节点ID
+   */
   const jumpToNode = useCallback((nodeId: string) => {
     const node = nodes.find(n => n.id === nodeId);
     if (node) {
@@ -189,7 +227,9 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
     }
   }, [nodes, setCenter]);
 
-  // Load task board when modal opens
+  /**
+   * 当任务面板模态框打开时，加载该学科对应的任务看板数据
+   */
   useEffect(() => {
     if (isTaskModalOpen) {
       db.entities.where({ subjectId, type: 'task_board' }).first().then(ent => {
@@ -199,6 +239,10 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
     }
   }, [isTaskModalOpen, subjectId]);
 
+  /**
+   * 为指定节点添加子节点
+   * @param {string} parentId - 父节点ID
+   */
   const handleAddChild = useCallback((parentId: string) => {
     const parent = nodes.find(n => n.id === parentId);
     if (!parent) return;
@@ -230,6 +274,11 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
     setEdges(newEdges);
   }, [nodes, edges, setNodes, setEdges, takeSnapshot]);
 
+  /**
+   * 为指定节点添加同级节点
+   * 自动查找父节点并挂载新的同级节点，若无父节点则作为子节点处理
+   * @param {string} nodeId - 当前节点ID
+   */
   const handleAddSibling = useCallback((nodeId: string) => {
     const incomingEdge = edges.find(e => e.target === nodeId);
     if (!incomingEdge) {
@@ -319,6 +368,10 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
     setIsTaskModalOpen(true);
   }, [nodes, edges]);
 
+  /**
+   * 确认将当前节点及子节点转换为任务清单项
+   * 处理逻辑包括解析选中的分支并创建/更新对应的任务看板区块数据
+   */
   const confirmAddTask = async () => {
     let entity = taskBoardEntity;
     let boardNodes = entity?.content?.nodes || [];
@@ -377,6 +430,9 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
     showAlert('已添加到任务清单', { title: '成功' });
   };
 
+  /**
+   * 添加一个新的中心主题节点（根节点）
+   */
   const handleAddRootNode = useCallback(async () => {
     const label = await showPrompt("输入新中心主题名称:", "中心主题");
     if (!label) return;
@@ -413,12 +469,19 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
     }));
   }, [nodes, handleAddChild, handleAddSibling, handleDeleteNode, handleNote, handleTask]);
 
+  /**
+   * 节点连接事件处理，用户手动拖拽连线时触发
+   * @param {Connection} params - 连线参数包含源节点和目标节点信息
+   */
   const onConnect = useCallback((params: Connection) => {
     const newEdges = addEdge(params, edges);
     takeSnapshot(nodes, newEdges);
     setEdges(newEdges);
   }, [nodes, edges, setEdges, takeSnapshot]);
 
+  /**
+   * 双击节点修改文本标签
+   */
   const onNodeDoubleClick = useCallback(async (_: React.MouseEvent, node: Node) => {
     const label = await showPrompt("输入新标签:", node.data.label, { title: "编辑节点" });
     if (label !== null) {
@@ -433,10 +496,18 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
     }
   }, [nodes, edges, setNodes, showPrompt, takeSnapshot]);
 
+  /**
+   * 节点拖拽结束时保存快照，以便后续可以撤销该位置移动操作
+   */
   const onNodeDragStop = useCallback(() => {
     takeSnapshot();
   }, [takeSnapshot]);
 
+  /**
+   * 自动布局核心逻辑，支持水平(LR)、垂直(TB)和发散(Radial)三种布局模式
+   * 依赖 dagre 库实现自动计算节点坐标并更新视图
+   * @param {'LR' | 'TB' | 'Radial'} direction - 布局方向
+   */
   const onLayout = useCallback((direction: 'LR' | 'TB' | 'Radial') => {
     const doDagreLayout = (targetNodes: Node[], targetEdges: Edge[], dir: 'LR' | 'RL' | 'TB') => {
       const g = new dagre.graphlib.Graph();
@@ -466,11 +537,10 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
     let newEdges: Edge[] = [];
 
     if (direction === 'Radial') {
-      // 发散型：找到根节点，子节点平分左右
       const roots = nodes.filter(n => !edges.some(e => e.target === n.id));
       if (roots.length === 0) return;
 
-      const root = roots[0]; // 暂时只处理第一个根节点
+      const root = roots[0];
       const childrenEdges = edges.filter(e => e.source === root.id);
       const mid = Math.ceil(childrenEdges.length / 2);
       const rightEdges = childrenEdges.slice(0, mid);

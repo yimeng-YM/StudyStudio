@@ -9,31 +9,45 @@ import {
   DEFAULT_MAX_TOKENS
 } from '@/services/promptConfig';
 
-// 计划状态类型
+/**
+ * 任务执行计划状态
+ * - none: 暂无计划
+ * - pending: 计划已生成，等待用户确认
+ * - confirmed: 用户已确认，准备或正在执行
+ * - rejected: 用户已拒绝，需要重新生成
+ */
 export type PlanStatus = 'none' | 'pending' | 'confirmed' | 'rejected';
 
-// 计划信息接口
+/**
+ * 任务执行计划的详情数据结构
+ */
 export interface PlanInfo {
   status: PlanStatus;
   content: string;
   steps: string[];
 }
 
+/**
+ * 管理 AI 聊天会话状态及核心执行流的 Hook
+ * 处理消息存储、Agent 循环、工具调用及计划（Plan）模式的特殊工作流
+ *
+ * @param sessionId - 当前会话 ID，为 null 时表示新建会话
+ * @param mode - 会话运行模式：'plan'（带确认的计划模式）或 'act'（直接执行模式）
+ * @returns 包含消息列表、加载状态、计划状态及会话控制方法的对象
+ */
 export function useChatSession(sessionId: string | null, mode: 'plan' | 'act') {
   const { settings, currentContext } = useAIStore();
   const { showAlert } = useDialog();
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState<string>(''); // AI 当前状态描述
+  const [status, setStatus] = useState<string>('');
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(sessionId);
   
-  // Plan 模式相关状态
   const [planStatus, setPlanStatus] = useState<PlanStatus>('none');
   const [currentPlan, setCurrentPlan] = useState<string>('');
   const awaitingConfirmation = useRef(false);
   const planExtractedRef = useRef(false);
 
-  // Load messages when sessionId changes
   useEffect(() => {
     if (sessionId) {
       setCurrentSessionId(sessionId);
@@ -56,6 +70,12 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act') {
     }
   }, [sessionId]);
 
+  /**
+   * 创建新的对话会话
+   *
+   * @param title - 会话的初始标题
+   * @returns 新创建的会话 ID
+   */
   const createSession = async (title: string) => {
     const newSessionId = crypto.randomUUID();
     const now = Date.now();
@@ -70,6 +90,12 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act') {
     return newSessionId;
   };
 
+  /**
+   * 将单条消息持久化到数据库
+   *
+   * @param msg - 待保存的消息对象
+   * @param sId - 所属的会话 ID
+   */
   const saveMessage = async (msg: Message, sId: string) => {
     await db.chatMessages.add({
       id: crypto.randomUUID(),
@@ -87,6 +113,13 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act') {
 
 
 
+  /**
+   * 发送用户消息并触发 AI 响应流
+   *
+   * @param content - 用户输入的文本内容
+   * @param files - 用户附带的文件或图片资源
+   * @returns 活跃的会话 ID
+   */
   const sendMessage = async (content: string, files: any[] = []) => {
     if (!settings?.apiKey || !settings?.baseUrl) {
       showAlert("请在设置中配置 AI 服务的 API Key 和请求地址。", { title: '缺少配置' });
@@ -98,9 +131,7 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act') {
       activeSessionId = await createSession(content.slice(0, 50) || 'New Task');
     }
 
-    // Plan 模式下的特殊处理
     if (mode === 'plan' && awaitingConfirmation.current) {
-      // 用户回复了（确认、修正或拒绝计划）
       awaitingConfirmation.current = false;
       const userMessage: Message = { role: 'user', content };
       const newMessages = [...messages, userMessage];
@@ -122,7 +153,6 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act') {
     }
 
     const userMessage: Message = { role: 'user', content };
-    // If files are provided, format them according to MessageContentPart
     if (files && files.length > 0) {
       const parts: any[] = [{ type: 'text', text: content }];
       files.forEach(f => {
@@ -139,9 +169,6 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act') {
     setMessages(newMessages);
     await saveMessage(userMessage, activeSessionId);
     setLoading(true);
-
-    // 新对话时不重置 planStatus，除非从 act 模式完全切回 plan 模式
-    // 此处简化处理：主要依赖 sendMessage 中的 context 合并
 
     try {
       await processAgentLoop(newMessages, activeSessionId, false);
@@ -163,20 +190,25 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act') {
     return activeSessionId;
   };
 
+  /**
+   * 核心的 Agent 运行循环
+   * 处理系统提示词组装、模型流式响应以及工具的连续调用和执行
+   *
+   * @param currentMessages - 当前上下文的消息列表
+   * @param activeSessionId - 当前活跃的会话 ID
+   * @param skipPlanning - 是否跳过计划阶段（用于已确认计划后直接执行）
+   */
   const processAgentLoop = async (
-    currentMessages: Message[], 
+    currentMessages: Message[],
     activeSessionId: string,
     skipPlanning: boolean = false
   ) => {
     if (!settings) return;
 
-    // 使用统一的提示词配置
     const contextPrompt = getFullContextPrompt(currentContext);
     let systemPrompt = getSystemPromptWithContext(mode, contextPrompt);
 
-    // Plan 模式且尚未确认时的特殊处理
     if (mode === 'plan' && !skipPlanning && planStatus !== 'confirmed') {
-      // Reinforced planning mode prompt
       systemPrompt += `
 
 IMPORTANT REMINDER: You are in DEEP PLANNING MODE
@@ -190,7 +222,6 @@ Strict Workflow:
 IMPORTANT: Always respond in Chinese.
 `;
     } else if (mode === 'plan' && skipPlanning) {
-      // User confirmed, allowed to execute
       systemPrompt += `
 
 User has confirmed. You are now in EXECUTION phase. 
@@ -209,8 +240,6 @@ IMPORTANT: Always respond in Chinese.
     
     setMessages(prev => [...prev, aiMessage]);
     setStatus('AI 正在思考...');
-
-    // 移除硬编码拦截逻辑
 
     const handleToolCallChunk = (toolCallChunks: any[]) => {
       if (!aiMessage.tool_calls) aiMessage.tool_calls = [];
@@ -258,18 +287,15 @@ IMPORTANT: Always respond in Chinese.
     setStatus('');
     await saveMessage(aiMessage, activeSessionId);
 
-    // If there are tool calls, execute them and continue loop
     if (aiMessage.tool_calls && aiMessage.tool_calls.length > 0) {
       const toolMessages: Message[] = [];
       
       for (const toolCall of aiMessage.tool_calls) {
-        // 特殊处理流程控制工具
         if (toolCall.function.name === 'present_plan') {
           setPlanStatus('pending');
           awaitingConfirmation.current = true;
           planExtractedRef.current = true;
           
-          // 给用户一个视觉反馈
           const waitText = '\n\n---\n⏳ **等待确认**：计划已推送，请回复"确认"或点击按钮开始执行。';
           if (typeof aiMessage.content === 'string') aiMessage.content += waitText;
           setMessages(prev => {
@@ -282,7 +308,7 @@ IMPORTANT: Always respond in Chinese.
         if (toolCall.function.name === 'start_execution') {
           setPlanStatus('confirmed');
           awaitingConfirmation.current = false;
-          skipPlanning = true; // 确保后续递归中 skipPlanning 为 true
+          skipPlanning = true;
         }
 
         try {
@@ -310,15 +336,16 @@ IMPORTANT: Always respond in Chinese.
 
       setMessages(prev => [...prev, ...toolMessages]);
       
-      // 如果调用了 present_plan，则停止循环等待用户
       const calledPresent = aiMessage.tool_calls.some(tc => tc.function.name === 'present_plan');
       if (calledPresent) return;
 
-      // Continue the loop
       await processAgentLoop([...currentMessages, aiMessage, ...toolMessages], activeSessionId, skipPlanning);
     }
   };
 
+  /**
+   * 清空当前会话在内存中的状态
+   */
   const clearSession = () => {
     setCurrentSessionId(null);
     setMessages([]);
@@ -328,7 +355,10 @@ IMPORTANT: Always respond in Chinese.
     planExtractedRef.current = false;
   };
 
-  // 手动确认计划的方法
+  /**
+   * 手动确认当前的执行计划
+   * 会将状态置为 confirmed，并向 AI 发送确认指令触发执行流
+   */
   const confirmPlan = async () => {
     if (mode === 'plan' && planStatus === 'pending' && currentSessionId) {
       setPlanStatus('confirmed');
@@ -352,7 +382,10 @@ IMPORTANT: Always respond in Chinese.
     }
   };
 
-  // 手动拒绝计划的方法
+  /**
+   * 手动拒绝当前的执行计划
+   * 阻断当前计划的执行，重置状态以便用户输入新指令
+   */
   const rejectPlan = () => {
     if (mode === 'plan' && planStatus === 'pending') {
       setPlanStatus('rejected');
@@ -360,13 +393,17 @@ IMPORTANT: Always respond in Chinese.
     }
   };
 
-  // 重试功能
+  /**
+   * 重试对话历史中的某一次用户提问
+   * 截断该消息之后的所有对话，并基于截断后的历史重新发起请求
+   *
+   * @param index - 要重试的特定消息索引。如果不传，则默认重试最后一次用户的发言
+   */
   const retry = async (index?: number) => {
     if (!currentSessionId || loading) return;
 
     let targetIndex = index;
     
-    // 如果没有传索引，默认找到最后一条 user 消息的索引
     if (targetIndex === undefined) {
       const lastUserIndex = [...messages].reverse().findIndex(m => m.role === 'user');
       if (lastUserIndex === -1) return;
@@ -376,18 +413,14 @@ IMPORTANT: Always respond in Chinese.
     if (targetIndex < 0 || targetIndex >= messages.length) return;
     if (messages[targetIndex].role !== 'user') return;
     
-    // 要保留的消息 (包含该索引处的 user 消息)
     const preservedMessages = messages.slice(0, targetIndex + 1);
     
-    // 删除该 session 下 createdAt 大于该 user 消息的所有消息
-    // 简化逻辑：找到该 session 下所有 user 消息，匹配第 N 个
     const allUserMsgs = await db.chatMessages
       .where('sessionId')
       .equals(currentSessionId)
       .filter(m => m.role === 'user')
       .sortBy('createdAt');
     
-    // 找到对应索引的那条消息在 DB 中的位置
     const userMsgIndexInHistory = messages.slice(0, targetIndex + 1).filter(m => m.role === 'user').length - 1;
     const dbTarget = allUserMsgs[userMsgIndexInHistory];
 
@@ -403,7 +436,6 @@ IMPORTANT: Always respond in Chinese.
     setLoading(true);
 
     try {
-      // 重新进入循环
       await processAgentLoop(preservedMessages, currentSessionId, mode === 'plan' && planStatus === 'confirmed');
     } catch (error: any) {
       console.error("Retry Error:", error);
@@ -424,7 +456,6 @@ IMPORTANT: Always respond in Chinese.
     sendMessage,
     clearSession,
     retry,
-    // Plan 模式相关
     planStatus,
     currentPlan,
     confirmPlan,

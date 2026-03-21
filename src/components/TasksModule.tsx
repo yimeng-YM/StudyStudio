@@ -24,6 +24,11 @@ import { useAIStore } from '@/store/useAIStore';
 import { ViewControls } from './ViewControls';
 import { useUIContext } from '@/hooks/useUIContext';
 
+/**
+ * 任务模块组件属性
+ * @property {string} subjectId - 关联的学科ID
+ * @property {string | null} [initialSessionId] - 初始AI会话ID
+ */
 interface TasksModuleProps {
   subjectId: string;
   initialSessionId?: string | null;
@@ -38,18 +43,21 @@ export function TasksModule({ subjectId, initialSessionId }: TasksModuleProps) {
 }
 
 function TasksModuleInner({ subjectId, initialSessionId }: TasksModuleProps) {
+  /** @type {[Node[], Function, Function]} 画布节点状态（任务清单块） */
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  /** @type {[Edge[], Function, Function]} 画布连线状态（任务依赖关系） */
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  /** @type {[Entity | null, Function]} 任务看板数据库实体对象 */
   const [boardEntity, setBoardEntity] = useState<Entity | null>(null);
   const { showConfirm } = useDialog();
   const { theme } = useTheme();
   const { setFloatingWindowOpen, setGlobalSessionId } = useAIStore();
   const { setCenter, getNode } = useReactFlow();
 
-  // 获取学科信息
+  /** 获取当前学科信息 */
   const subject = useLiveQuery(() => db.subjects.get(subjectId), [subjectId]);
 
-  // 注册任务模块上下文
+  /** 注册任务模块上下文信息，供 AI 助手理解当前界面 */
   const getCustomContext = useMemo(() => {
     return () => `用户正在查看任务看板。可以使用工具来更新任务。`;
   }, []);
@@ -79,10 +87,13 @@ function TasksModuleInner({ subjectId, initialSessionId }: TasksModuleProps) {
 
   const lastSaveTimeRef = useRef<number>(0);
 
+  /**
+   * 监听看板数据实体变化并同步至画布状态
+   * 包含从旧版本 'task' 类型数据迁移至新版看板格式的逻辑
+   */
   useEffect(() => {
     if (liveEntity) {
       setBoardEntity(liveEntity);
-      // Sync if the DB version is newer than our last local save
       if (liveEntity.updatedAt > lastSaveTimeRef.current) {
         if (liveEntity.content) {
           setNodes(liveEntity.content.nodes || []);
@@ -91,9 +102,8 @@ function TasksModuleInner({ subjectId, initialSessionId }: TasksModuleProps) {
         lastSaveTimeRef.current = liveEntity.updatedAt;
       }
     } else {
-      // Migration logic: Check for old 'task' entities
+      // 迁移逻辑：检查旧的 'task' 实体并合并到新的看板区块中
       db.entities.where({ subjectId, type: 'task' }).toArray().then(oldTasks => {
-        // 只在有旧任务数据时才创建任务看板
         if (oldTasks.length > 0) {
           const initNodes = [{
             id: '1',
@@ -124,16 +134,18 @@ function TasksModuleInner({ subjectId, initialSessionId }: TasksModuleProps) {
             setNodes(initNodes);
           });
         }
-        // 如果没有旧任务数据，不自动创建空的任务看板
       });
     }
   }, [liveEntity, subjectId, setNodes, setEdges]);
 
+  /**
+   * 将当前看板节点（任务块）和连线持久化到数据库
+   */
   const save = useCallback(async () => {
     if (boardEntity) {
       const now = Date.now();
       lastSaveTimeRef.current = now;
-      // Strip functions from data before saving
+      // 移除保存时的函数引用，仅持久化纯数据对象
       const cleanNodes = nodes.map(n => ({
         ...n,
         data: {
@@ -150,13 +162,18 @@ function TasksModuleInner({ subjectId, initialSessionId }: TasksModuleProps) {
     }
   }, [boardEntity, nodes, edges]);
 
-  // Auto-save (always enabled)
+  /** 自动保存机制，2秒防抖执行 */
   useEffect(() => {
     if (!boardEntity) return;
     const timer = setTimeout(save, 2000);
     return () => clearTimeout(timer);
   }, [nodes, edges, save, boardEntity]);
 
+  /**
+   * 处理任务块内部数据（如标题、任务项）变更
+   * @param {string} id - 任务块节点ID
+   * @param {Partial<TaskBlockData>} dataPatch - 需要更新的数据片段
+   */
   const onNodeDataChange = useCallback((id: string, dataPatch: Partial<TaskBlockData>) => {
     setNodes(nds => nds.map(node => {
       if (node.id === id) {
@@ -166,11 +183,13 @@ function TasksModuleInner({ subjectId, initialSessionId }: TasksModuleProps) {
     }));
   }, [setNodes]);
 
+  /** 删除指定任务块及其关联连线 */
   const deleteBlock = useCallback((id: string) => {
     setNodes(nds => nds.filter(n => n.id !== id));
     setEdges(eds => eds.filter(e => e.source !== id && e.target !== id));
   }, [setNodes, setEdges]);
 
+  /** 在画布随机位置添加一个新的任务清单块 */
   const addBlock = useCallback(() => {
     const id = crypto.randomUUID();
     const newNode: Node = {
@@ -182,6 +201,11 @@ function TasksModuleInner({ subjectId, initialSessionId }: TasksModuleProps) {
     setNodes(nds => nds.concat(newNode));
   }, [setNodes]);
 
+  /**
+   * 为指定的任务项创建一个子任务清单块并建立逻辑连接
+   * @param {string} parentNodeId - 父任务块ID
+   * @param {string} itemId - 触发创建的子任务项ID
+   */
   const createSubBoard = useCallback((parentNodeId: string, itemId: string) => {
     const parentNode = nodes.find(n => n.id === parentNodeId);
     if (!parentNode) return;
@@ -209,6 +233,7 @@ function TasksModuleInner({ subjectId, initialSessionId }: TasksModuleProps) {
     setEdges(eds => eds.concat(newEdge));
   }, [nodes, setNodes, setEdges]);
 
+  /** 将业务操作方法注入到节点数据中，供自定义节点组件调用 */
   const nodesWithHandlers = useMemo(() => {
     return nodes.map(node => ({
       ...node,
@@ -223,7 +248,7 @@ function TasksModuleInner({ subjectId, initialSessionId }: TasksModuleProps) {
 
   const onConnect = useCallback((params: Connection) => setEdges((eds) => addEdge(params, eds)), [setEdges]);
 
-  // Jump to a specific task block
+  /** 视口平滑移动至指定的任务块位置 */
   const jumpToNode = useCallback((nodeId: string) => {
     const node = getNode(nodeId);
     if (node) {
@@ -231,6 +256,7 @@ function TasksModuleInner({ subjectId, initialSessionId }: TasksModuleProps) {
     }
   }, [getNode, setCenter]);
 
+  /** 处理连线点击事件（弹出确认框后删除连接） */
   const onEdgeClick = useCallback((event: React.MouseEvent, edge: Edge) => {
     event.stopPropagation();
     showConfirm('确定要删除这条连接线吗？', { title: '删除连接' }).then(confirmed => {
@@ -240,14 +266,17 @@ function TasksModuleInner({ subjectId, initialSessionId }: TasksModuleProps) {
     });
   }, [setEdges, showConfirm]);
 
-  // Auto-completion propagation
+  /**
+   * 任务完成状态的递归向下传播逻辑
+   * 当某个子任务清单块中所有任务都标记为已完成时，自动将父级对应的任务项标记为已完成
+   */
   useEffect(() => {
     let nodesChanged = false;
 
     const nodeMap = new Map(nodes.map(n => [n.id, n]));
 
     edges.forEach(edge => {
-      // Only propagate if edge comes from an Item (sourceHandle exists)
+      // 仅处理从特定任务项出发的连线
       if (!edge.sourceHandle) return;
 
       const targetNode = nodeMap.get(edge.target);
@@ -255,15 +284,13 @@ function TasksModuleInner({ subjectId, initialSessionId }: TasksModuleProps) {
       const itemId = edge.sourceHandle;
 
       if (targetNode && sourceNode && itemId) {
-        // Check if all items in target are completed
+        // 检查目标块（子看板）是否全员完成
         const allCompleted = targetNode.data.items?.length > 0 && targetNode.data.items.every((i: any) => i.completed);
 
         const sourceItem = sourceNode.data.items?.find((i: any) => i.id === itemId);
         if (sourceItem && sourceItem.completed !== allCompleted) {
-          // Update source node item
           const newItems = sourceNode.data.items.map((i: any) => i.id === itemId ? { ...i, completed: allCompleted } : i);
 
-          // We update the node object in map, but we need to trigger setNodes at end
           nodeMap.set(sourceNode.id, {
             ...sourceNode,
             data: { ...sourceNode.data, items: newItems }

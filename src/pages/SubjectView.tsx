@@ -13,19 +13,44 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Modal } from '@/components/ui/Modal';
 import { useDialog } from '@/components/ui/DialogProvider';
 
+/**
+ * 学科详情视图组件
+ * 采用级联加载模式，作为“思维导图”、“详细知识”、“任务列表”和“题库”四大模块的容器。
+ * 核心逻辑：
+ * 1. 学科元数据加载与同步。
+ * 2. 模块间的状态同步（如从导图节点跳转至特定笔记）。
+ * 3. 路由状态监听，支持从外部直接定位到特定子视图或记录。
+ */
 export function SubjectView() {
+  /** 从路由参数中获取学科 ID */
   const { id } = useParams<{ id: string }>();
   const location = useLocation();
   const navigate = useNavigate();
   const { showPrompt } = useDialog();
+  
+  /**
+   * 级联加载：实时查询当前学科的基础信息
+   * 当学科名称或图标在弹窗中修改时，此查询会自动触发 UI 更新
+   */
   const subject = useLiveQuery(() => db.subjects.get(id || ''), [id]);
 
+  // --- 状态管理 ---
+  /** 当前激活的功能模块标签页 */
   const [activeTab, setActiveTab] = useState<'mindmap' | 'notes' | 'tasks' | 'quiz'>('mindmap');
+  /** 目标笔记 ID，用于模块间跳转定位（如导图 -> 笔记） */
   const [targetNoteId, setTargetNoteId] = useState<string | null>(null);
+  /** 目标 AI 会话 ID，用于在切换模块时保持 AI 上下文一致性 */
   const [targetSessionId, setTargetSessionId] = useState<string | null>(null);
+  /** 学科编辑弹窗显示状态 */
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  /** 学科编辑表单临时状态 */
   const [editForm, setEditForm] = useState({ name: '', icon: '' });
 
+  /**
+   * 状态同步逻辑：监听路由 state
+   * 当用户从搜索结果、仪表盘或 AI 建议点击进入时，通过 location.state 传递初始化参数。
+   * 实现“精准降落”：直接打开指定 Tab 或高亮指定笔记。
+   */
   useEffect(() => {
     if (location.state) {
       if (location.state.view) {
@@ -40,6 +65,7 @@ export function SubjectView() {
     }
   }, [location.state]);
 
+  /** 更新学科基本信息（名称、图标） */
   const handleUpdateSubject = async () => {
     if (editForm.name.trim()) {
       await db.subjects.update(id!, {
@@ -50,6 +76,11 @@ export function SubjectView() {
     }
   };
 
+  /**
+   * 删除当前学科
+   * 调用通用工具函数，执行包含确认逻辑的物理删除及其级联数据清理
+   * @param {React.MouseEvent} e
+   */
   const handleDelete = async (e: React.MouseEvent) => {
     const { deleteSubjectWithConfirm } = await import('@/lib/subjectUtils');
     const success = await deleteSubjectWithConfirm(e, id!, showPrompt);
@@ -59,6 +90,12 @@ export function SubjectView() {
     }
   };
 
+  /**
+   * 处理内部模块间的导航跳转
+   * 例如：从思维导图节点点击“查看笔记”，会触发此函数切换至笔记 Tab 并设置目标 ID
+   * @param {string} tab - 目标标签页
+   * @param {object} [params] - 额外参数，如 noteId
+   */
   const handleNavigate = (tab: 'mindmap' | 'notes' | 'tasks', params?: { noteId?: string }) => {
     setActiveTab(tab);
     if (params?.noteId) {

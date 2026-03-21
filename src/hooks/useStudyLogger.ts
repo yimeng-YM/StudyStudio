@@ -1,19 +1,22 @@
 import { useEffect, useRef } from 'react';
 import { db } from '@/db';
 
+/**
+ * 学习时长日志记录 Hook
+ * 用于监控并统计用户的有效学习时间。利用页面可见性 API (Page Visibility API)
+ * 确保只有在用户当前浏览该页面时才累加学习时长。数据会被持久化到 IndexedDB。
+ */
 export function useStudyLogger() {
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const logStudyTime = async () => {
-      // 只在页面可见时记录时间
       if (document.visibilityState !== 'visible') {
         return;
       }
 
       const today = new Date();
-      // Format as YYYY-MM-DD local time
-      const dateStr = today.getFullYear() + '-' + 
+      const dateStr = today.getFullYear() + '-' +
                       String(today.getMonth() + 1).padStart(2, '0') + '-' + 
                       String(today.getDate()).padStart(2, '0');
       
@@ -40,8 +43,7 @@ export function useStudyLogger() {
 
     const startInterval = () => {
       if (!intervalRef.current) {
-        // Record study time every minute
-        intervalRef.current = setInterval(logStudyTime, 60000); // 1 minute
+        intervalRef.current = setInterval(logStudyTime, 60000);
       }
     };
 
@@ -60,12 +62,10 @@ export function useStudyLogger() {
       }
     };
 
-    // 初始检查页面可见性
     if (document.visibilityState === 'visible') {
       startInterval();
     }
 
-    // 监听页面可见性变化
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {

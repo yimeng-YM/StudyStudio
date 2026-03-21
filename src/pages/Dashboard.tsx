@@ -9,26 +9,46 @@ import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
 import { useDashboardContext } from '@/hooks/useUIContext';
 
+/**
+ * 仪表盘组件
+ * 展示学习统计数据、学习时长日历、待办事项以及学科列表。
+ */
 export function Dashboard() {
-     // 注册仪表盘上下文
-     useDashboardContext();
-     
-     const subjectCount = useLiveQuery(() => db.subjects.count());
-     const noteCount = useLiveQuery(() => db.entities.where({ type: 'note' }).count());
+    /** 注册仪表盘上下文，用于管理页面特定的 UI 状态 */
+    useDashboardContext();
+    
+    // --- 基础统计数据查询 ---
+    /** 学科总数统计 */
+    const subjectCount = useLiveQuery(() => db.subjects.count());
+    /** 笔记总数统计 */
+    const noteCount = useLiveQuery(() => db.entities.where({ type: 'note' }).count());
 
-     const [currentTime, setCurrentTime] = useState(new Date());
+    /** 实时系统时间状态 */
+    const [currentTime, setCurrentTime] = useState(new Date());
 
+    /** 每秒更新一次当前时间，驱动时钟 UI */
     useEffect(() => {
         const timer = setInterval(() => setCurrentTime(new Date()), 1000);
         return () => clearInterval(timer);
     }, []);
 
-    const todayStr = currentTime.getFullYear() + '-' + 
-               String(currentTime.getMonth() + 1).padStart(2, '0') + '-' + 
+    /** 格式化今日日期字符串 (YYYY-MM-DD) */
+    const todayStr = currentTime.getFullYear() + '-' +
+               String(currentTime.getMonth() + 1).padStart(2, '0') + '-' +
                String(currentTime.getDate()).padStart(2, '0');
 
+    /**
+     * 查询今日学习记录
+     * 用于实时显示今日沉浸学习时长
+     */
     const todayRecord = useLiveQuery(() => db.studyRecords?.get(todayStr), [todayStr]);
     const todayDuration = todayRecord?.duration || 0;
+
+    /**
+     * 格式化时长显示
+     * @param {number} mins - 分钟数
+     * @returns {string} 格式化后的字符串 (如 "1 小时 20 分钟")
+     */
     const formatDuration = (mins: number) => {
         if (mins < 60) return `${mins} 分钟`;
         const h = Math.floor(mins / 60);
@@ -36,6 +56,13 @@ export function Dashboard() {
         return `${h} 小时 ${m} 分钟`;
     };
 
+    /**
+     * 计算并生成最近 30 天的学习打卡日历数据
+     * 逻辑：
+     * 1. 从数据库读取所有学习记录并转为 Map 提高查询效率
+     * 2. 循环生成过去 30 天的日期序列
+     * 3. 匹配每日学习时长，无记录则默认为 0
+     */
     const calendarData = useLiveQuery(async () => {
         if (!db.studyRecords) return [];
         const records = await db.studyRecords.toArray();
@@ -47,8 +74,8 @@ export function Dashboard() {
         for (let i = 29; i >= 0; i--) {
             const d = new Date(today);
             d.setDate(today.getDate() - i);
-            const dStr = d.getFullYear() + '-' + 
-                         String(d.getMonth() + 1).padStart(2, '0') + '-' + 
+            const dStr = d.getFullYear() + '-' +
+                         String(d.getMonth() + 1).padStart(2, '0') + '-' +
                          String(d.getDate()).padStart(2, '0');
             days.push({
                 date: dStr,
@@ -61,16 +88,27 @@ export function Dashboard() {
     const timeString = currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     const dateString = currentTime.toLocaleDateString([], { month: 'long', day: 'numeric', weekday: 'long' });
 
+    /**
+     * 学科列表排序模式
+     * 支持：按名称、按最后访问、手动排序
+     */
     const [sortMode, setSortMode] = useState<'name' | 'lastAccessed' | 'manual'>(() =>
         (localStorage.getItem('dashboardSortMode') as any) || 'lastAccessed');
+    
+    /** 排序方向：升序/降序 */
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>(() =>
         (localStorage.getItem('dashboardSortDirection') as any) || 'desc');
 
+    /** 当排序配置变更时，持久化至本地存储 */
     useEffect(() => {
         localStorage.setItem('dashboardSortMode', sortMode);
         localStorage.setItem('dashboardSortDirection', sortDirection);
     }, [sortMode, sortDirection]);
 
+    /**
+     * 根据排序配置动态加载学科列表
+     * 逻辑：根据 sortMode 映射到不同的数据库索引进行查询，并应用排序方向
+     */
     const allSubjects = useLiveQuery(async () => {
         let collection = db.subjects.toCollection();
 
@@ -91,16 +129,19 @@ export function Dashboard() {
         return await collection.toArray();
     }, [sortMode, sortDirection]);
 
+    /** 查询所有任务看板实体 */
     const taskBoards = useLiveQuery(() => db.entities.where({ type: 'task_board' }).toArray());
+    /** 查询旧版独立任务（未完成） */
     const legacyTasks = useLiveQuery(() =>
         db.entities
-            .filter(e => e.type === 'task' && e.content?.status === 'todo') // and !completed
+            .filter(e => e.type === 'task' && e.content?.status === 'todo')
             .reverse()
             .toArray()
     );
     const location = useLocation();
     const { setFloatingWindowOpen, setGlobalSessionId } = useAIStore();
 
+    /** 处理路由状态中携带的 AI 会话打开请求 */
     useEffect(() => {
         if (location.state?.openChatSessionId) {
             setGlobalSessionId(location.state.openChatSessionId);
@@ -108,15 +149,20 @@ export function Dashboard() {
         }
     }, [location.state, setGlobalSessionId, setFloatingWindowOpen]);
 
+    /**
+     * 汇总最近 5 条待办任务
+     * 算法：
+     * 1. 合并旧版独立任务
+     * 2. 遍历所有任务看板中的未完成项
+     * 3. 取前 5 项进行展示
+     */
     const recentTasks = useMemo(() => {
         const tasks: { id: string, title: string }[] = [];
 
-        // Legacy
         if (legacyTasks) {
             tasks.push(...legacyTasks.map(t => ({ id: t.id, title: t.title })));
         }
 
-        // Boards
         if (taskBoards) {
             taskBoards.forEach(board => {
                 if (board.content?.nodes) {
@@ -135,6 +181,10 @@ export function Dashboard() {
         return tasks.slice(0, 5);
     }, [taskBoards, legacyTasks]);
 
+    /**
+     * 计算所有待办任务的总数
+     * 用于仪表盘统计卡片展示
+     */
     const totalPendingTasks = useMemo(() => {
         let count = (legacyTasks?.length || 0);
         if (taskBoards) {
@@ -151,6 +201,13 @@ export function Dashboard() {
         return count;
     }, [taskBoards, legacyTasks]);
 
+    /**
+     * 手动调整学科顺序
+     * 通过交换两个学科的 order 字段实现位置互换，并在事务中执行以保证原子性
+     * @param {React.MouseEvent} e - 事件对象
+     * @param {string} id - 学科 ID
+     * @param {'up' | 'down'} direction - 移动方向
+     */
     const moveSubject = async (e: React.MouseEvent, id: string, direction: 'up' | 'down') => {
         e.preventDefault();
         e.stopPropagation();
@@ -171,6 +228,11 @@ export function Dashboard() {
         });
     };
 
+    /**
+     * 处理学科卡片点击
+     * 更新学科的最后访问时间，影响“最近访问”排序逻辑
+     * @param {string} id - 学科 ID
+     */
     const handleSubjectClick = async (id: string) => {
         await db.subjects.update(id, { lastAccessed: Date.now() });
     };

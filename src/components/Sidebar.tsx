@@ -7,13 +7,21 @@ import { LayoutDashboard, BookOpen, Settings, Plus, Sparkles, ArrowUp, ArrowDown
 import { Modal } from '@/components/ui/Modal';
 import { ThemeToggle } from '@/components/ThemeToggle';
 
-
-
 import { useResizable } from '@/hooks/useResizable';
 import { ResizeHandle } from '@/components/ui/ResizeHandle';
 import { ICON_MAP, ICON_OPTIONS } from '@/lib/icons';
 
+/**
+ * 侧边栏组件
+ * 
+ * 核心功能：
+ * 1. 响应式布局：支持展开和收起（图标化）模式，适应不同屏幕空间。
+ * 2. 动态导航：展示固定功能入口（首页、AI 对话等）及动态从数据库加载的学科列表。
+ * 3. 学科管理：提供添加新学科的功能，并支持多种排序模式（名称、时间、手动）。
+ * 4. 宽度调整：在展开模式下，支持通过拖拽右边界来自定义侧边栏宽度。
+ */
 export function Sidebar() {
+  // 侧边栏宽度调整逻辑
   const { width, startResizing } = useResizable({
     initialWidth: 256,
     minWidth: 200,
@@ -22,16 +30,22 @@ export function Sidebar() {
     direction: 'right'
   });
 
+  // 排序状态管理
   const [sortMode, setSortMode] = useState<'name' | 'lastAccessed' | 'manual'>(() =>
     (localStorage.getItem('sidebarSortMode') as any) || 'lastAccessed');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>(() =>
     (localStorage.getItem('sidebarSortDirection') as any) || 'desc');
 
+  // 持久化排序设置
   useEffect(() => {
     localStorage.setItem('sidebarSortMode', sortMode);
     localStorage.setItem('sidebarSortDirection', sortDirection);
   }, [sortMode, sortDirection]);
 
+  /**
+   * 实时查询并排序学科列表
+   * 使用 dexie-react-hooks 实现数据库响应式更新
+   */
   const subjects = useLiveQuery(async () => {
     const all = await db.subjects.toArray();
     return all.sort((a, b) => {
@@ -61,6 +75,9 @@ export function Sidebar() {
   const [selectedIcon, setSelectedIcon] = useState('BookOpen');
   const [logoError, setLogoError] = useState(false);
 
+  /**
+   * 手动调整学科顺序
+   */
   const moveSubject = async (e: React.MouseEvent, id: string, direction: 'up' | 'down') => {
     e.preventDefault();
     e.stopPropagation();
@@ -77,10 +94,16 @@ export function Sidebar() {
     });
   };
 
+  /**
+   * 点击学科时更新最后访问时间，用于“最近使用”排序
+   */
   const handleSubjectClick = async (id: string) => {
     await db.subjects.update(id, { lastAccessed: Date.now() });
   };
 
+  /**
+   * 添加新学科到数据库
+   */
   const addSubject = async () => {
     if (newSubjectName.trim()) {
       const now = Date.now();
@@ -98,17 +121,17 @@ export function Sidebar() {
     }
   };
 
-
+  // 收起状态管理
   const [isCollapsed, setIsCollapsed] = useState(false);
 
-  // Toggle Collapse
+  /**
+   * 切换侧边栏收起/展开状态
+   */
   const toggleCollapse = () => {
     setIsCollapsed(prev => !prev);
-    // When collapsing, reset width to min or auto? Actually useResizable manages width. 
-    // We'll just force width control via style override or let user resize?
-    // User request: "Collapsed" implies fixed small width.
   };
 
+  // 最终显示的侧边栏宽度：收起时固定为 74px，展开时使用自定义宽度
   const sidebarWidth = isCollapsed ? 74 : width;
 
   return (
@@ -117,6 +140,7 @@ export function Sidebar() {
         style={{ width: sidebarWidth }}
         className="bg-white/60 dark:bg-zinc-950 backdrop-blur-xl h-screen border-r border-slate-200/50 dark:border-zinc-800/50 flex flex-col p-4 relative shrink-0 transition-[width] duration-300 ease-in-out"
       >
+        {/* 宽度调整手柄：仅在展开模式下显示 */}
         {!isCollapsed && (
           <ResizeHandle
             onMouseDown={startResizing}
@@ -124,8 +148,7 @@ export function Sidebar() {
           />
         )}
 
-
-
+        {/* Logo 区域 */}
         <div className={`flex items-center ${isCollapsed ? 'justify-center' : (!logoError ? 'justify-center' : 'gap-2')} px-0 py-4 mb-4 min-h-[3.5rem] relative`}>
           {!logoError ? (
             <img
@@ -142,11 +165,11 @@ export function Sidebar() {
               {!isCollapsed && <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100 whitespace-nowrap overflow-hidden">StudyStudio</h1>}
             </>
           )}
-
-
         </div>
 
+        {/* 导航菜单区域 */}
         <nav className="space-y-1 flex-1 overflow-y-auto scrollbar-none">
+          {/* 首页入口 */}
           <NavLink
             to="/"
             className={({ isActive }) => cn(
@@ -160,14 +183,15 @@ export function Sidebar() {
             {!isCollapsed && <span>首页</span>}
           </NavLink>
 
+          {/* 学科列表标题及排序控件 */}
           {!isCollapsed && (
             <div className="pt-4 pb-2 px-3 text-xs font-semibold text-muted-foreground/70 uppercase tracking-wider flex justify-between items-center whitespace-nowrap overflow-hidden">
               <span>学科列表</span>
               <div className="flex items-center gap-0.5">
-                <button onClick={() => setSortMode('name')} className={cn("p-0.5 rounded", sortMode === 'name' ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground")} title="名称"><SortAsc size={12} /></button>
-                <button onClick={() => setSortMode('lastAccessed')} className={cn("p-0.5 rounded", sortMode === 'lastAccessed' ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground")} title="时间"><Clock size={12} /></button>
-                <button onClick={() => setSortMode('manual')} className={cn("p-0.5 rounded", sortMode === 'manual' ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground")} title="手动"><GripVertical size={12} /></button>
-                <button onClick={() => setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')} className="p-0.5 rounded text-muted-foreground hover:text-foreground" title="升序/降序">
+                <button onClick={() => setSortMode('name')} className={cn("p-0.5 rounded", sortMode === 'name' ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground")} title="名称排序"><SortAsc size={12} /></button>
+                <button onClick={() => setSortMode('lastAccessed')} className={cn("p-0.5 rounded", sortMode === 'lastAccessed' ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground")} title="最近访问排序"><Clock size={12} /></button>
+                <button onClick={() => setSortMode('manual')} className={cn("p-0.5 rounded", sortMode === 'manual' ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground")} title="手动排序"><GripVertical size={12} /></button>
+                <button onClick={() => setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')} className="p-0.5 rounded text-muted-foreground hover:text-foreground" title="切换升/降序">
                   {sortDirection === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />}
                 </button>
               </div>
@@ -175,6 +199,7 @@ export function Sidebar() {
           )}
           {isCollapsed && <div className="h-4" />}
 
+          {/* 动态学科列表项 */}
           {subjects?.map((subject, idx) => (
             <NavLink
               key={subject.id}
@@ -195,6 +220,7 @@ export function Sidebar() {
                 })()}
                 {!isCollapsed && <span className="truncate">{subject.name}</span>}
               </div>
+              {/* 手动排序时的移动按钮 */}
               {!isCollapsed && (
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   {sortMode === 'manual' && (
@@ -208,6 +234,7 @@ export function Sidebar() {
             </NavLink>
           ))}
 
+          {/* 添加学科按钮 */}
           <button
             onClick={() => setIsAddModalOpen(true)}
             className={cn(
@@ -221,6 +248,7 @@ export function Sidebar() {
           </button>
         </nav>
 
+        {/* 底部固定功能区域 */}
         <div className="border-t dark:border-zinc-800/50 pt-4 space-y-1">
           <NavLink
             to="/ai-chat"
@@ -259,11 +287,12 @@ export function Sidebar() {
             {!isCollapsed && "设置"}
           </NavLink>
 
+          {/* 底部控件：折叠切换与主题切换 */}
           <div className={cn("flex items-center justify-between px-3 py-2 mt-2", isCollapsed && "justify-center px-0 flex-col gap-2")}>
             <button
               onClick={toggleCollapse}
               className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-md transition-colors"
-              title={isCollapsed ? "展开" : "收起侧边栏"}
+              title={isCollapsed ? "展开侧边栏" : "收起侧边栏"}
             >
               <GripVertical size={20} className={cn("transition-transform", isCollapsed && "rotate-90")} />
             </button>
@@ -271,6 +300,8 @@ export function Sidebar() {
           </div>
         </div>
       </div>
+
+      {/* 添加学科模态框 */}
       <Modal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
@@ -319,7 +350,6 @@ export function Sidebar() {
           </div>
         </div>
       </Modal>
-
     </>
   );
 }

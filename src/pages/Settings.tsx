@@ -8,7 +8,10 @@ import { Modal } from '@/components/ui/Modal';
 import { db } from '@/db';
 import { cn } from '@/lib/utils';
 
-// Helper Component for the Selection Tree
+/**
+ * 数据选择树组件
+ * 用于在导入/导出时以树状结构展示并选择学科及其关联的实体数据（思维导图、题库、笔记等）。
+ */
 function DataSelectionTree({ 
   data, 
   selectedSubjectIds, 
@@ -188,6 +191,17 @@ function DataSelectionTree({
   );
 }
 
+/**
+ * 用户设置页面组件
+ * 
+ * 核心逻辑：
+ * 1. 用户偏好设置：管理 AI 服务提供商、接口地址 (Base URL)、API Key 以及模型选择。支持高级参数（Max Tokens, Temperature）配置。
+ * 2. 数据导出与备份：集成 DataManager，支持按学科和实体粒度选择数据并导出为 JSON 备份文件。
+ * 3. 数据导入与恢复：支持解析备份文件并覆盖或合并至本地数据库，包含导入前的预览与选择逻辑。
+ * 4. 环境变量覆盖机制：应用配置优先从本地数据库读取，若数据库为空则使用系统默认预设值。
+ * 
+ * @returns {JSX.Element} Settings 页面组件
+ */
 export function Settings() {
   const { settings, loadSettings, updateSettings, isLoading } = useAIStore();
   const [localSettings, setLocalSettings] = useState(settings);

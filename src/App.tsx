@@ -8,6 +8,18 @@ import { Docs } from '@/pages/Docs';
 import { DialogProvider } from '@/components/ui/DialogProvider';
 import { useStudyLogger } from '@/hooks/useStudyLogger';
 
+/**
+ * 应用根组件
+ * 
+ * 核心逻辑：
+ * 1. 路由体系结构：使用 React Router 的 HashRouter 实现单页应用路由，通过 Layout 组件进行页面嵌套布局。
+ * 2. 全局 Context Providers 层级组织：
+ *    - DialogProvider: 提供全局模态框和通知服务，位于最外层以确保其覆盖所有 UI。
+ *    - HashRouter: 路由上下文，负责解析 URL 并分发给对应的页面组件。
+ *    - useStudyLogger: 全局钩子，用于初始化和监听用户学习行为日志。
+ * 
+ * @returns {JSX.Element} App 根组件
+ */
 function App() {
   useStudyLogger();
 

@@ -1,11 +1,11 @@
 /**
- * StudyStudio Unified Prompt Configuration File
+ * StudyStudio 统一的提示词配置文件
  * 
- * This file contains all AI-related prompt configurations, including:
- * - System prompts (PLAN mode, ACT mode)
- * - Content generation prompts
- * - Tool usage guidelines
- * - Output length configurations
+ * 此文件包含所有与 AI 对话和生成相关的提示词配置，包括：
+ * - 系统预设提示词 (PLAN 规划模式, ACT 执行模式)
+ * - 各类知识内容的专用生成提示词
+ * - 工具使用的最佳实践指南
+ * - 接口调用的基础参数配置 (如长度、温度等)
  */
 
 // ============================================
@@ -13,24 +13,34 @@
 // ============================================
 
 /**
- * Default max_tokens parameter
- * Lowered to 4096 to avoid 429 RESOURCE_EXHAUSTED errors on standard API quotas.
+ * 默认的单次请求最大生成 Token 数量限制。
+ * 为了兼容主流模型供应商的免费或基础额度，避免触发 429 资源耗尽错误，
+ * 此处将理论上限调整为 8192，确保能够生成足够深度的长篇笔记和多层级导图。
  */
 export const DEFAULT_MAX_TOKENS = 8192;
 
 /**
- * Temperature Configuration
+ * 针对不同生成场景预设的模型采样温度 (Temperature)。
+ * 控制生成结果的随机性和创造力。
  */
 export const TEMPERATURE = {
-  creative: 0.9,      // Creative tasks
-  balanced: 0.7,      // Balanced mode
-  precise: 0.3,       // Precise mode
+  /** 创意模式：适合头脑风暴、发散性思维（如生成学习计划） */
+  creative: 0.9,      
+  /** 平衡模式：适合大多数日常问答和内容生成（如编写笔记、创建导图节点） */
+  balanced: 0.7,      
+  /** 精准模式：适合逻辑严密、事实性强的任务（如提取结构化数据、代码生成） */
+  precise: 0.3,       
 };
 
 // ============================================
 // Base System Prompt
 // ============================================
 
+/**
+ * AI 智能体的全局基础系统提示词（System Prompt）。
+ * 确立了 AI 的身份（StudyStudio 学习助手）、核心能力范围以及严格遵守的工具使用纪律。
+ * 特别强调了必须通过工具来完成实质性的数据持久化，禁止在文本中“假装”完成了任务。
+ */
 const BASE_SYSTEM_PROMPT = `You are the StudyStudio Intelligent Learning Assistant Agent, a powerful AI assistant for learning and knowledge management.
 
 ## Core Capabilities
@@ -65,6 +75,11 @@ You have a complete set of tools to operate on user data:
 // PLAN Mode (Deep Planning Mode) Prompt
 // ============================================
 
+/**
+ * 计划模式（PLAN Mode）的系统提示词补充。
+ * 强制模型在执行具体操作前，必须进行深度的需求分析、目标拆解和资源评估。
+ * 规定了严格的工作流（思考 -> 呈现计划 -> 等待用户确认 -> 正式执行），适用于复杂的宏大目标构建。
+ */
 export const PLAN_MODE_PROMPT = `${BASE_SYSTEM_PROMPT}
 
 ## PLAN MODE
@@ -103,6 +118,11 @@ Once you have received user confirmation, you MUST call the \`start_execution\` 
 // ACT Mode (Fast Execution Mode) Prompt
 // ============================================
 
+/**
+ * 执行模式（ACT Mode）的系统提示词补充。
+ * 允许模型跳过冗长的计划汇报阶段，直接针对用户的明确指令调用相应的工具。
+ * 适用于简单的单次操作（如“帮我建个笔记”、“在这个导图下加几个节点”）。
+ */
 export const ACT_MODE_PROMPT = `${BASE_SYSTEM_PROMPT}
 
 ## ACT MODE
@@ -133,9 +153,15 @@ Remember: Use tools to actually create content, do not just describe it in text!
 // Content Generation Prompt Templates
 // ============================================
 
+/**
+ * 独立的内容生成提示词模板集合。
+ * 用于非 Agent 会话流程下的独立快捷生成操作（如一键生成导图、一键生成题库）。
+ * 每个模板都严格规定了返回格式（通常是纯净的 JSON 数组或对象），以便于前端直接解析并入库。
+ */
 export const CONTENT_GENERATION_PROMPTS = {
   /**
-   * Mindmap generation prompt
+   * 思维导图生成提示词。
+   * 要求模型围绕给定主题，构建多层级、广覆盖的节点树，并返回规定结构的 JSON 数组。
    */
   mindmap: (topic: string) => `Please create a detailed and comprehensive mindmap for the topic "${topic}".
 
@@ -163,7 +189,8 @@ Example: [{"id": "root", ...}, {"id": "n1", ...}]
 Begin generation:`,
 
   /**
-   * Quiz generation prompt
+   * 题库生成提示词。
+   * 要求模型根据主题生成多种题型混合的题库数据，并明确了单选题、多选题、判断题等题型的答案标准格式。
    */
   quiz: (subject: string, topic: string, count: number = 20) => `Please generate a complete and extensive practice quiz for the topic "${topic}" in the subject "${subject}".
 
@@ -199,7 +226,8 @@ Return a raw JSON object containing a "questions" array.
 Begin generating as many questions as possible:`,
 
   /**
-   * Note generation prompt
+   * 学习笔记生成提示词。
+   * 要求模型以高深度的学术视角撰写长篇幅的 Markdown 笔记，包含概念解析、应用案例及总结。
    */
   note: (subject: string, topic: string) => `Please write a detailed and comprehensive study note for the topic "${topic}" in the subject "${subject}".
 
@@ -233,7 +261,8 @@ Output the note content directly in Markdown format.
 Begin writing:`,
 
   /**
-   * Task list generation prompt
+   * 学习任务列表生成提示词。
+   * 引导模型将宏大目标拆解为可落地的具体学习阶段及子任务，返回符合任务板逻辑的 JSON 数据。
    */
   tasks: (goal: string) => `Please generate a detailed and comprehensive task list for the goal "${goal}".
 
@@ -253,7 +282,8 @@ Begin generation of an exhaustive task list:
 Begin generation:`,
 
   /**
-   * Full subject content generation prompt
+   * 全科知识包一键生成提示词。
+   * 用于快速初始化一个学科，要求模型连贯生成导图、多篇笔记、题库和任务板等全套资料。
    */
   fullSubject: (subjectName: string) => `Please generate a complete set of study materials for the subject "${subjectName}".
 
@@ -293,6 +323,11 @@ Now, please:
 // Tool Usage Guide Prompt
 // ============================================
 
+/**
+ * 工具使用的最佳实践指南。
+ * 注入到 System Prompt 中，为模型提供各个工具的参数示例和数据结构规范，
+ * 降低模型在调用函数（Function Calling）时因参数格式错误而导致的失败率。
+ */
 export const TOOL_USAGE_GUIDE = `
 ## Tool Usage Best Practices
 
@@ -355,6 +390,11 @@ export const TOOL_USAGE_GUIDE = `
 // Context Injection Prompt
 // ============================================
 
+/**
+ * 界面上下文注入提示词头。
+ * 告诉大模型后续附带的信息是用户当前的屏幕内容，用于解决“代词消解”问题，
+ * 使模型能听懂诸如“总结一下当前内容”的指令。
+ */
 export const CONTEXT_INJECTION_PROMPT = `
 ## User Context
 **IMPORTANT**: The user may be viewing or editing specific content. When the user refers to "this", "current", or "here", please refer to the following context information.
@@ -370,14 +410,23 @@ Context information is injected dynamically. Please use it to:
 // ============================================
 
 /**
- * Get the full system prompt
+ * 获取系统基础 Prompt，根据模式不同返回不同的规划或执行指令。
+ *
+ * @param mode - 运行模式，'plan' 倾向于深度思考与任务拆解，'act' 倾向于直接调用工具执行
+ * @returns 对应模式的完整系统提示词文本
  */
 export function getSystemPrompt(mode: 'plan' | 'act'): string {
   return mode === 'plan' ? PLAN_MODE_PROMPT : ACT_MODE_PROMPT;
 }
 
 /**
- * Get the system prompt with context
+ * 组装带有上下文环境的完整 System Prompt。
+ * 会将工具使用指南、页面当前显示的实体状态等上下文信息动态注入到基础 Prompt 中，
+ * 使大模型能够准确理解用户口语化的指代词（如“这个导图”、“当前笔记”）。
+ *
+ * @param mode - 当前的运行模式 ('plan' 或 'act')
+ * @param contextPrompt - 界面上下文的状态描述字符串（由外部拼装传入）
+ * @returns 拼接了上下文信息和工具指南的最终系统提示词
  */
 export function getSystemPromptWithContext(
   mode: 'plan' | 'act',
@@ -385,7 +434,7 @@ export function getSystemPromptWithContext(
 ): string {
   let prompt = getSystemPrompt(mode);
 
-  // Inject tool usage guidelines into all prompts
+  // 始终将工具规范指南注入到提示词中
   prompt += `\n\n${TOOL_USAGE_GUIDE}\n`;
 
   if (contextPrompt) {
@@ -397,7 +446,10 @@ export function getSystemPromptWithContext(
 }
 
 /**
- * Get default API request configuration
+ * 获取 AI 接口调用的默认基础配置。
+ * 包含平衡的随机性参数和全局的 token 上限。
+ *
+ * @returns 默认的请求配置对象
  */
 export function getDefaultAPIConfig() {
   return {

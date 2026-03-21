@@ -4,6 +4,18 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useAIStore } from '@/store/useAIStore';
 import { useDialog } from '@/components/ui/DialogProvider';
 
+/**
+ * AI 聊天历史记录页面组件
+ * 
+ * 核心逻辑：
+ * 1. 布局适配：作为独立的对话历史管理页面，提供响应式的网格布局展示所有 Agent 任务记录。
+ * 2. 会话状态管理：
+ *    - 使用 Dexie.js (useLiveQuery) 实时监听数据库中的聊天会话。
+ *    - 支持点击会话后通过全局状态 (useAIStore) 唤起浮动窗口继续对话。
+ *    - 提供会话及其关联消息的清理/删除功能。
+ * 
+ * @returns {JSX.Element} AIChat 页面组件
+ */
 export function AIChat() {
   const { setGlobalSessionId, setFloatingWindowOpen } = useAIStore();
   const { showAlert, showConfirm } = useDialog();
@@ -12,11 +24,20 @@ export function AIChat() {
     return await db.chatSessions.reverse().sortBy('updatedAt');
   });
 
+  /**
+   * 处理会话点击事件，将选中的会话设置为全局活跃状态并打开 AI 助手
+   * @param {ChatSession} session - 点击的会话对象
+   */
   const handleSessionClick = (session: ChatSession) => {
     setGlobalSessionId(session.id);
     setFloatingWindowOpen(true);
   };
 
+  /**
+   * 删除指定的会话及其所有关联消息
+   * @param {React.MouseEvent} e - 点击事件对象，用于阻止冒泡
+   * @param {string} id - 要删除的会话 ID
+   */
   const deleteSession = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     const confirmed = await showConfirm('确定要删除这段对话吗？', { title: '删除确认', confirmText: '删除', type: 'confirm' });
@@ -27,6 +48,10 @@ export function AIChat() {
     }
   };
 
+  /**
+   * 渲染单个会话列表项
+   * @param {ChatSession} session - 会话数据
+   */
   const renderSessionItem = (session: ChatSession) => (
     <div
       key={session.id}

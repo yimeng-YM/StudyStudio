@@ -25,10 +25,12 @@ interface UseUIContextOptions {
 }
 
 /**
- * 用于管理 AI 界面上下文的 hook
- * 
+ * 动态向全局 AI 状态仓库注入上下文信息的自定义 Hook
+ * 会根据入参生成唯一的 contextId 和依赖对比串，并在组件卸载时自动清理
+ *
+ * @param options - 包含路由位置、学科关联、实体信息及自定义回调的配置项
+ *
  * @example
- * // 在思维导图编辑器中使用
  * useUIContext({
  *   location: 'mindmap_editor',
  *   subjectId: subject.id,
@@ -119,7 +121,11 @@ export function useUIContext(options: UseUIContextOptions) {
 }
 
 /**
- * 创建学科级别上下文的快捷 hook
+ * 便捷 Hook：为特定学科详情视图注册上下文
+ *
+ * @param subjectId - 学科的唯一标识
+ * @param subjectName - 学科的名称
+ * @param activeTab - 当前激活的功能模块标签页标识
  */
 export function useSubjectContext(
   subjectId: string | undefined,
@@ -136,7 +142,14 @@ export function useSubjectContext(
 }
 
 /**
- * 创建笔记模块上下文的快捷 hook
+ * 便捷 Hook：为知识笔记模块或具体笔记编辑器注册上下文
+ * 动态判断是处在列表浏览还是正在编辑单篇笔记状态
+ *
+ * @param subjectId - 关联的学科 ID
+ * @param subjectName - 关联的学科名称
+ * @param noteId - 具体打开的笔记 ID（可选）
+ * @param noteTitle - 具体打开的笔记标题（可选）
+ * @param isEditing - 是否处于编辑模式（可选）
  */
 export function useNotesContext(
   subjectId: string,
@@ -176,7 +189,14 @@ export function useNotesContext(
 }
 
 /**
- * 创建思维导图上下文的快捷 hook
+ * 便捷 Hook：为思维导图编辑器注册上下文
+ * 能向 AI 反馈导图节点数量和编辑状态
+ *
+ * @param subjectId - 关联的学科 ID
+ * @param subjectName - 关联的学科名称
+ * @param mindmapId - 导图 ID（可选）
+ * @param mindmapTitle - 导图名称（可选）
+ * @param nodeCount - 导图当前包含的节点总数（可选）
  */
 export function useMindMapContext(
   subjectId: string,
@@ -217,7 +237,14 @@ export function useMindMapContext(
 }
 
 /**
- * 创建题库上下文的快捷 hook
+ * 便捷 Hook：为题库模块注册上下文
+ * 提供 AI 当前所在题库的试题总量信息
+ *
+ * @param subjectId - 关联的学科 ID
+ * @param subjectName - 关联的学科名称
+ * @param quizBankId - 题库 ID（可选）
+ * @param quizBankTitle - 题库名称（可选）
+ * @param questionCount - 题库题目总数（可选）
  */
 export function useQuizContext(
   subjectId: string,
@@ -258,7 +285,8 @@ export function useQuizContext(
 }
 
 /**
- * 创建仪表盘上下文的快捷 hook
+ * 便捷 Hook：为全局首页仪表盘注册上下文
+ * 指示 AI 用户正在查看整体概览
  */
 export function useDashboardContext() {
   const getCustomContext = useMemo(() => {
@@ -273,7 +301,10 @@ export function useDashboardContext() {
 }
 
 /**
- * 创建任务模块上下文的快捷 hook
+ * 便捷 Hook：为特定学科下的任务清单模块注册上下文
+ *
+ * @param subjectId - 关联的学科 ID
+ * @param subjectName - 关联的学科名称
  */
 export function useTasksContext(
   subjectId: string,

@@ -13,10 +13,23 @@ import { useDialog } from '@/components/ui/DialogProvider';
 import { MessageRenderer } from '@/components/MessageRenderer';
 import { useUIContext } from '@/hooks/useUIContext';
 
+/**
+ * 测验模块组件属性
+ * @property {string} subjectId - 关联的学科ID
+ */
 interface QuizModuleProps {
   subjectId: string;
 }
 
+/**
+ * 题目对象结构
+ * @property {string} id - 题目唯一标识
+ * @property {'single_choice' | 'multiple_choice' | 'fill_in_blank' | 'true_false' | 'short_answer' | 'essay'} type - 题目类型
+ * @property {string} text - 题目题干内容（支持 Markdown）
+ * @property {string[]} [options] - 选择题选项列表
+ * @property {any} [answer] - 正确答案
+ * @property {string} [explanation] - 题目解析内容
+ */
 export interface Question {
   id: string;
   type: 'single_choice' | 'multiple_choice' | 'fill_in_blank' | 'true_false' | 'short_answer' | 'essay';
@@ -30,6 +43,11 @@ interface QuizContent {
   questions: Question[];
 }
 
+/**
+ * 获取题目类型的中文标签
+ * @param {string} type - 题目类型代码
+ * @returns {string} 中文标签名称
+ */
 function getQuestionTypeLabel(type: string) {
   const map: Record<string, string> = {
     single_choice: '单选',
@@ -42,6 +60,12 @@ function getQuestionTypeLabel(type: string) {
   return map[type] || type;
 }
 
+/**
+ * 将各种格式的答案归一化为字符串索引数组
+ * 处理字母(A,B,C)到索引(0,1,2)的转换，支持逗号分隔或数组格式
+ * @param {any} answer - 原始答案数据
+ * @returns {string[]} 归一化后的索引字符串数组
+ */
 function normalizeAnswerToIndexArray(answer: any): string[] {
   if (answer === null || answer === undefined) return [];
   
@@ -66,6 +90,12 @@ function normalizeAnswerToIndexArray(answer: any): string[] {
   });
 }
 
+/**
+ * 格式化答案用于前端展示
+ * @param {any} answer - 原始答案
+ * @param {Question} question - 题目对象
+ * @returns {string} 格式化后的展示文本
+ */
 function formatAnswer(answer: any, question: Question) {
   if (question.type === 'single_choice' || question.type === 'multiple_choice') {
     const indices = normalizeAnswerToIndexArray(answer);
@@ -246,11 +276,19 @@ function MarkdownEditor({ value, onChange, placeholder, minHeight = "80px", auto
   );
 }
 
+/**
+ * 题目展示与答题交互组件
+ * 处理不同题型的渲染、用户输入提交以及自动评分逻辑
+ */
 function QuestionViewer({ question, index, onEdit, onDelete }: { question: Question, index: number, onEdit: () => void, onDelete: () => void }) {
+  /** @type {[any, Function]} 用户填写的答案状态 */
   const [userAnswer, setUserAnswer] = useState<any>(question.type === 'multiple_choice' ? [] : '');
+  /** @type {[boolean, Function]} 题目是否已提交批改 */
   const [isSubmitted, setIsSubmitted] = useState(false);
 
-  // Reset state when question changes (e.g. reordering)
+  /**
+   * 当题目切换（如排序变更）时，重置当前答题状态
+   */
   useEffect(() => {
     setUserAnswer(question.type === 'multiple_choice' ? [] : '');
     setIsSubmitted(false);
@@ -262,16 +300,19 @@ function QuestionViewer({ question, index, onEdit, onDelete }: { question: Quest
     setUserAnswer(question.type === 'multiple_choice' ? [] : '');
   };
 
+  /** 判断是否为客观题（支持自动判分） */
   const isObjective = ['single_choice', 'multiple_choice', 'true_false'].includes(question.type);
   
-  // Logic to determine correctness for objective questions
+  /** 
+   * 核心判分逻辑：
+   * 将用户答案和标准答案同时归一化为排序后的索引数组进行对比
+   */
   let isCorrect = false;
   if (isSubmitted && isObjective) {
     const normalizedUser = normalizeAnswerToIndexArray(userAnswer).sort();
     const normalizedCorrect = normalizeAnswerToIndexArray(question.answer).sort();
     
     if (question.type === 'single_choice' || question.type === 'true_false') {
-      // For single/TF, just check if the first item matches (allowing for slight AI variations)
       isCorrect = normalizedUser.length > 0 && normalizedCorrect.length > 0 && normalizedUser[0] === normalizedCorrect[0];
     } else if (question.type === 'multiple_choice') {
       isCorrect = normalizedUser.length === normalizedCorrect.length && 
@@ -465,12 +506,23 @@ function QuestionViewer({ question, index, onEdit, onDelete }: { question: Quest
   );
 }
 
+/**
+ * 题目编辑器组件
+ * 提供题干、选项、答案及解析的表单输入
+ */
 function QuestionEditor({ question, onSave, onCancel }: { question: Question, onSave: (u: Partial<Question>) => void, onCancel: () => void }) {
+  /** @type {[string, Function]} 题干内容状态 */
   const [text, setText] = useState(question.text);
+  /** @type {[string[], Function]} 题目选项状态 */
   const [options, setOptions] = useState<string[]>(question.options || []);
+  /** @type {[any, Function]} 正确答案状态 */
   const [answer, setAnswer] = useState<any>(question.answer);
+  /** @type {[string, Function]} 题目解析状态 */
   const [explanation, setExplanation] = useState(question.explanation || '');
 
+  /**
+   * 提交编辑更改，将最新状态传回父级保存
+   */
   const handleSave = () => {
     onSave({ text, options, answer, explanation });
   };

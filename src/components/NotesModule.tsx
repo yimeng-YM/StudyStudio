@@ -14,6 +14,12 @@ import { useHistory } from '@/hooks/useHistory';
 import { useAIStore } from '@/store/useAIStore';
 import { useNotesContext } from '@/hooks/useUIContext';
 
+/**
+ * 笔记模块组件属性
+ * @property {string} subjectId - 关联的学科ID
+ * @property {string | null} [initialNoteId] - 初始选中的笔记ID
+ * @property {string | null} [initialSessionId] - 初始AI会话ID
+ */
 interface NotesModuleProps {
   subjectId: string;
   initialNoteId?: string | null;
@@ -21,14 +27,16 @@ interface NotesModuleProps {
 }
 
 export function NotesModule({ subjectId, initialNoteId, initialSessionId }: NotesModuleProps) {
+  /** @type {['name' | 'lastAccessed' | 'manual', Function]} 笔记排序模式 */
   const [sortMode, setSortMode] = useState<'name' | 'lastAccessed' | 'manual'>(() =>
     (localStorage.getItem('notesSortMode') as any) || 'lastAccessed');
+  /** @type {['asc' | 'desc', Function]} 笔记排序方向 */
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>(() =>
     (localStorage.getItem('notesSortDirection') as any) || 'desc');
 
   const { setFloatingWindowOpen, setGlobalSessionId } = useAIStore();
 
-  // 获取学科信息
+  /** 获取当前学科信息 */
   const subject = useLiveQuery(() => db.subjects.get(subjectId), [subjectId]);
 
   useEffect(() => {
@@ -69,10 +77,12 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
     });
   }, [subjectId, sortMode, sortDirection]);
 
+  /** @type {[Entity | null, Function]} 当前选中的笔记实体 */
   const [selectedNote, setSelectedNote] = useState<Entity | null>(null);
+  /** @type {[boolean, Function]} 是否处于编辑模式 */
   const [isEditing, setIsEditing] = useState(false);
 
-  // Undo/Redo Hook
+  /** 笔记内容撤销/重做Hook状态管理 */
   const {
     state: editContent,
     set: setEditContent,
@@ -83,6 +93,7 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
     reset: resetEditContent
   } = useHistory('');
 
+  /** @type {[string, Function]} 当前编辑的笔记标题 */
   const [editTitle, setEditTitle] = useState('');
   const { showConfirm } = useDialog();
 
@@ -93,9 +104,13 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
     }
   }, [initialNoteId, initialSessionId]);
 
+  /**
+   * 监听笔记列表或初始参数变化，更新选中笔记状态
+   * 优先级1: 若提供了 initialNoteId 且有效，则切换至该笔记
+   * 优先级2: 自动同步数据库中已更新的当前选中笔记内容（非编辑状态下）
+   */
   useEffect(() => {
     if (notes) {
-      // Priority 1: Use initialNoteId if provided and changing
       if (initialNoteId) {
         const target = notes.find(n => n.id === initialNoteId);
         if (target && target.id !== selectedNote?.id) {
@@ -110,7 +125,6 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
         }
       }
 
-      // Priority 2: Sync currently selected note if it changed in DB
       if (selectedNote) {
         const current = notes.find(n => n.id === selectedNote.id);
         if (current && current.updatedAt > selectedNote.updatedAt && !isEditing) {
@@ -122,6 +136,9 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
     }
   }, [initialNoteId, notes, selectedNote?.id, selectedNote?.updatedAt, isEditing, resetEditContent, initialSessionId, setGlobalSessionId]);
 
+  /**
+   * 创建新笔记记录并进入编辑模式
+   */
   const createNote = async () => {
     const id = crypto.randomUUID();
     const now = Date.now();
@@ -143,6 +160,12 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
     setIsEditing(true);
   };
 
+  /**
+   * 移动笔记在列表中的排序位置（仅在 manual 模式下有效）
+   * @param {React.MouseEvent} e - 鼠标事件
+   * @param {string} id - 笔记ID
+   * @param {'up' | 'down'} direction - 移动方向
+   */
   const moveNote = async (e: React.MouseEvent, id: string, direction: 'up' | 'down') => {
     e.preventDefault();
     e.stopPropagation();
@@ -163,6 +186,9 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
     });
   };
 
+  /**
+   * 保存当前编辑的笔记内容和标题至数据库
+   */
   const saveNote = async () => {
     if (!selectedNote) return;
     await db.entities.update(selectedNote.id, {
@@ -175,6 +201,10 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
     setIsEditing(false);
   };
 
+  /**
+   * 删除指定的笔记记录
+   * @param {string} id - 笔记ID
+   */
   const deleteNote = async (id: string) => {
     const confirmed = await showConfirm("确认删除此笔记？", { title: "删除笔记" });
     if (confirmed) {
@@ -191,6 +221,12 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  /**
+   * 往编辑器光标处插入 Markdown 语法片段
+   * @param {string} prefix - 前缀字符
+   * @param {string} [suffix=''] - 后缀字符
+   * @param {boolean} [blockMode=false] - 是否为块级元素（需换行）
+   */
   const insertMarkdown = (prefix: string, suffix: string = '', blockMode: boolean = false) => {
     if (!textAreaRef.current) return;
 
@@ -231,6 +267,11 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
     }, 0);
   };
 
+  /**
+   * 处理本地图片上传并插入到笔记中
+   * 转换图片为 Base64 格式并存入数据库 attachments 表
+   * @param {React.ChangeEvent<HTMLInputElement>} e - 文件上传事件
+   */
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;

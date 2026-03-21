@@ -35,7 +35,19 @@ interface DocCategory {
   sections: DocSection[];
 }
 
+/**
+ * 使用文档页面组件
+ * 采用侧边栏分类导航 + 右侧平滑滚动的内容布局。
+ * 核心逻辑：
+ * 1. 结构化管理文档内容（分类 -> 章节）。
+ * 2. 基于 ID 的平滑滚动定位。
+ * 3. 响应式布局与深色模式适配。
+ */
 export const Docs = () => {
+  /**
+   * 文档数据结构定义
+   * 包含基础入门、核心功能、进阶功能三大模块
+   */
   const categories: DocCategory[] = [
     {
       id: 'getting-started',
@@ -313,9 +325,19 @@ export const Docs = () => {
     }
   ];
 
+  /** 当前处于激活状态（可见）的章节 ID，用于侧边栏高亮 */
   const [activeSection, setActiveSection] = useState('intro');
+  /** 内容滚动容器的引用，用于手动控制滚动逻辑 */
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
+  /**
+   * 滚动至指定章节
+   * 逻辑：
+   * 1. 更新 activeSection 状态同步侧边栏。
+   * 2. 通过 DOM ID 查找目标元素。
+   * 3. 使用原生 scrollIntoView 实现平滑滚动效果。
+   * @param {string} id - 章节 ID
+   */
   const scrollToSection = (id: string) => {
     setActiveSection(id);
     const element = document.getElementById(id);
@@ -324,6 +346,10 @@ export const Docs = () => {
     }
   };
 
+  /**
+   * 回到页面顶部
+   * 直接操作滚动容器的 scrollTop
+   */
   const scrollToTop = () => {
     if (scrollContainerRef.current) {
       scrollContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
