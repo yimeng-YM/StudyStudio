@@ -236,7 +236,7 @@ IMPORTANT: Always respond in Chinese.
       ...currentMessages
     ];
 
-    let aiMessage: Message = { role: 'assistant', content: '', tool_calls: [] };
+    let aiMessage: Message = { role: 'assistant', content: '' };
     
     setMessages(prev => [...prev, aiMessage]);
     setStatus('AI 正在思考...');
@@ -275,16 +275,40 @@ IMPORTANT: Always respond in Chinese.
       });
     };
 
+    const activeTools = mode === 'act' 
+      ? ToolDefinitions.filter(t => t.function.name !== 'present_plan' && t.function.name !== 'start_execution')
+      : ToolDefinitions;
+
     await streamAICompletion(
       messagesWithSystem, 
       settings, 
       handleChunk, 
-      ToolDefinitions, 
+      activeTools, 
       handleToolCallChunk,
       { maxTokens: DEFAULT_MAX_TOKENS }
     );
     
     setStatus('');
+
+    // 冗余清理：处理某些模型（如 Gemini）在触发工具调用时，会将参数 JSON 误输出到 content 中的情况
+    if (typeof aiMessage.content === 'string' && aiMessage.tool_calls && aiMessage.tool_calls.length > 0) {
+      // 如果内容以 { 开头并以 } 结尾（可能带换行），且长度较长，通常是冗余的 JSON
+      const cleanedContent = aiMessage.content.replace(/^\{[\s\S]*?\}\s*/, '').trim();
+      if (cleanedContent !== aiMessage.content) {
+        aiMessage.content = cleanedContent;
+        setMessages(prev => {
+          const newArr = [...prev];
+          const lastIdx = newArr.findIndex(m => m === aiMessage);
+          if (lastIdx !== -1) {
+            newArr[lastIdx] = { ...aiMessage };
+          } else {
+            newArr[newArr.length - 1] = { ...aiMessage };
+          }
+          return newArr;
+        });
+      }
+    }
+
     await saveMessage(aiMessage, activeSessionId);
 
     if (aiMessage.tool_calls && aiMessage.tool_calls.length > 0) {

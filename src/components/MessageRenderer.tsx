@@ -73,7 +73,9 @@ const TOOL_NAMES: Record<string, string> = {
   'create_taskboard': '创建任务板',
   'update_taskboard': '更新任务板',
   'codebase_search': '代码搜索',
-  'apply_diff': '应用代码差异'
+  'apply_diff': '应用代码差异',
+  'present_plan': '规划建议',
+  'start_execution': '进入执行'
 };
 
 /**
@@ -98,6 +100,8 @@ const getToolDescription = (name: string, args: string) => {
       case 'create_quiz': return `创建测验: ${parsed.title}`;
       case 'update_quiz': return `更新测验: ${parsed.title || (parsed.entityId ? parsed.entityId.slice(0, 8) + '...' : '')}`;
       case 'apply_diff': return `应用差异: ${parsed.path}`;
+      case 'present_plan': return `规划方案已准备就绪`;
+      case 'start_execution': return `正在初始化执行环境`;
       default: return `${TOOL_NAMES[name] || name}`;
     }
   } catch (e) {
@@ -108,19 +112,45 @@ const getToolDescription = (name: string, args: string) => {
 /**
  * 格式化工具参数以便在预览界面显示
  */
-function formatToolArgs(args: string): string {
+function formatToolArgs(args: string, name: string): string {
   try {
     const parsed = JSON.parse(args);
+    
+    // 针对不同工具返回更简洁的预览
+    switch (name) {
+      case 'present_plan':
+        return parsed.plan_summary || '查看详细任务规划...';
+      case 'create_mindmap':
+      case 'update_mindmap':
+        return `导图标题: ${parsed.title || '未命名'} (${parsed.content?.nodes?.length || 0} 个节点)`;
+      case 'add_mindmap_elements':
+        return `添加节点: ${parsed.nodes?.length || 0}, 连线: ${parsed.edges?.length || 0}`;
+      case 'create_note':
+      case 'update_note':
+        return `笔记标题: ${parsed.title || '未命名'} (${(parsed.content || '').length} 字符)`;
+      case 'create_quiz':
+      case 'update_quiz':
+        return `测验标题: ${parsed.title || '未命名'} (${parsed.content?.questions?.length || 0} 道题目)`;
+      case 'create_taskboard':
+      case 'update_taskboard':
+        return `任务板标题: ${parsed.title || '未命名'} (${parsed.content?.nodes?.length || 0} 个阶段)`;
+      case 'execute_command':
+        return `指令: ${parsed.command}`;
+      case 'read_file':
+      case 'write_to_file':
+        return `路径: ${parsed.path}`;
+    }
+
     if (parsed.content) {
-      if (typeof parsed.content === 'string') return parsed.content;
-      return JSON.stringify(parsed.content, null, 2);
+      if (typeof parsed.content === 'string') return parsed.content.slice(0, 100) + (parsed.content.length > 100 ? '...' : '');
+      if (parsed.content.nodes) return `包含 ${parsed.content.nodes.length} 个节点`;
+      return JSON.stringify(parsed.content).slice(0, 100);
     }
-    if (parsed.nodes || parsed.edges) {
-      return `Nodes: ${parsed.nodes?.length || 0}, Edges: ${parsed.edges?.length || 0}`;
-    }
-    return JSON.stringify(parsed, null, 2);
+    
+    const str = JSON.stringify(parsed);
+    return str.length > 100 ? str.slice(0, 100) + '...' : str;
   } catch (e) {
-    return args;
+    return args.slice(0, 100);
   }
 }
 
@@ -133,7 +163,13 @@ export function ToolCallRenderer({ toolCalls, results = {} }: { toolCalls: ToolC
   const isDark = useIsDark();
 
   const isEditable = (name: string) => {
-    return name.startsWith('create_') || name.startsWith('update_') || name === 'apply_diff' || name === 'write_to_file' || name === 'add_mindmap_elements';
+    return name.startsWith('create_') || 
+           name.startsWith('update_') || 
+           name === 'apply_diff' || 
+           name === 'write_to_file' || 
+           name === 'add_mindmap_elements' ||
+           name === 'present_plan' ||
+           name === 'start_execution';
   };
 
   return (
@@ -160,7 +196,7 @@ export function ToolCallRenderer({ toolCalls, results = {} }: { toolCalls: ToolC
                   </span>
                   {canShowDiff && (
                     <span className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 text-[10px] text-primary font-medium">
-                      <Eye size={10} /> 查看详情
+                      <Eye size={10} /> {tc.function.name === 'present_plan' ? '查看规划详情' : '查看详情'}
                     </span>
                   )}
                 </div>
@@ -171,9 +207,14 @@ export function ToolCallRenderer({ toolCalls, results = {} }: { toolCalls: ToolC
               {isComplete && <span className="text-[10px] text-zinc-400 bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded">已完成</span>}
             </div>
             
-            {tc.function.arguments && (
+            {tc.function.arguments && tc.function.name !== 'present_plan' && (
               <div className="px-4 pb-2.5 text-[10px] text-zinc-500 dark:text-zinc-400 font-mono line-clamp-2 break-all opacity-60 border-t border-zinc-100/50 dark:border-zinc-800/50 pt-1.5 mt-0.5">
-                {formatToolArgs(tc.function.arguments)}
+                {formatToolArgs(tc.function.arguments, tc.function.name)}
+              </div>
+            )}
+            {tc.function.name === 'present_plan' && (
+              <div className="px-4 pb-2.5 text-[10px] text-primary/70 dark:text-primary/60 font-medium line-clamp-1 border-t border-zinc-100/50 dark:border-zinc-800/50 pt-1.5 mt-0.5 flex items-center gap-1">
+                <FileText size={10} /> 点击查看详细任务规划
               </div>
             )}
           </div>
@@ -188,29 +229,52 @@ export function ToolCallRenderer({ toolCalls, results = {} }: { toolCalls: ToolC
       >
         {selectedToolCall && (
           <div className="space-y-4">
-            <div className="rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-800">
-              <SyntaxHighlighter
-                style={isDark ? vscDarkPlus : prism}
-                language={selectedToolCall.function.name === 'apply_diff' ? 'diff' : 'json'}
-                PreTag="div"
-                className="!m-0 max-h-[60vh] overflow-y-auto text-xs"
-                wrapLongLines={true}
-              >
-                {(() => {
-                  try {
-                    const args = JSON.parse(selectedToolCall.function.arguments);
-                    if (selectedToolCall.function.name === 'apply_diff' && args.diff) {
-                      return args.diff;
-                    }
-                    if (args.content && typeof args.content === 'string') {
-                      return args.content;
-                    }
-                    return JSON.stringify(args, null, 2);
-                  } catch (e) {
-                    return selectedToolCall.function.arguments;
+            <div className="rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-800 p-1 bg-white dark:bg-zinc-950">
+              {(() => {
+                try {
+                  const args = JSON.parse(selectedToolCall.function.arguments);
+                  
+                  // 对于规划工具，使用 Markdown 渲染以提高可读性
+                  if (selectedToolCall.function.name === 'present_plan') {
+                    return (
+                      <div className="p-4 prose dark:prose-invert max-w-none max-h-[60vh] overflow-y-auto">
+                        <ReactMarkdown 
+                          remarkPlugins={[remarkGfm, remarkBreaks]}
+                        >
+                          {args.plan_summary || '暂无详细规划内容'}
+                        </ReactMarkdown>
+                      </div>
+                    );
                   }
-                })()}
-              </SyntaxHighlighter>
+
+                  // 其他工具使用代码高亮
+                  return (
+                    <SyntaxHighlighter
+                      style={isDark ? vscDarkPlus : prism}
+                      language={selectedToolCall.function.name === 'apply_diff' ? 'diff' : 'json'}
+                      PreTag="div"
+                      className="!m-0 max-h-[60vh] overflow-y-auto text-xs"
+                      wrapLongLines={true}
+                    >
+                      {(() => {
+                        if (selectedToolCall.function.name === 'apply_diff' && args.diff) {
+                          return args.diff;
+                        }
+                        if (args.content && typeof args.content === 'string') {
+                          return args.content;
+                        }
+                        return JSON.stringify(args, null, 2);
+                      })()}
+                    </SyntaxHighlighter>
+                  );
+                } catch (e) {
+                  return (
+                    <div className="p-4 font-mono text-xs whitespace-pre-wrap">
+                      {selectedToolCall.function.arguments}
+                    </div>
+                  );
+                }
+              })()}
             </div>
             <div className="flex justify-end">
               <button

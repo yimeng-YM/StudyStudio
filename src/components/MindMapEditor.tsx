@@ -11,11 +11,12 @@ import ReactFlow, {
   BackgroundVariant,
   Panel,
   ReactFlowProvider,
-  useReactFlow
+  useReactFlow,
+  SelectionMode
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { db, Entity } from '@/db';
-import { Plus, Target, ArrowRight, ArrowDown, GitBranch } from 'lucide-react';
+import { Plus, Target, ArrowRight, ArrowDown, ArrowUp, ArrowLeft, GitBranch, ChevronDown, Layout as LayoutIcon } from 'lucide-react';
 import { CustomNode } from './CustomNode';
 import { Modal } from './ui/Modal';
 import { useDialog } from '@/components/ui/DialogProvider';
@@ -25,6 +26,7 @@ import { ViewControls } from './ViewControls';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useMindMapContext } from '@/hooks/useUIContext';
 import * as dagre from 'dagre';
+import { cn } from '@/lib/utils';
 
 /**
  * 思维导图编辑器组件属性
@@ -53,7 +55,9 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   /** @type {[Edge[], Function, Function]} 画布连线状态管理 */
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-  const { setCenter } = useReactFlow();
+  const { setCenter, fitView } = useReactFlow();
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [showLayoutMenu, setShowLayoutMenu] = useState(false);
   /** @type {[string | null, Function]} 当前选中的思维导图记录ID */
   const [selectedMindMapId, setSelectedMindMapId] = useState<string | null>(null);
   const { showAlert, showConfirm, showPrompt } = useDialog();
@@ -184,11 +188,39 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
     }
   }, [selectedMindMapId, nodes, edges]);
 
+  // 使用 Ref 追踪最新的数据，以便在卸载时保存
+  const latestDataRef = useRef({ nodes, edges });
+  const isDirtyRef = useRef(false);
+
+  useEffect(() => {
+    latestDataRef.current = { nodes, edges };
+    isDirtyRef.current = true;
+  }, [nodes, edges]);
+
   useEffect(() => {
     if (!selectedMindMapId || !autoSave) return;
-    const timer = setTimeout(save, 2000);
+    const timer = setTimeout(() => {
+      if (isDirtyRef.current) {
+        save();
+        isDirtyRef.current = false;
+      }
+    }, 2000);
     return () => clearTimeout(timer);
   }, [nodes, edges, save, selectedMindMapId, autoSave]);
+
+  // 卸载时立即保存
+  useEffect(() => {
+    return () => {
+      if (isDirtyRef.current && selectedMindMapId) {
+        const { nodes: finalNodes, edges: finalEdges } = latestDataRef.current;
+        const now = Date.now();
+        db.entities.update(selectedMindMapId, {
+          content: { nodes: finalNodes, edges: finalEdges },
+          updatedAt: now
+        });
+      }
+    };
+  }, [selectedMindMapId]);
 
   const handleUndo = useCallback(() => {
     if (historyIndex > 0) {
@@ -504,19 +536,29 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
   }, [takeSnapshot]);
 
   /**
-   * 自动布局核心逻辑，支持水平(LR)、垂直(TB)和发散(Radial)三种布局模式
+   * 自动布局核心逻辑，支持水平(LR/RL)、垂直(TB/BT)和发散(Radial)布局模式
    * 依赖 dagre 库实现自动计算节点坐标并更新视图
-   * @param {'LR' | 'TB' | 'Radial'} direction - 布局方向
+   * @param {'LR' | 'RL' | 'TB' | 'BT' | 'Radial'} direction - 布局方向
+   * @param {string[]} [targetNodeIds] - 指定要整理的节点ID集合，若为空则整理全部
    */
-  const onLayout = useCallback((direction: 'LR' | 'TB' | 'Radial') => {
-    const doDagreLayout = (targetNodes: Node[], targetEdges: Edge[], dir: 'LR' | 'RL' | 'TB') => {
+  const onLayout = useCallback((direction: 'LR' | 'RL' | 'TB' | 'BT' | 'Radial', targetNodeIds?: string[]) => {
+    const nodesToLayout = targetNodeIds 
+      ? nodes.filter(n => targetNodeIds.includes(n.id))
+      : nodes;
+    const edgesToLayout = targetNodeIds
+      ? edges.filter(e => targetNodeIds.includes(e.source) && targetNodeIds.includes(e.target))
+      : edges;
+
+    if (nodesToLayout.length === 0) return;
+
+    const doDagreLayout = (targetNodes: Node[], targetEdges: Edge[], dir: 'LR' | 'RL' | 'TB' | 'BT') => {
       const g = new dagre.graphlib.Graph();
       g.setGraph({ 
         rankdir: dir, 
-        nodesep: (dir === 'TB' ? 100 : 50), 
-        ranksep: (dir === 'TB' ? 50 : 80),
-        marginx: 50,
-        marginy: 50
+        nodesep: (dir === 'TB' || dir === 'BT' ? 60 : 30), 
+        ranksep: (dir === 'TB' || dir === 'BT' ? 40 : 60),
+        marginx: 40,
+        marginy: 40
       });
       g.setDefaultEdgeLabel(() => ({}));
 
@@ -533,15 +575,15 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
       return g;
     };
 
-    let newNodes: Node[] = [];
-    let newEdges: Edge[] = [];
+    let newNodes: Node[] = [...nodes];
+    let newEdges: Edge[] = [...edges];
 
     if (direction === 'Radial') {
-      const roots = nodes.filter(n => !edges.some(e => e.target === n.id));
+      const roots = nodesToLayout.filter(n => !edgesToLayout.some(e => e.target === n.id));
       if (roots.length === 0) return;
 
       const root = roots[0];
-      const childrenEdges = edges.filter(e => e.source === root.id);
+      const childrenEdges = edgesToLayout.filter(e => e.source === root.id);
       const mid = Math.ceil(childrenEdges.length / 2);
       const rightEdges = childrenEdges.slice(0, mid);
       const leftEdges = childrenEdges.slice(mid);
@@ -555,9 +597,9 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
           const edge = stack.pop()!;
           subtreeEdges.push(edge);
           nodeIds.add(edge.target);
-          edges.filter(e => e.source === edge.target).forEach(e => stack.push(e));
+          edgesToLayout.filter(e => e.source === edge.target).forEach(e => stack.push(e));
         }
-        const subtreeNodes = nodes.filter(n => nodeIds.has(n.id));
+        const subtreeNodes = nodesToLayout.filter(n => nodeIds.has(n.id));
         return { nodes: subtreeNodes, edges: subtreeEdges };
       };
 
@@ -571,11 +613,11 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
       const rootPosLeft = gLeft.node(root.id);
 
       // 合并并平移左侧布局，使其根节点重合
-      const nodeMap = new Map();
+      const layoutedNodeMap = new Map();
       
       right.nodes.forEach(n => {
         const dNode = gRight.node(n.id);
-        nodeMap.set(n.id, {
+        layoutedNodeMap.set(n.id, {
           ...n,
           position: { x: dNode.x - (dNode.width || 0) / 2, y: dNode.y - 30 }
         });
@@ -585,7 +627,7 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
         if (n.id === root.id) return;
         const dNode = gLeft.node(n.id);
         // 基于右侧根节点位置平移
-        nodeMap.set(n.id, {
+        layoutedNodeMap.set(n.id, {
           ...n,
           position: { 
             x: (dNode.x - (dNode.width || 0) / 2) - (rootPosLeft.x - rootPosRight.x),
@@ -594,9 +636,16 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
         });
       });
 
-      newNodes = Array.from(nodeMap.values());
+      // 合并回主节点列表
+      const finalNodeMap = new Map(nodes.map(n => [n.id, n]));
+      layoutedNodeMap.forEach((n, id) => finalNodeMap.set(id, n));
+      newNodes = Array.from(finalNodeMap.values());
+
       newEdges = edges.map(edge => {
         const isLeft = left.edges.some(e => e.id === edge.id);
+        if (targetNodeIds && (!targetNodeIds.includes(edge.source) || !targetNodeIds.includes(edge.target))) {
+          return edge;
+        }
         return {
           ...edge,
           sourceHandle: isLeft ? 'left-s' : 'right-s',
@@ -605,9 +654,10 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
       });
 
     } else {
-      // 常规布局 (LR / TB)
-      const g = doDagreLayout(nodes, edges, direction);
-      newNodes = nodes.map((node) => {
+      // 常规布局 (LR / RL / TB / BT)
+      const g = doDagreLayout(nodesToLayout, edgesToLayout, direction);
+      
+      const layoutedNodes = nodesToLayout.map((node) => {
         const dNode = g.node(node.id);
         return {
           ...node,
@@ -615,19 +665,63 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
         };
       });
 
-      newEdges = edges.map((edge) => ({
-        ...edge,
-        sourceHandle: direction === 'LR' ? 'right-s' : 'bottom-s',
-        targetHandle: direction === 'LR' ? 'left-t' : 'top-t'
-      }));
+      // 如果是局部整理，保持在原位
+      if (targetNodeIds && targetNodeIds.length > 0) {
+        const originalNodes = nodes.filter(n => targetNodeIds.includes(n.id));
+        const avgX = originalNodes.reduce((acc, n) => acc + n.position.x, 0) / originalNodes.length;
+        const avgY = originalNodes.reduce((acc, n) => acc + n.position.y, 0) / originalNodes.length;
+        
+        const layoutAvgX = layoutedNodes.reduce((acc, n) => acc + n.position.x, 0) / layoutedNodes.length;
+        const layoutAvgY = layoutedNodes.reduce((acc, n) => acc + n.position.y, 0) / layoutedNodes.length;
+        
+        const offsetX = avgX - layoutAvgX;
+        const offsetY = avgY - layoutAvgY;
+        
+        layoutedNodes.forEach(n => {
+          n.position.x += offsetX;
+          n.position.y += offsetY;
+        });
+      }
+
+      // 合并回主节点列表
+      const nodeMap = new Map(nodes.map(n => [n.id, n]));
+      layoutedNodes.forEach(n => nodeMap.set(n.id, n));
+      newNodes = Array.from(nodeMap.values());
+
+      newEdges = edges.map((edge) => {
+        if (targetNodeIds && (!targetNodeIds.includes(edge.source) || !targetNodeIds.includes(edge.target))) {
+          return edge;
+        }
+        return {
+          ...edge,
+          sourceHandle: (direction === 'LR' || direction === 'RL') ? (direction === 'LR' ? 'right-s' : 'left-s') : (direction === 'TB' ? 'bottom-s' : 'top-s'),
+          targetHandle: (direction === 'LR' || direction === 'RL') ? (direction === 'LR' ? 'left-t' : 'right-t') : (direction === 'TB' ? 'top-t' : 'bottom-t')
+        };
+      });
     }
 
     setNodes(newNodes);
     setEdges(newEdges);
     takeSnapshot(newNodes, newEdges);
     
-    setTimeout(() => setCenter(0, 0, { zoom: 1, duration: 800 }), 100);
-  }, [nodes, edges, setNodes, setEdges, takeSnapshot, setCenter]);
+    // 如果是全局整理则适应屏幕，局部整理则不移动视角
+    if (!targetNodeIds) {
+      setTimeout(() => {
+        fitView({ duration: 800, padding: 0.2 });
+      }, 100);
+    }
+  }, [nodes, edges, setNodes, setEdges, takeSnapshot, fitView]);
+
+  // 点击外部关闭菜单
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (showLayoutMenu && !(e.target as HTMLElement).closest('.layout-menu-container')) {
+        setShowLayoutMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showLayoutMenu]);
 
   const handleEdgeClick = useCallback((event: React.MouseEvent, edge: Edge) => {
     event.stopPropagation();
@@ -639,6 +733,25 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
       }
     });
   }, [edges, nodes, setEdges, showConfirm, takeSnapshot]);
+
+  const handleDeleteSelected = useCallback(() => {
+    const selectedNodes = nodes.filter(n => n.selected);
+    const selectedEdges = edges.filter(e => e.selected);
+    
+    if (selectedNodes.length === 0 && selectedEdges.length === 0) return;
+    
+    showConfirm(`确定要删除选中的 ${selectedNodes.length} 个节点和 ${selectedEdges.length} 条连接线吗？`, { title: '批量删除' }).then(confirmed => {
+      if (confirmed) {
+        const selectedNodeIds = new Set(selectedNodes.map(n => n.id));
+        const newNodes = nodes.filter(n => !selectedNodeIds.has(n.id));
+        const newEdges = edges.filter(e => !selectedNodeIds.has(e.source) && !selectedNodeIds.has(e.target) && !e.selected);
+        
+        takeSnapshot(newNodes, newEdges);
+        setNodes(newNodes);
+        setEdges(newEdges);
+      }
+    });
+  }, [nodes, edges, setNodes, setEdges, takeSnapshot, showConfirm]);
 
   // 使用新的 useMindMapContext hook 来注册上下文
   // 注意：不传递 nodes.length 以避免频繁更新导致无限循环
@@ -664,12 +777,19 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
             onNodeDragStop={onNodeDragStop}
             onEdgeClick={handleEdgeClick}
             nodeTypes={nodeTypes}
+            panOnDrag={!isSelectionMode}
+            selectionOnDrag={isSelectionMode}
+            selectionMode={SelectionMode.Partial}
+            panOnScroll={isSelectionMode}
+            zoomOnScroll={!isSelectionMode}
+            minZoom={0.05}
+            maxZoom={4}
             fitView
           >
             <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
             
             {/* Top Navigation Bar */}
-            <Panel position="top-center" className="flex items-center gap-2 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md px-4 py-2 rounded-full border border-zinc-200 dark:border-zinc-800 shadow-lg mt-4 max-w-[80vw] overflow-x-auto no-scrollbar">
+            <Panel position="top-center" className="flex items-center gap-2 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md px-4 py-2 rounded-full border border-zinc-200 dark:border-zinc-800 shadow-lg mt-4 max-w-[90vw]">
               <button
                 onClick={handleAddRootNode}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-full text-xs font-medium hover:bg-blue-700 transition-colors shrink-0"
@@ -679,46 +799,77 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
               
               <div className="w-px h-4 bg-zinc-200 dark:bg-zinc-800 mx-1 shrink-0" />
               
-              <div className="flex items-center gap-1">
+              <div className="relative shrink-0 layout-menu-container">
                 <button
-                  onClick={() => onLayout('LR')}
-                  className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full text-zinc-500 hover:text-blue-500 transition-colors"
-                  title="水平整理"
+                  onClick={() => setShowLayoutMenu(!showLayoutMenu)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-full text-xs font-medium text-zinc-700 dark:text-zinc-300 transition-all border border-transparent hover:border-blue-200"
                 >
-                  <ArrowRight size={16} />
+                  <LayoutIcon size={14} className="text-blue-500" />
+                  <span>自动整理</span>
+                  <ChevronDown size={12} className={cn("transition-transform", showLayoutMenu && "rotate-180")} />
                 </button>
-                <button
-                  onClick={() => onLayout('TB')}
-                  className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full text-zinc-500 hover:text-blue-500 transition-colors"
-                  title="垂直整理"
-                >
-                  <ArrowDown size={16} />
-                </button>
-                <button
-                  onClick={() => onLayout('Radial')}
-                  className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full text-zinc-500 hover:text-blue-500 transition-colors"
-                  title="发散整理"
-                >
-                  <GitBranch size={16} />
-                </button>
+
+                {showLayoutMenu && (
+                  <div className="absolute top-full left-0 mt-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl p-1 min-w-[140px] z-[100] animate-in fade-in slide-in-from-top-2">
+                    <button
+                      onClick={() => { onLayout('LR'); setShowLayoutMenu(false); }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded transition-colors"
+                    >
+                      <ArrowRight size={14} />
+                      朝右整理
+                    </button>
+                    <button
+                      onClick={() => { onLayout('RL'); setShowLayoutMenu(false); }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded transition-colors"
+                    >
+                      <ArrowLeft size={14} />
+                      朝左整理
+                    </button>
+                    <button
+                      onClick={() => { onLayout('TB'); setShowLayoutMenu(false); }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded transition-colors"
+                    >
+                      <ArrowDown size={14} />
+                      朝下整理
+                    </button>
+                    <button
+                      onClick={() => { onLayout('BT'); setShowLayoutMenu(false); }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded transition-colors"
+                    >
+                      <ArrowUp size={14} />
+                      朝上整理
+                    </button>
+                    <div className="h-px bg-zinc-100 dark:bg-zinc-800 my-1" />
+                    <button
+                      onClick={() => { onLayout('Radial'); setShowLayoutMenu(false); }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded transition-colors"
+                    >
+                      <GitBranch size={14} />
+                      发散整理
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div className="w-px h-4 bg-zinc-200 dark:bg-zinc-800 mx-1 shrink-0" />
               
-              {rootNodes.map(node => (
-                <button
-                  key={node.id}
-                  onClick={() => jumpToNode(node.id)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-full text-xs font-medium text-zinc-700 dark:text-zinc-300 transition-all shrink-0 border border-transparent hover:border-blue-200 dark:hover:border-blue-800"
-                >
-                  <Target size={12} className="text-blue-500" />
-                  {node.data.label}
-                </button>
-              ))}
-              
-              {rootNodes.length === 0 && (
-                <span className="text-xs text-zinc-400 px-2">暂无中心主题</span>
-              )}
+              {/* Scrollable themes section */}
+              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
+                {rootNodes.map(node => (
+                  <button
+                    key={node.id}
+                    onClick={() => jumpToNode(node.id)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-full text-xs font-medium text-zinc-700 dark:text-zinc-300 transition-all border border-transparent hover:border-blue-200 dark:hover:border-blue-800 shrink-0"
+                  >
+                    <Target size={12} className="text-blue-500" />
+                    {node.data.label}
+                  </button>
+                ))}
+                
+                {rootNodes.length === 0 && (
+                  <span className="text-xs text-zinc-400 px-2 shrink-0">暂无中心主题</span>
+                )}
+              </div>
             </Panel>
 
             <Panel position="bottom-left" className="mb-4 ml-4">
@@ -727,8 +878,17 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
                 onRedo={handleRedo}
                 canUndo={historyIndex > 0}
                 canRedo={historyIndex < history.length - 1}
+                isSelectionMode={isSelectionMode}
+                onSelectionModeChange={setIsSelectionMode}
+                onDeleteSelected={handleDeleteSelected}
+                onLayoutSelected={(dir) => {
+                  const selectedIds = nodes.filter(n => n.selected).map(n => n.id);
+                  onLayout(dir, selectedIds);
+                }}
+                hasSelection={nodes.some(n => n.selected) || edges.some(e => e.selected)}
               />
             </Panel>
+
             <MiniMap
               nodeColor={() => {
                 if (theme === 'dark') return '#555';

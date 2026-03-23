@@ -138,6 +138,15 @@ export async function getAICompletion(
    const maxTokens = options?.maxTokens ?? settings.maxTokens ?? DEFAULT_MAX_TOKENS;
    const temperature = options?.temperature ?? settings.temperature ?? TEMPERATURE.balanced;
 
+   // 过滤掉空的 tool_calls 数组，避免 API 报错
+   const sanitizedMessages = messages.map(m => {
+     const msg = { ...m };
+     if (msg.tool_calls && msg.tool_calls.length === 0) {
+       delete msg.tool_calls;
+     }
+     return msg;
+   });
+
    const response = await fetch(`${url}/chat/completions`, {
      method: 'POST',
      headers: {
@@ -146,7 +155,7 @@ export async function getAICompletion(
      },
      body: JSON.stringify({
        model: settings.model,
-       messages: messages,
+       messages: sanitizedMessages,
        temperature: temperature,
        max_tokens: maxTokens
      })
@@ -192,10 +201,19 @@ export async function streamAICompletion(
   const maxTokens = options?.maxTokens ?? DEFAULT_MAX_TOKENS;
   const temperature = options?.temperature ?? TEMPERATURE.balanced;
 
+  // 过滤掉空的 tool_calls 数组，避免 API 报错
+  const sanitizedMessages = messages.map(m => {
+    const msg = { ...m };
+    if (msg.tool_calls && msg.tool_calls.length === 0) {
+      delete msg.tool_calls;
+    }
+    return msg;
+  });
+
   // 构建核心请求负载，强制开启 stream 模式
   const body: any = {
     model: settings.model,
-    messages: messages,
+    messages: sanitizedMessages,
     temperature: temperature,
     max_tokens: maxTokens,
     stream: true

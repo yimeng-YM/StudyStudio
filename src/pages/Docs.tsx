@@ -200,16 +200,18 @@ export const Docs = () => {
                 <h4 className="font-bold flex items-center gap-2"><MousePointer2 className="w-4 h-4 text-primary" /> 节点交互</h4>
                 <ul className="list-disc list-inside ml-4 text-slate-600 dark:text-slate-400 space-y-1">
                   <li><strong>双击</strong>：编辑节点内容。</li>
-                  <li><strong>鼠标悬停</strong>：唤起快捷菜单（添加子节点、删除、新建以节点名称命名的笔记或任务卡）。</li>
-                  <li><strong>拖拽连线</strong>：点击节点边缘的小圆点并拖拽至另一节点，建立逻辑关联。</li>
+                  <li><strong>鼠标悬停</strong>：唤起快捷菜单（添加子节点、删除、新建笔记或任务卡）。</li>
+                  <li><strong>拖拽模式</strong>：左下角切换至“移动”图标。滚轮负责<strong>缩放</strong>，左键按住背景可<strong>平移</strong>画布。</li>
+                  <li><strong>框选模式</strong>：左下角切换至“箭头”图标。滚轮负责<strong>平移</strong>，左键按住背景可<strong>框选</strong>多个节点。</li>
+                  <li><strong>批量操作</strong>：在框选模式下选中节点后，再次点击左下角框选图标可唤起功能菜单，执行<strong>批量删除</strong>或<strong>局部整理</strong>。</li>
                 </ul>
                 <h4 className="font-bold flex items-center gap-2"><Sparkles className="w-4 h-4 text-primary" /> AI 赋能</h4>
                 <p className="text-sm text-slate-600 dark:text-slate-400 pl-6">
                   点击AI悬浮窗，描述您想学习的主题。系统会自动调用 Agent 构建层级清晰的导图，极大节省手动录入时间。
                 </p>
-                <h4 className="font-bold flex items-center gap-2"><Layout className="w-4 h-4 text-primary" /> 智能布局</h4>
+                <h4 className="font-bold flex items-center gap-2"><Layout className="w-4 h-4 text-primary" /> 自动整理</h4>
                 <p className="text-sm text-slate-600 dark:text-slate-400 pl-6">
-                  当节点变得杂乱时，点击顶部栏的自动布局按钮，系统将采用 Dagre 算法为您重新排列节点，使其层级分明。
+                  点击顶部导航栏的“自动整理”下拉菜单，可以选择<strong>向右、向左、向下、向上</strong>或<strong>发散整理</strong>。系统将自动排版并适配屏幕视角。
                 </p>
               </div>
             </div>
@@ -242,9 +244,14 @@ export const Docs = () => {
           content: (
             <div className="space-y-4">
               <p>采用看板管理法，将学习任务转化为可见的进度条。</p>
-              <div className="flex flex-wrap gap-2">
-                <span className="px-3 py-1 bg-slate-200 dark:bg-zinc-800 rounded-full text-xs">看板拖拽</span>
-                <span className="px-3 py-1 bg-slate-200 dark:bg-zinc-800 rounded-full text-xs">子任务拆解</span>
+              <div className="space-y-4">
+                <h4 className="font-bold flex items-center gap-2"><MousePointer2 className="w-4 h-4 text-primary" /> 看板操作</h4>
+                <ul className="list-disc list-inside ml-4 text-slate-600 dark:text-slate-400 space-y-1">
+                  <li><strong>添加任务块</strong>：点击顶部“添加任务块”创建新的分类。</li>
+                  <li><strong>模式切换</strong>：同思维导图，支持<strong>拖拽模式</strong>（滚轮缩放）与<strong>框选模式</strong>（滚轮平移）。</li>
+                  <li><strong>批量删除</strong>：在框选模式下选中多个任务块后，可通过左下角菜单一键删除。</li>
+                  <li><strong>子任务拆解</strong>：点击任务项右侧的图标可为该项创建独立的子任务看板，实现层级化管理。</li>
+                </ul>
               </div>
               <div className="p-4 border border-slate-200 dark:border-zinc-800 rounded-xl bg-slate-50 dark:bg-zinc-900/50">
                 <p className="text-sm italic text-slate-500">“将大目标拆解为细小的子任务，是克服拖延症最有效的方法。”</p>

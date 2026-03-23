@@ -61,22 +61,18 @@ export const DataManager = {
   async exportData(options?: ExportOptions): Promise<StudyStudioData> {
     const { subjectIds, entityIds: selectedEntityIds } = options || {};
     
-    let subjects, entities, relations, chatSessions, chatMessages, attachments;
+    let subjects: any[], entities: any[], relations: any[], chatSessions: any[], chatMessages: any[], attachments: any[];
 
     if ((subjectIds && subjectIds.length > 0) || (selectedEntityIds && selectedEntityIds.length > 0)) {
       // 1. 抽取实体数据
       if (selectedEntityIds && selectedEntityIds.length > 0) {
+        // 如果指定了具体实体 ID，则严格按照列表导出
         entities = await db.entities.where('id').anyOf(selectedEntityIds).toArray();
-        if (subjectIds && subjectIds.length > 0) {
-          const subjectEntities = await db.entities.where('subjectId').anyOf(subjectIds).toArray();
-          // 合并独立选中的实体与选中学科下的实体，并去重
-          const entityMap = new Map();
-          entities.forEach(e => entityMap.set(e.id, e));
-          subjectEntities.forEach(e => entityMap.set(e.id, e));
-          entities = Array.from(entityMap.values());
-        }
+      } else if (subjectIds && subjectIds.length > 0) {
+        // 如果仅指定了学科 ID，则导出该学科下的所有实体
+        entities = await db.entities.where('subjectId').anyOf(subjectIds).toArray();
       } else {
-        entities = await db.entities.where('subjectId').anyOf(subjectIds!).toArray();
+        entities = [];
       }
       
       const exportEntityIds = new Set(entities.map(e => e.id));

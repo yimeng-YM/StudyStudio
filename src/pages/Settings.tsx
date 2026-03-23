@@ -306,41 +306,45 @@ export function Settings() {
   const handleToggleSubject = (mode: 'export' | 'import') => (id: string, entityIds: string[], checked: boolean) => {
     const setSubjects = mode === 'export' ? setSelectedExportSubjects : setSelectedImportSubjects;
     const setEntities = mode === 'export' ? setSelectedExportEntities : setSelectedImportEntities;
-    const currentSubjects = mode === 'export' ? selectedExportSubjects : selectedImportSubjects;
-    const currentEntities = mode === 'export' ? selectedExportEntities : selectedImportEntities;
 
     // Toggle Subject
-    const newSubjects = new Set(currentSubjects);
-    if (checked) newSubjects.add(id);
-    else newSubjects.delete(id);
-    setSubjects(newSubjects);
+    setSubjects(prev => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
 
     // Toggle All Children Entities
-    const newEntities = new Set(currentEntities);
-    entityIds.forEach(eid => {
-      if (checked) newEntities.add(eid);
-      else newEntities.delete(eid);
+    setEntities(prev => {
+      const next = new Set(prev);
+      entityIds.forEach(eid => {
+        if (checked) next.add(eid);
+        else next.delete(eid);
+      });
+      return next;
     });
-    setEntities(newEntities);
   };
 
   const handleToggleEntity = (mode: 'export' | 'import') => (id: string, subjectId: string, checked: boolean) => {
     const setSubjects = mode === 'export' ? setSelectedExportSubjects : setSelectedImportSubjects;
     const setEntities = mode === 'export' ? setSelectedExportEntities : setSelectedImportEntities;
-    const currentSubjects = mode === 'export' ? selectedExportSubjects : selectedImportSubjects;
-    const currentEntities = mode === 'export' ? selectedExportEntities : selectedImportEntities;
 
     // Toggle Entity
-    const newEntities = new Set(currentEntities);
-    if (checked) newEntities.add(id);
-    else newEntities.delete(id);
-    setEntities(newEntities);
+    setEntities(prev => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
 
     // If Entity Checked -> Ensure Subject Checked
     if (checked) {
-      const newSubjects = new Set(currentSubjects);
-      newSubjects.add(subjectId);
-      setSubjects(newSubjects);
+      setSubjects(prev => {
+        const next = new Set(prev);
+        next.add(subjectId);
+        return next;
+      });
     }
     // If Entity Unchecked -> We keep subject checked (optional choice)
   };

@@ -11,7 +11,8 @@ import ReactFlow, {
   Panel,
   Edge,
   ReactFlowProvider,
-  useReactFlow
+  useReactFlow,
+  SelectionMode
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { db, Entity } from '@/db';
@@ -53,6 +54,7 @@ function TasksModuleInner({ subjectId, initialSessionId }: TasksModuleProps) {
   const { theme } = useTheme();
   const { setFloatingWindowOpen, setGlobalSessionId } = useAIStore();
   const { setCenter, getNode } = useReactFlow();
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
 
   /** 获取当前学科信息 */
   const subject = useLiveQuery(() => db.subjects.get(subjectId), [subjectId]);
@@ -141,33 +143,96 @@ function TasksModuleInner({ subjectId, initialSessionId }: TasksModuleProps) {
   /**
    * 将当前看板节点（任务块）和连线持久化到数据库
    */
-  const save = useCallback(async () => {
-    if (boardEntity) {
-      const now = Date.now();
-      lastSaveTimeRef.current = now;
-      // 移除保存时的函数引用，仅持久化纯数据对象
-      const cleanNodes = nodes.map(n => ({
-        ...n,
-        data: {
-          title: n.data.title,
-          items: n.data.items
-        }
-      }));
+  const save = useCallback(async (currentNodes = nodes, currentEdges = edges) => {
+    const now = Date.now();
+    
+    // 移除保存时的函数引用，仅持久化纯数据对象
+    const cleanNodes = currentNodes.map(n => ({
+      ...n,
+      data: {
+        title: n.data.title,
+        items: n.data.items
+      }
+    }));
 
+    if (boardEntity) {
+      lastSaveTimeRef.current = now;
       await db.entities.update(boardEntity.id, {
-        content: { nodes: cleanNodes, edges },
+        content: { nodes: cleanNodes, edges: currentEdges },
         updatedAt: now
       });
-      console.log('Saved task board');
+    } else if (currentNodes.length > 0) {
+      // 如果不存在看板实体且已有节点，则创建新实体
+      const newEntity: Entity = {
+        id: crypto.randomUUID(),
+        subjectId,
+        type: 'task_board',
+        title: 'Task Board',
+        content: { nodes: cleanNodes, edges: currentEdges },
+        createdAt: now,
+        updatedAt: now
+      };
+      await db.entities.add(newEntity);
+      setBoardEntity(newEntity);
+      lastSaveTimeRef.current = now;
     }
-  }, [boardEntity, nodes, edges]);
+  }, [boardEntity, nodes, edges, subjectId]);
+
+  // 使用 Ref 追踪最新的数据，以便在卸载时保存
+  const latestDataRef = useRef({ nodes, edges });
+  const isDirtyRef = useRef(false);
+
+  useEffect(() => {
+    latestDataRef.current = { nodes, edges };
+    isDirtyRef.current = true;
+  }, [nodes, edges]);
 
   /** 自动保存机制，2秒防抖执行 */
   useEffect(() => {
-    if (!boardEntity) return;
-    const timer = setTimeout(save, 2000);
-    return () => clearTimeout(timer);
-  }, [nodes, edges, save, boardEntity]);
+    const timer = setTimeout(() => {
+      if (isDirtyRef.current) {
+        save();
+        isDirtyRef.current = false;
+      }
+    }, 2000);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [nodes, edges, save]);
+
+  // 卸载时立即保存
+  useEffect(() => {
+    return () => {
+      // 检查是否有未保存的更改
+      if (isDirtyRef.current) {
+        const { nodes: finalNodes, edges: finalEdges } = latestDataRef.current;
+        const now = Date.now();
+        const cleanNodes = finalNodes.map(n => ({
+          ...n,
+          data: { title: n.data.title, items: n.data.items }
+        }));
+
+        db.entities.where({ subjectId, type: 'task_board' }).first().then(entity => {
+          if (entity) {
+            db.entities.update(entity.id, {
+              content: { nodes: cleanNodes, edges: finalEdges },
+              updatedAt: now
+            });
+          } else if (cleanNodes.length > 0) {
+            db.entities.add({
+              id: crypto.randomUUID(),
+              subjectId,
+              type: 'task_board',
+              title: 'Task Board',
+              content: { nodes: cleanNodes, edges: finalEdges },
+              createdAt: now,
+              updatedAt: now
+            });
+          }
+        });
+      }
+    };
+  }, [subjectId]);
 
   /**
    * 处理任务块内部数据（如标题、任务项）变更
@@ -266,6 +331,21 @@ function TasksModuleInner({ subjectId, initialSessionId }: TasksModuleProps) {
     });
   }, [setEdges, showConfirm]);
 
+  const handleDeleteSelected = useCallback(() => {
+    const selectedNodes = nodes.filter(n => n.selected);
+    const selectedEdges = edges.filter(e => e.selected);
+    
+    if (selectedNodes.length === 0 && selectedEdges.length === 0) return;
+    
+    showConfirm(`确定要删除选中的 ${selectedNodes.length} 个任务块和 ${selectedEdges.length} 条连接线吗？`, { title: '批量删除' }).then(confirmed => {
+      if (confirmed) {
+        const selectedNodeIds = new Set(selectedNodes.map(n => n.id));
+        setNodes(nds => nds.filter(n => !selectedNodeIds.has(n.id)));
+        setEdges(eds => eds.filter(e => !selectedNodeIds.has(e.source) && !selectedNodeIds.has(e.target) && !e.selected));
+      }
+    });
+  }, [nodes, edges, setNodes, setEdges, showConfirm]);
+
   /**
    * 任务完成状态的递归向下传播逻辑
    * 当某个子任务清单块中所有任务都标记为已完成时，自动将父级对应的任务项标记为已完成
@@ -317,6 +397,13 @@ function TasksModuleInner({ subjectId, initialSessionId }: TasksModuleProps) {
           onConnect={onConnect}
           onEdgeClick={onEdgeClick}
           nodeTypes={nodeTypes}
+          panOnDrag={!isSelectionMode}
+          selectionOnDrag={isSelectionMode}
+          selectionMode={SelectionMode.Partial}
+          panOnScroll={isSelectionMode}
+          zoomOnScroll={!isSelectionMode}
+          minZoom={0.05}
+          maxZoom={4}
           fitView
         >
           <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
@@ -354,9 +441,14 @@ function TasksModuleInner({ subjectId, initialSessionId }: TasksModuleProps) {
 
           {/* View Controls - Bottom Left */}
           <Panel position="bottom-left" className="mb-4 ml-4">
-            <ViewControls />
+            <ViewControls 
+              isSelectionMode={isSelectionMode} 
+              onSelectionModeChange={setIsSelectionMode}
+              onDeleteSelected={handleDeleteSelected}
+              hasSelection={nodes.some(n => n.selected) || edges.some(e => e.selected)}
+            />
           </Panel>
-          
+
           <MiniMap
             nodeColor={() => {
               if (theme === 'dark') return '#555';
