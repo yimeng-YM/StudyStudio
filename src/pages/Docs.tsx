@@ -1,24 +1,41 @@
 import { useState, useRef } from 'react';
 import {
-  Book, 
-  Rocket, 
-  Brain, 
-  PenTool, 
-  CheckSquare, 
-  ListChecks, 
-  Sparkles, 
-  Database, 
-  Layout,
-  Terminal,
-  ShieldCheck,
-  Zap,
-  Cpu,
-  MousePointer2,
-  ChevronRight,
-  ExternalLink,
-  Plus,
-  Settings,
-  Trash2
+Book,
+Rocket,
+Brain,
+PenTool,
+CheckSquare,
+ListChecks,
+Sparkles,
+Database,
+Layout,
+Terminal,
+ShieldCheck,
+Zap,
+Cpu,
+MousePointer2,
+ChevronRight,
+ExternalLink,
+Plus,
+Settings,
+Trash2,
+Layers,
+FileText,
+Target,
+Bot,
+Workflow,
+Play,
+Lightbulb,
+Move,
+Square,
+Grid3X3,
+FileType,
+HelpCircle,
+ClipboardList,
+CheckCircle2,
+ArrowRight,
+Puzzle,
+GitBranch
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -195,24 +212,160 @@ export const Docs = () => {
           icon: <Brain className="w-4 h-4" />,
           content: (
             <div className="space-y-6">
-              <p>思维导图是知识可视化的核心。我们提供了基于节点流的操作体验。</p>
-              <div className="space-y-4">
-                <h4 className="font-bold flex items-center gap-2"><MousePointer2 className="w-4 h-4 text-primary" /> 节点交互</h4>
-                <ul className="list-disc list-inside ml-4 text-slate-600 dark:text-slate-400 space-y-1">
-                  <li><strong>双击</strong>：编辑节点内容。</li>
-                  <li><strong>鼠标悬停</strong>：唤起快捷菜单（添加子节点、删除、新建笔记或任务卡）。</li>
-                  <li><strong>拖拽模式</strong>：左下角切换至“移动”图标。滚轮负责<strong>缩放</strong>，左键按住背景可<strong>平移</strong>画布。</li>
-                  <li><strong>框选模式</strong>：左下角切换至“箭头”图标。滚轮负责<strong>平移</strong>，左键按住背景可<strong>框选</strong>多个节点。</li>
-                  <li><strong>批量操作</strong>：在框选模式下选中节点后，再次点击左下角框选图标可唤起功能菜单，执行<strong>批量删除</strong>或<strong>局部整理</strong>。</li>
+              <p className="text-lg leading-relaxed text-slate-700 dark:text-slate-300">
+                思维导图是 StudyStudio 知识管理的核心模块，采用基于 <strong>React Flow</strong> 的节点流操作体验，支持无限画布、自由拖拽、多层级节点结构，让您的知识体系一目了然。
+              </p>
+              
+              {/* 功能概览卡片 */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="p-4 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border border-blue-100 dark:border-blue-800 rounded-xl">
+                  <div className="flex items-center gap-2 mb-2">
+                    <MousePointer2 className="w-5 h-5 text-blue-500" />
+                    <h4 className="font-bold text-blue-800 dark:text-blue-300">节点操作</h4>
+                  </div>
+                  <p className="text-sm text-blue-700/80 dark:text-blue-400/80">双击编辑、悬停菜单、拖拽连线</p>
+                </div>
+                <div className="p-4 bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 border border-purple-100 dark:border-purple-800 rounded-xl">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Sparkles className="w-5 h-5 text-purple-500" />
+                    <h4 className="font-bold text-purple-800 dark:text-purple-300">AI 生成</h4>
+                  </div>
+                  <p className="text-sm text-purple-700/80 dark:text-purple-400/80">智能构建多层级知识导图</p>
+                </div>
+                <div className="p-4 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 border border-emerald-100 dark:border-emerald-800 rounded-xl">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Layout className="w-5 h-5 text-emerald-500" />
+                    <h4 className="font-bold text-emerald-800 dark:text-emerald-300">智能排版</h4>
+                  </div>
+                  <p className="text-sm text-emerald-700/80 dark:text-emerald-400/80">一键自动整理布局</p>
+                </div>
+              </div>
+
+              {/* 详细操作指南 */}
+              <div className="space-y-6">
+                <div className="p-5 bg-slate-50 dark:bg-zinc-900/50 rounded-2xl border border-slate-200 dark:border-zinc-800">
+                  <h4 className="font-bold flex items-center gap-2 mb-4 text-lg">
+                    <MousePointer2 className="w-5 h-5 text-primary" />
+                    节点交互详解
+                  </h4>
+                  <div className="space-y-3">
+                    <div className="flex items-start gap-3 p-3 bg-white dark:bg-zinc-800/50 rounded-xl">
+                      <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg shrink-0">
+                        <span className="text-sm font-bold text-blue-600 dark:text-blue-400">双击</span>
+                      </div>
+                      <div>
+                        <p className="font-medium">编辑节点内容</p>
+                        <p className="text-sm text-slate-500">双击任意节点即可进入编辑模式，支持纯文本输入</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3 p-3 bg-white dark:bg-zinc-800/50 rounded-xl">
+                      <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg shrink-0">
+                        <span className="text-sm font-bold text-purple-600 dark:text-purple-400">悬停</span>
+                      </div>
+                      <div>
+                        <p className="font-medium">快捷操作菜单</p>
+                        <p className="text-sm text-slate-500">鼠标悬停在节点上，唤起快捷菜单：添加子节点、删除节点、新建关联笔记或任务卡</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3 p-3 bg-white dark:bg-zinc-800/50 rounded-xl">
+                      <div className="p-2 bg-amber-100 dark:bg-amber-900/30 rounded-lg shrink-0">
+                        <Move className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                      </div>
+                      <div>
+                        <p className="font-medium">拖拽模式</p>
+                        <p className="text-sm text-slate-500">左下角切换至"移动"图标。滚轮负责<strong>缩放</strong>画布，左键按住背景可<strong>平移</strong>画布位置</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3 p-3 bg-white dark:bg-zinc-800/50 rounded-xl">
+                      <div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg shrink-0">
+                        <Square className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                      </div>
+                      <div>
+                        <p className="font-medium">框选模式</p>
+                        <p className="text-sm text-slate-500">左下角切换至"箭头"图标。滚轮负责<strong>平移</strong>，左键按住背景可<strong>框选</strong>多个节点进行批量操作</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3 p-3 bg-white dark:bg-zinc-800/50 rounded-xl">
+                      <div className="p-2 bg-rose-100 dark:bg-rose-900/30 rounded-lg shrink-0">
+                        <Grid3X3 className="w-4 h-4 text-rose-600 dark:text-rose-400" />
+                      </div>
+                      <div>
+                        <p className="font-medium">批量操作</p>
+                        <p className="text-sm text-slate-500">框选多个节点后，点击左下角框选图标唤起功能菜单，执行<strong>批量删除</strong>或<strong>局部整理</strong></p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-5 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 rounded-2xl border border-purple-200 dark:border-purple-800">
+                  <h4 className="font-bold flex items-center gap-2 mb-4 text-lg">
+                    <Sparkles className="w-5 h-5 text-purple-500" />
+                    AI 智能生成
+                  </h4>
+                  <p className="text-slate-600 dark:text-slate-400 mb-4">
+                    点击蓝色圆形的 <strong>AI 悬浮窗</strong>，描述您想学习的主题，例如：
+                  </p>
+                  <div className="bg-white/80 dark:bg-zinc-800/80 p-4 rounded-xl font-mono text-sm space-y-2 mb-4">
+                    <p className="text-purple-600 dark:text-purple-400">"帮我生成一份《数据结构与算法》的知识导图"</p>
+                    <p className="text-purple-600 dark:text-purple-400">"创建一个关于近代史的学习框架"</p>
+                  </div>
+                  <p className="text-sm text-slate-600 dark:text-slate-400">
+                    AI Agent 会自动调用系统工具，构建层级清晰、内容丰富的思维导图，包含定义、分类、示例、应用等多个维度，极大节省手动录入时间。
+                  </p>
+                </div>
+
+                <div className="p-5 bg-slate-50 dark:bg-zinc-900/50 rounded-2xl border border-slate-200 dark:border-zinc-800">
+                  <h4 className="font-bold flex items-center gap-2 mb-4 text-lg">
+                    <Layout className="w-5 h-5 text-emerald-500" />
+                    自动整理布局
+                  </h4>
+                  <p className="text-slate-600 dark:text-slate-400 mb-4">
+                    点击顶部导航栏的"自动整理"下拉菜单，选择合适的布局方式：
+                  </p>
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                    <div className="p-3 bg-white dark:bg-zinc-800/50 rounded-xl text-center border border-slate-200 dark:border-zinc-700">
+                      <ArrowRight className="w-5 h-5 mx-auto mb-2 text-primary" />
+                      <span className="text-sm font-medium">向右</span>
+                    </div>
+                    <div className="p-3 bg-white dark:bg-zinc-800/50 rounded-xl text-center border border-slate-200 dark:border-zinc-700">
+                      <ArrowRight className="w-5 h-5 mx-auto mb-2 text-primary rotate-180" />
+                      <span className="text-sm font-medium">向左</span>
+                    </div>
+                    <div className="p-3 bg-white dark:bg-zinc-800/50 rounded-xl text-center border border-slate-200 dark:border-zinc-700">
+                      <ArrowRight className="w-5 h-5 mx-auto mb-2 text-primary rotate-90" />
+                      <span className="text-sm font-medium">向下</span>
+                    </div>
+                    <div className="p-3 bg-white dark:bg-zinc-800/50 rounded-xl text-center border border-slate-200 dark:border-zinc-700">
+                      <ArrowRight className="w-5 h-5 mx-auto mb-2 text-primary -rotate-90" />
+                      <span className="text-sm font-medium">向上</span>
+                    </div>
+                    <div className="p-3 bg-white dark:bg-zinc-800/50 rounded-xl text-center border border-slate-200 dark:border-zinc-700">
+                      <GitBranch className="w-5 h-5 mx-auto mb-2 text-primary" />
+                      <span className="text-sm font-medium">发散</span>
+                    </div>
+                  </div>
+                  <p className="text-sm text-slate-500 mt-4">
+                    系统将自动排版节点并适配屏幕视角，让您的导图始终保持整洁美观。
+                  </p>
+                </div>
+              </div>
+
+              {/* 与其他模块联动 */}
+              <div className="p-5 bg-blue-50 dark:bg-blue-900/20 rounded-2xl border border-blue-200 dark:border-blue-800">
+                <h4 className="font-bold flex items-center gap-2 mb-3">
+                  <Layers className="w-5 h-5 text-blue-500" />
+                  与其他模块联动
+                </h4>
+                <ul className="space-y-2 text-sm text-slate-600 dark:text-slate-400">
+                  <li className="flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-blue-500" />
+                    <span><strong>生成笔记</strong>：右键节点可快速创建关联的详细知识笔记</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                    <span><strong>创建任务</strong>：将知识点转化为待办任务，规划学习进度</span>
+                  </li>
                 </ul>
-                <h4 className="font-bold flex items-center gap-2"><Sparkles className="w-4 h-4 text-primary" /> AI 赋能</h4>
-                <p className="text-sm text-slate-600 dark:text-slate-400 pl-6">
-                  点击AI悬浮窗，描述您想学习的主题。系统会自动调用 Agent 构建层级清晰的导图，极大节省手动录入时间。
-                </p>
-                <h4 className="font-bold flex items-center gap-2"><Layout className="w-4 h-4 text-primary" /> 自动整理</h4>
-                <p className="text-sm text-slate-600 dark:text-slate-400 pl-6">
-                  点击顶部导航栏的“自动整理”下拉菜单，可以选择<strong>向右、向左、向下、向上</strong>或<strong>发散整理</strong>。系统将自动排版并适配屏幕视角。
-                </p>
               </div>
             </div>
           )
@@ -223,15 +376,108 @@ export const Docs = () => {
           icon: <PenTool className="w-4 h-4" />,
           content: (
             <div className="space-y-6">
-              <p>不仅仅是 Markdown，更是一个集成了数学公式与 AI 的协作空间。</p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <h4 className="font-bold">全能 Markdown</h4>
-                  <p className="text-sm text-slate-600 dark:text-slate-400">支持 GFM 标准，包括实时渲染的表格、任务列表和代码高亮。特别优化的 KaTeX 支持，让复杂的数学公式输入如履平地。</p>
+              <p className="text-lg leading-relaxed text-slate-700 dark:text-slate-300">
+                详细知识模块是一个功能强大的 <strong>Markdown 编辑器</strong>，支持 GFM 标准、KaTeX 数学公式、代码高亮，并深度集成 AI 协作能力，是您记录和整理深度知识的理想空间。
+              </p>
+
+              {/* 功能卡片 */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="p-5 bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-blue-900/20 dark:to-cyan-900/20 border border-blue-100 dark:border-blue-800 rounded-xl">
+                  <div className="flex items-center gap-2 mb-3">
+                    <FileType className="w-5 h-5 text-blue-500" />
+                    <h4 className="font-bold text-blue-800 dark:text-blue-300">全能 Markdown</h4>
+                  </div>
+                  <ul className="space-y-2 text-sm text-slate-600 dark:text-slate-400">
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-blue-500" />
+                      支持 GFM 标准语法
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-blue-500" />
+                      实时渲染表格、任务列表
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-blue-500" />
+                      代码块语法高亮
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-blue-500" />
+                      图片粘贴与拖拽上传
+                    </li>
+                  </ul>
                 </div>
-                <div className="space-y-2">
-                  <h4 className="font-bold">AI 沉浸式创作</h4>
-                  <p className="text-sm text-slate-600 dark:text-slate-400">打开AI悬浮窗，与AI助手进行交互，实现沉浸式创作体验。</p>
+                <div className="p-5 bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 border border-purple-100 dark:border-purple-800 rounded-xl">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Sparkles className="w-5 h-5 text-purple-500" />
+                    <h4 className="font-bold text-purple-800 dark:text-purple-300">AI 沉浸式创作</h4>
+                  </div>
+                  <ul className="space-y-2 text-sm text-slate-600 dark:text-slate-400">
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-purple-500" />
+                      右侧悬浮 AI 助手
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-purple-500" />
+                      对话式内容生成
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-purple-500" />
+                      智能扩写与润色
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-purple-500" />
+                      一键生成学习笔记
+                    </li>
+                  </ul>
+                </div>
+              </div>
+
+              {/* 数学公式支持 */}
+              <div className="p-5 bg-slate-50 dark:bg-zinc-900/50 rounded-2xl border border-slate-200 dark:border-zinc-800">
+                <h4 className="font-bold flex items-center gap-2 mb-4 text-lg">
+                  <Cpu className="w-5 h-5 text-amber-500" />
+                  KaTeX 数学公式支持
+                </h4>
+                <p className="text-slate-600 dark:text-slate-400 mb-4">
+                  特别优化的 KaTeX 支持，让复杂的数学公式输入如履平地。支持行内公式和块级公式：
+                </p>
+                <div className="bg-white dark:bg-zinc-800/50 p-4 rounded-xl space-y-3">
+                  <div className="flex items-center gap-4">
+                    <span className="text-sm font-mono text-slate-500 w-32">行内公式：</span>
+                    <code className="bg-slate-100 dark:bg-zinc-700 px-2 py-1 rounded text-sm">$E = mc^2$</code>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span className="text-sm font-mono text-slate-500 w-32">块级公式：</span>
+                    <code className="bg-slate-100 dark:bg-zinc-700 px-2 py-1 rounded text-sm">$$...$$</code>
+                  </div>
+                </div>
+                <p className="text-sm text-slate-500 mt-3">
+                  支持积分、矩阵、分数、希腊字母等所有常用数学符号，适合理工科学习者记录公式推导过程。
+                </p>
+              </div>
+
+              {/* 推荐结构 */}
+              <div className="p-5 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl border border-emerald-200 dark:border-emerald-800">
+                <h4 className="font-bold flex items-center gap-2 mb-3">
+                  <Lightbulb className="w-5 h-5 text-emerald-500" />
+                  推荐笔记结构
+                </h4>
+                <p className="text-slate-600 dark:text-slate-400 mb-3">
+                  AI 生成的笔记通常遵循以下结构，您也可以参考这个框架手动编写：
+                </p>
+                <div className="bg-white/80 dark:bg-zinc-800/80 p-4 rounded-xl text-sm space-y-2">
+                  <p className="font-medium text-emerald-700 dark:text-emerald-400"># 主题概述 / Introduction</p>
+                  <p className="pl-4 text-slate-600 dark:text-slate-400">核心概念解释与背景介绍</p>
+                  <p className="font-medium text-emerald-700 dark:text-emerald-400">## 核心概念 / Core Concepts</p>
+                  <p className="pl-4 text-slate-600 dark:text-slate-400">关键术语、定义和原理</p>
+                  <p className="font-medium text-emerald-700 dark:text-emerald-400">## 详细内容 / Detailed Content</p>
+                  <p className="pl-4 text-slate-600 dark:text-slate-400">分章节深入讲解</p>
+                  <p className="font-medium text-emerald-700 dark:text-emerald-400">## 重难点分析 / Key Points</p>
+                  <p className="pl-4 text-slate-600 dark:text-slate-400">易错点、难点解析</p>
+                  <p className="font-medium text-emerald-700 dark:text-emerald-400">## 应用案例 / Applications</p>
+                  <p className="pl-4 text-slate-600 dark:text-slate-400">实际应用场景与案例</p>
+                  <p className="font-medium text-emerald-700 dark:text-emerald-400">## 总结 / Summary</p>
+                  <p className="pl-4 text-slate-600 dark:text-slate-400">要点回顾与延伸思考</p>
                 </div>
               </div>
             </div>
@@ -242,19 +488,105 @@ export const Docs = () => {
           title: '任务列表 (Tasks)',
           icon: <CheckSquare className="w-4 h-4" />,
           content: (
-            <div className="space-y-4">
-              <p>采用看板管理法，将学习任务转化为可见的进度条。</p>
-              <div className="space-y-4">
-                <h4 className="font-bold flex items-center gap-2"><MousePointer2 className="w-4 h-4 text-primary" /> 看板操作</h4>
-                <ul className="list-disc list-inside ml-4 text-slate-600 dark:text-slate-400 space-y-1">
-                  <li><strong>添加任务块</strong>：点击顶部“添加任务块”创建新的分类。</li>
-                  <li><strong>模式切换</strong>：同思维导图，支持<strong>拖拽模式</strong>（滚轮缩放）与<strong>框选模式</strong>（滚轮平移）。</li>
-                  <li><strong>批量删除</strong>：在框选模式下选中多个任务块后，可通过左下角菜单一键删除。</li>
-                  <li><strong>子任务拆解</strong>：点击任务项右侧的图标可为该项创建独立的子任务看板，实现层级化管理。</li>
-                </ul>
+            <div className="space-y-6">
+              <p className="text-lg leading-relaxed text-slate-700 dark:text-slate-300">
+                任务列表模块采用<strong>看板管理法</strong>，将学习任务转化为可视化的进度条。支持多任务块管理、子任务拆解、进度追踪，帮助您高效规划和执行学习计划。
+              </p>
+
+              {/* 功能概览 */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="p-4 bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 border border-amber-100 dark:border-amber-800 rounded-xl">
+                  <div className="flex items-center gap-2 mb-2">
+                    <ClipboardList className="w-5 h-5 text-amber-500" />
+                    <h4 className="font-bold text-amber-800 dark:text-amber-300">看板管理</h4>
+                  </div>
+                  <p className="text-sm text-amber-700/80 dark:text-amber-400/80">可视化任务块，一目了然</p>
+                </div>
+                <div className="p-4 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border border-blue-100 dark:border-blue-800 rounded-xl">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Layers className="w-5 h-5 text-blue-500" />
+                    <h4 className="font-bold text-blue-800 dark:text-blue-300">子任务拆解</h4>
+                  </div>
+                  <p className="text-sm text-blue-700/80 dark:text-blue-400/80">大任务层层分解</p>
+                </div>
+                <div className="p-4 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 border border-emerald-100 dark:border-emerald-800 rounded-xl">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Target className="w-5 h-5 text-emerald-500" />
+                    <h4 className="font-bold text-emerald-800 dark:text-emerald-300">进度追踪</h4>
+                  </div>
+                  <p className="text-sm text-emerald-700/80 dark:text-emerald-400/80">勾选完成，实时统计</p>
+                </div>
               </div>
-              <div className="p-4 border border-slate-200 dark:border-zinc-800 rounded-xl bg-slate-50 dark:bg-zinc-900/50">
-                <p className="text-sm italic text-slate-500">“将大目标拆解为细小的子任务，是克服拖延症最有效的方法。”</p>
+
+              {/* 详细操作指南 */}
+              <div className="p-5 bg-slate-50 dark:bg-zinc-900/50 rounded-2xl border border-slate-200 dark:border-zinc-800">
+                <h4 className="font-bold flex items-center gap-2 mb-4 text-lg">
+                  <MousePointer2 className="w-5 h-5 text-primary" />
+                  看板操作详解
+                </h4>
+                <div className="space-y-3">
+                  <div className="flex items-start gap-3 p-3 bg-white dark:bg-zinc-800/50 rounded-xl">
+                    <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg shrink-0">
+                      <Plus className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <div>
+                      <p className="font-medium">添加任务块</p>
+                      <p className="text-sm text-slate-500">点击顶部"添加任务块"创建新的分类，例如"第一阶段：基础学习"、"第二阶段：进阶练习"等</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 bg-white dark:bg-zinc-800/50 rounded-xl">
+                    <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg shrink-0">
+                      <Move className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                    </div>
+                    <div>
+                      <p className="font-medium">模式切换</p>
+                      <p className="text-sm text-slate-500">同思维导图，支持<strong>拖拽模式</strong>（滚轮缩放）与<strong>框选模式</strong>（滚轮平移），灵活操作画布</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 bg-white dark:bg-zinc-800/50 rounded-xl">
+                    <div className="p-2 bg-rose-100 dark:bg-rose-900/30 rounded-lg shrink-0">
+                      <Trash2 className="w-4 h-4 text-rose-600 dark:text-rose-400" />
+                    </div>
+                    <div>
+                      <p className="font-medium">批量删除</p>
+                      <p className="text-sm text-slate-500">框选模式下选中多个任务块后，通过左下角菜单一键删除</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 bg-white dark:bg-zinc-800/50 rounded-xl">
+                    <div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg shrink-0">
+                      <Layers className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    </div>
+                    <div>
+                      <p className="font-medium">子任务拆解</p>
+                      <p className="text-sm text-slate-500">点击任务项右侧的图标可为该项创建独立的<strong>子任务看板</strong>，实现层级化管理。支持无限层级嵌套</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* AI 生成任务 */}
+              <div className="p-5 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 rounded-2xl border border-purple-200 dark:border-purple-800">
+                <h4 className="font-bold flex items-center gap-2 mb-3">
+                  <Sparkles className="w-5 h-5 text-purple-500" />
+                  AI 智能规划
+                </h4>
+                <p className="text-slate-600 dark:text-slate-400 mb-3">
+                  告诉 AI 您的学习目标，它会自动生成结构化的任务计划：
+                </p>
+                <div className="bg-white/80 dark:bg-zinc-800/80 p-4 rounded-xl font-mono text-sm space-y-2 mb-3">
+                  <p className="text-purple-600 dark:text-purple-400">"帮我制定一个30天攻克高数的学习计划"</p>
+                  <p className="text-purple-600 dark:text-purple-400">"创建一个考研英语复习任务清单"</p>
+                </div>
+                <p className="text-sm text-slate-600 dark:text-slate-400">
+                  AI 会将大目标拆解为多个阶段（任务块），每个阶段包含具体的任务项，帮您清晰地规划学习路径。
+                </p>
+              </div>
+
+              <div className="p-4 border border-slate-200 dark:border-zinc-800 rounded-xl bg-gradient-to-r from-slate-50 to-zinc-50 dark:from-zinc-900 dark:to-zinc-900/50">
+                <p className="text-sm italic text-slate-500 flex items-center gap-2">
+                  <Lightbulb className="w-4 h-4 text-amber-500" />
+                  "将大目标拆解为细小的子任务，是克服拖延症最有效的方法。"
+                </p>
               </div>
             </div>
           )
@@ -265,20 +597,151 @@ export const Docs = () => {
           icon: <ListChecks className="w-4 h-4" />,
           content: (
             <div className="space-y-6">
-              <p>验证学习成果的最佳途径。题库系统支持手动录入与 AI 智能生成。</p>
-              <div className="space-y-4">
-                <div className="flex gap-4 items-start">
-                  <div className="p-2 bg-indigo-500/10 text-indigo-500 rounded-lg shrink-0"><Cpu className="w-5 h-5" /></div>
-                  <div>
-                    <h4 className="font-bold mb-1">AI 知识点出题</h4>
-                    <p className="text-sm text-slate-600 dark:text-slate-400">AI 会根据您当前学科下的笔记和思维导图，自动提取核心知识点并生成针对性的选择题或简答题，真正实现“因材施考”。</p>
+              <p className="text-lg leading-relaxed text-slate-700 dark:text-slate-300">
+                题库是验证学习成果的最佳途径。StudyStudio 的题库系统支持<strong>五种题型</strong>，可手动录入或通过 AI 智能生成，所有题目均支持 Markdown 格式，完美呈现公式和图片。
+              </p>
+
+              {/* 支持的题型 */}
+              <div className="p-5 bg-slate-50 dark:bg-zinc-900/50 rounded-2xl border border-slate-200 dark:border-zinc-800">
+                <h4 className="font-bold flex items-center gap-2 mb-4 text-lg">
+                  <HelpCircle className="w-5 h-5 text-primary" />
+                  多维题型支持
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="flex items-start gap-3 p-3 bg-white dark:bg-zinc-800/50 rounded-xl">
+                    <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg shrink-0">
+                      <span className="text-xs font-bold text-blue-600 dark:text-blue-400">单选</span>
+                    </div>
+                    <div>
+                      <p className="font-medium">单选题 (Single Choice)</p>
+                      <p className="text-sm text-slate-500">4-5 个选项，选择唯一正确答案</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 bg-white dark:bg-zinc-800/50 rounded-xl">
+                    <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg shrink-0">
+                      <span className="text-xs font-bold text-purple-600 dark:text-purple-400">多选</span>
+                    </div>
+                    <div>
+                      <p className="font-medium">多选题 (Multiple Choice)</p>
+                      <p className="text-sm text-slate-500">4-5 个选项，可选择多个正确答案</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 bg-white dark:bg-zinc-800/50 rounded-xl">
+                    <div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg shrink-0">
+                      <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">判断</span>
+                    </div>
+                    <div>
+                      <p className="font-medium">判断题 (True/False)</p>
+                      <p className="text-sm text-slate-500">判断陈述是否正确</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 bg-white dark:bg-zinc-800/50 rounded-xl">
+                    <div className="p-2 bg-amber-100 dark:bg-amber-900/30 rounded-lg shrink-0">
+                      <span className="text-xs font-bold text-amber-600 dark:text-amber-400">填空</span>
+                    </div>
+                    <div>
+                      <p className="font-medium">填空题 (Fill in Blank)</p>
+                      <p className="text-sm text-slate-500">根据上下文填写正确内容</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 bg-white dark:bg-zinc-800/50 rounded-xl md:col-span-2">
+                    <div className="p-2 bg-rose-100 dark:bg-rose-900/30 rounded-lg shrink-0">
+                      <span className="text-xs font-bold text-rose-600 dark:text-rose-400">大题</span>
+                    </div>
+                    <div>
+                      <p className="font-medium">简答/大题 (Short Answer / Essay)</p>
+                      <p className="text-sm text-slate-500">开放性问答，需要详细解答</p>
+                    </div>
                   </div>
                 </div>
-                <div className="flex gap-4 items-start">
-                  <div className="p-2 bg-rose-500/10 text-rose-500 rounded-lg shrink-0"><Layout className="w-5 h-5" /></div>
-                  <div>
-                    <h4 className="font-bold mb-1">多维题型支持</h4>
-                    <p className="text-sm text-slate-600 dark:text-slate-400">涵盖单选、多选、判断、填空及大题。所有题目均支持 Markdown 解析，公式、图片展示无压力。</p>
+              </div>
+
+              {/* AI 智能出题 */}
+              <div className="p-5 bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 rounded-2xl border border-indigo-200 dark:border-indigo-800">
+                <h4 className="font-bold flex items-center gap-2 mb-3">
+                  <Cpu className="w-5 h-5 text-indigo-500" />
+                  AI 知识点出题
+                </h4>
+                <p className="text-slate-600 dark:text-slate-400 mb-4">
+                  AI 会根据您当前学科下的<strong>笔记和思维导图</strong>，自动提取核心知识点并生成针对性的练习题，真正实现"因材施考"。
+                </p>
+                <div className="space-y-3">
+                  <div className="flex items-start gap-3 p-3 bg-white/80 dark:bg-zinc-800/80 rounded-xl">
+                    <div className="p-2 bg-indigo-100 dark:bg-indigo-900/30 rounded-lg shrink-0">
+                      <FileText className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                    </div>
+                    <div>
+                      <p className="font-medium">基于笔记生成</p>
+                      <p className="text-sm text-slate-500">AI 分析笔记内容，提取关键概念和知识点进行出题</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 bg-white/80 dark:bg-zinc-800/80 rounded-xl">
+                    <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg shrink-0">
+                      <Brain className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                    </div>
+                    <div>
+                      <p className="font-medium">基于导图生成</p>
+                      <p className="text-sm text-slate-500">解析思维导图的节点结构，覆盖所有分支进行出题</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 答案解析 */}
+              <div className="p-5 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl border border-emerald-200 dark:border-emerald-800">
+                <h4 className="font-bold flex items-center gap-2 mb-3">
+                  <Lightbulb className="w-5 h-5 text-emerald-500" />
+                  详细答案解析
+                </h4>
+                <p className="text-slate-600 dark:text-slate-400">
+                  每道题目都配有<strong>详细解析</strong>，帮助您理解答题思路。AI 生成的题目会自动包含解析内容，手动录入时也可添加。
+                </p>
+              </div>
+
+              {/* 题型分布建议 */}
+              <div className="p-5 bg-slate-50 dark:bg-zinc-900/50 rounded-2xl border border-slate-200 dark:border-zinc-800">
+                <h4 className="font-bold flex items-center gap-2 mb-3">
+                  <Target className="w-5 h-5 text-primary" />
+                  AI 生成题型分布
+                </h4>
+                <p className="text-slate-600 dark:text-slate-400 mb-3">
+                  AI 生成题库时会遵循以下比例，确保题型多样化：
+                </p>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm w-20">单选题</span>
+                    <div className="flex-1 bg-slate-200 dark:bg-zinc-700 rounded-full h-2">
+                      <div className="bg-blue-500 h-2 rounded-full" style={{width: '40%'}}></div>
+                    </div>
+                    <span className="text-sm text-slate-500">40%</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm w-20">多选题</span>
+                    <div className="flex-1 bg-slate-200 dark:bg-zinc-700 rounded-full h-2">
+                      <div className="bg-purple-500 h-2 rounded-full" style={{width: '20%'}}></div>
+                    </div>
+                    <span className="text-sm text-slate-500">20%</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm w-20">判断题</span>
+                    <div className="flex-1 bg-slate-200 dark:bg-zinc-700 rounded-full h-2">
+                      <div className="bg-emerald-500 h-2 rounded-full" style={{width: '15%'}}></div>
+                    </div>
+                    <span className="text-sm text-slate-500">15%</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm w-20">填空题</span>
+                    <div className="flex-1 bg-slate-200 dark:bg-zinc-700 rounded-full h-2">
+                      <div className="bg-amber-500 h-2 rounded-full" style={{width: '15%'}}></div>
+                    </div>
+                    <span className="text-sm text-slate-500">15%</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm w-20">简答题</span>
+                    <div className="flex-1 bg-slate-200 dark:bg-zinc-700 rounded-full h-2">
+                      <div className="bg-rose-500 h-2 rounded-full" style={{width: '10%'}}></div>
+                    </div>
+                    <span className="text-sm text-slate-500">10%</span>
                   </div>
                 </div>
               </div>
@@ -293,18 +756,106 @@ export const Docs = () => {
       sections: [
         {
           id: 'ai-agent',
-          title: 'AI Agent 助手',
-          icon: <Sparkles className="w-4 h-4" />,
+          title: 'AI Agent 智能体',
+          icon: <Bot className="w-4 h-4" />,
           content: (
-            <div className="space-y-4">
-              <p>页面中的蓝色圆形悬浮窗口不仅仅是聊天框，它是一个拥有<strong>权限</strong>的助手。</p>
-              <p className="text-sm text-slate-600 dark:text-slate-400">通过 Agent 技术，您可以直接对它说：</p>
-              <div className="bg-slate-100 dark:bg-zinc-900 p-4 rounded-xl font-mono text-xs space-y-2">
-                <p className="text-primary">“帮我把数学笔记整理成思维导图”</p>
-                <p className="text-primary">“帮我创建一个‘复习微积分’的任务”</p>
-                <p className="text-primary">“整理一份XX学科的复习资料，包括思维导图和笔记，再给我出几道例题，最后帮我制定一份复习计划”</p>
+            <div className="space-y-6">
+              <p className="text-lg leading-relaxed text-slate-700 dark:text-slate-300">
+                StudyStudio 的核心竞争力在于内置的 <strong>AI Agent (智能体)</strong> 系统。页面右侧的蓝色圆形悬浮窗不仅是一个聊天框，更是一个拥有系统<strong>操作权限</strong>的数字助手。
+              </p>
+
+              {/* 核心能力 */}
+              <div className="p-5 bg-gradient-to-br from-indigo-50 to-blue-50 dark:from-indigo-900/20 dark:to-blue-900/20 rounded-2xl border border-indigo-100 dark:border-indigo-800">
+                <h4 className="font-bold flex items-center gap-2 mb-4 text-lg">
+                  <Workflow className="w-5 h-5 text-indigo-500" />
+                  Agent 核心能力
+                </h4>
+                <p className="text-slate-600 dark:text-slate-400 mb-4">
+                  不同于普通的问答大模型，我们的 Agent 被赋予了一套完整的<strong>工具系统 (Tool Calling)</strong>。它可以直接读取您的学习数据，并代表您创建或修改内容。
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="flex items-start gap-3 p-3 bg-white/80 dark:bg-zinc-800/80 rounded-xl">
+                    <Database className="w-4 h-4 text-indigo-500 mt-1 shrink-0" />
+                    <div>
+                      <p className="font-medium text-sm">上下文感知</p>
+                      <p className="text-xs text-slate-500">自动识别您当前所在的页面、学科和实体，无需重复提供背景信息。</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 bg-white/80 dark:bg-zinc-800/80 rounded-xl">
+                    <PenTool className="w-4 h-4 text-indigo-500 mt-1 shrink-0" />
+                    <div>
+                      <p className="font-medium text-sm">全栈操作权限</p>
+                      <p className="text-xs text-slate-500">可自主创建学科、生成导图、编写笔记、出题和规划任务。</p>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <p className="text-sm italic">Agent 会自动识别意图并调用系统内部 API 执行操作。</p>
+
+              {/* 两种运行模式 */}
+              <div className="space-y-4">
+                <h3 className="text-xl font-bold border-b border-slate-200 dark:border-zinc-800 pb-2">两种运行模式</h3>
+                <p className="text-slate-600 dark:text-slate-400">
+                  为了应对不同复杂度的任务，AI Agent 设计了两种协同模式：<strong>直接执行模式 (ACT)</strong> 和 <strong>计划确认模式 (PLAN)</strong>。
+                </p>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+                  {/* ACT 模式 */}
+                  <div className="p-5 bg-slate-50 dark:bg-zinc-900/50 rounded-2xl border border-slate-200 dark:border-zinc-800 flex flex-col h-full">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-2">
+                        <Play className="w-5 h-5 text-emerald-500" />
+                        <h4 className="font-bold text-lg">ACT 模式</h4>
+                      </div>
+                      <span className="px-2 py-1 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 text-xs font-bold rounded">直接执行</span>
+                    </div>
+                    <p className="text-sm text-slate-600 dark:text-slate-400 mb-4 flex-1">
+                      适用于目标明确、指令清晰的单一任务。Agent 在理解指令后会<strong>立即调用工具执行</strong>，无需等待确认。
+                    </p>
+                    <div className="bg-white dark:bg-zinc-800/80 p-3 rounded-xl">
+                      <p className="text-xs font-bold text-slate-500 mb-2">典型指令示例：</p>
+                      <ul className="space-y-2 text-sm list-disc list-inside">
+                        <li>"帮我建一个名为『微积分基础』的学科"</li>
+                        <li>"把这篇笔记转成思维导图"</li>
+                        <li>"在这个导图下加几个关于导数的节点"</li>
+                      </ul>
+                    </div>
+                  </div>
+
+                  {/* PLAN 模式 */}
+                  <div className="p-5 bg-slate-50 dark:bg-zinc-900/50 rounded-2xl border border-slate-200 dark:border-zinc-800 flex flex-col h-full">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-2">
+                        <Puzzle className="w-5 h-5 text-purple-500" />
+                        <h4 className="font-bold text-lg">PLAN 模式</h4>
+                      </div>
+                      <span className="px-2 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 text-xs font-bold rounded">计划与确认</span>
+                    </div>
+                    <p className="text-sm text-slate-600 dark:text-slate-400 mb-4 flex-1">
+                      适用于复杂的宏大目标构建。Agent 会先进行<strong>深度需求分析和目标拆解</strong>，向您展示详细的执行计划，<strong>等待您确认后</strong>才会开始实质性的创建工作。
+                    </p>
+                    <div className="bg-white dark:bg-zinc-800/80 p-3 rounded-xl">
+                      <p className="text-xs font-bold text-slate-500 mb-2">典型指令示例：</p>
+                      <ul className="space-y-2 text-sm list-disc list-inside">
+                        <li>"我下个月要考研政治，帮我准备全套复习资料"</li>
+                        <li>"从零开始帮我构建一份 Python 学习体系，包含导图、笔记和测试题"</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 最佳实践 */}
+              <div className="p-5 bg-amber-50 dark:bg-amber-900/20 rounded-2xl border border-amber-200 dark:border-amber-800">
+                <h4 className="font-bold flex items-center gap-2 mb-3">
+                  <Lightbulb className="w-5 h-5 text-amber-500" />
+                  使用建议
+                </h4>
+                <ul className="space-y-2 text-sm text-slate-600 dark:text-slate-400 list-disc list-inside">
+                  <li><strong>明确意图</strong>：尽量用清晰的动词（如"创建"、"整理"、"生成"、"修改"）。</li>
+                  <li><strong>提供材料</strong>：您可以直接粘贴大段文本给 AI，让它帮您整理成结构化的导图或笔记。</li>
+                  <li><strong>善用上下文</strong>：当您打开某篇笔记时，直接对 AI 说"帮我出几道题"，它会自动读取当前笔记内容进行出题。</li>
+                </ul>
+              </div>
             </div>
           )
         },
