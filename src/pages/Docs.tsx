@@ -121,7 +121,7 @@ export const Docs = () => {
                   <div className="absolute -left-[41px] top-0 w-5 h-5 bg-primary rounded-full border-4 border-white dark:border-zinc-950" />
                   <h3 className="text-lg font-bold mb-2">利用 AI 启动</h3>
                   <p className="text-slate-600 dark:text-slate-400">
-                    在空白的思维导图或笔记中，使用“AI 生成”功能，快速勾勒知识雏形，告别从零开始的焦虑。
+                    在任意界面中，使用“AI 生成”功能，快速勾勒知识雏形，告别从零开始的焦虑。
                   </p>
                 </div>
               </div>
