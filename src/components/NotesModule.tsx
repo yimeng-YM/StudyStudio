@@ -236,6 +236,9 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
     const before = text.substring(0, start);
     const selection = text.substring(start, end);
     const after = text.substring(end);
+    
+    // 保存滚动位置
+    const scrollTop = textAreaRef.current.scrollTop;
 
     let actualPrefix = prefix;
     let actualSuffix = suffix;
@@ -263,6 +266,8 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
           : start + actualPrefix.length + selection.length + actualSuffix.length;
 
         textAreaRef.current.setSelectionRange(newCursorPos, newCursorPos);
+        // 恢复滚动位置
+        textAreaRef.current.scrollTop = scrollTop;
       }
     }, 0);
   };

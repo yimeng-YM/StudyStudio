@@ -1,9 +1,9 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useAIStore } from '@/store/useAIStore';
 import { getModels } from '@/services/ai';
 import { DataManager, StudyStudioData } from '@/services/dataManager';
 import { useDialog } from '@/components/ui/DialogProvider';
-import { Upload, Download, ChevronRight, ChevronDown, Folder, FileText, Database, GitBranch } from 'lucide-react';
+import { Upload, Download, ChevronRight, ChevronDown, Folder, FileText, Database, GitBranch, RefreshCw, Check, Search } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { db } from '@/db';
 import { cn } from '@/lib/utils';
@@ -208,6 +208,12 @@ export function Settings() {
   const { showAlert } = useDialog();
   const [models, setModels] = useState<string[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
+  const [showModelDropdown, setShowModelDropdown] = useState(false);
+  const [modelSearch, setModelSearch] = useState('');
+  const modelDropdownRef = useRef<HTMLDivElement>(null);
+  const namingModelDropdownRef = useRef<HTMLDivElement>(null);
+  const [showNamingModelDropdown, setShowNamingModelDropdown] = useState(false);
+  const [namingModelSearch, setNamingModelSearch] = useState('');
 
   // Export State
   const [showExportModal, setShowExportModal] = useState(false);
@@ -229,12 +235,38 @@ export function Settings() {
   }, []);
 
   useEffect(() => {
-    if (settings) setLocalSettings(settings);
+    if (settings) {
+      setLocalSettings(settings);
+      // 从设置中加载缓存的模型列表
+      if (settings.modelList && settings.modelList.length > 0) {
+        setModels(settings.modelList);
+      }
+    }
   }, [settings]);
+
+  // 点击外部关闭下拉框
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (modelDropdownRef.current && !modelDropdownRef.current.contains(event.target as Node)) {
+        setShowModelDropdown(false);
+      }
+      if (namingModelDropdownRef.current && !namingModelDropdownRef.current.contains(event.target as Node)) {
+        setShowNamingModelDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleSave = async () => {
     if (localSettings) {
-      await updateSettings(localSettings);
+      // 保存时同时保存模型列表
+      const settingsToSave = {
+        ...localSettings,
+        modelList: models,
+        modelListUpdatedAt: Date.now()
+      };
+      await updateSettings(settingsToSave);
       showAlert('设置已保存', { title: '成功' });
     }
   };
@@ -354,13 +386,57 @@ export function Settings() {
     setLoadingModels(true);
     try {
       const modelList = await getModels(localSettings);
-      setModels(modelList.map((m: any) => m.id));
-      showAlert(`成功获取 ${modelList.length} 个模型`, { title: '成功' });
+      const modelIds = modelList.map((m: any) => m.id);
+      setModels(modelIds);
+      // 立即保存到设置中
+      const settingsToSave = {
+        ...localSettings,
+        modelList: modelIds,
+        modelListUpdatedAt: Date.now()
+      };
+      await updateSettings(settingsToSave);
+      setLocalSettings(settingsToSave);
+      showAlert(`成功获取并缓存 ${modelList.length} 个模型`, { title: '成功' });
     } catch (e) {
       showAlert('获取模型失败: ' + e, { title: '错误' });
     } finally {
       setLoadingModels(false);
     }
+  };
+
+  // 过滤模型列表
+  const filteredModels = useMemo(() => {
+    if (!modelSearch) return models;
+    return models.filter(m => m.toLowerCase().includes(modelSearch.toLowerCase()));
+  }, [models, modelSearch]);
+
+  const filteredNamingModels = useMemo(() => {
+    if (!namingModelSearch) return models;
+    return models.filter(m => m.toLowerCase().includes(namingModelSearch.toLowerCase()));
+  }, [models, namingModelSearch]);
+
+  // 选择模型
+  const selectModel = (model: string) => {
+    if (localSettings) {
+      setLocalSettings({ ...localSettings, model });
+    }
+    setShowModelDropdown(false);
+    setModelSearch('');
+  };
+
+  const selectNamingModel = (model: string) => {
+    if (localSettings) {
+      setLocalSettings({ ...localSettings, namingModel: model });
+    }
+    setShowNamingModelDropdown(false);
+    setNamingModelSearch('');
+  };
+
+  // 格式化缓存时间
+  const formatCacheTime = (timestamp?: number) => {
+    if (!timestamp) return '';
+    const date = new Date(timestamp);
+    return `缓存于 ${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
   };
 
   if (isLoading || !localSettings) return <div className="p-8">加载中...</div>;
@@ -407,24 +483,74 @@ export function Settings() {
           <div>
             <label className="block text-sm font-medium mb-1 text-zinc-700 dark:text-zinc-300">模型</label>
             <div className="flex gap-2">
-              <input
-                className="flex-1 border rounded px-3 py-2 bg-white dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
-                value={localSettings.model}
-                onChange={e => setLocalSettings({ ...localSettings, model: e.target.value })}
-                list="model-options"
-                placeholder="请输入模型名称..."
-              />
-              <datalist id="model-options">
-                {models.map(m => <option key={m} value={m} />)}
-              </datalist>
+              <div ref={modelDropdownRef} className="flex-1 relative">
+                <div 
+                  className="flex items-center border rounded px-3 py-2 bg-white dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700 cursor-pointer"
+                  onClick={() => setShowModelDropdown(!showModelDropdown)}
+                >
+                  <input
+                    className="flex-1 bg-transparent border-0 outline-none text-zinc-900 dark:text-zinc-100 cursor-pointer"
+                    value={showModelDropdown ? modelSearch : localSettings.model}
+                    onChange={e => {
+                      setModelSearch(e.target.value);
+                      if (!showModelDropdown) setShowModelDropdown(true);
+                    }}
+                    onFocus={() => setShowModelDropdown(true)}
+                    placeholder="选择或输入模型名称..."
+                  />
+                  <ChevronDown className={cn("w-4 h-4 text-zinc-400 transition-transform", showModelDropdown && "rotate-180")} />
+                </div>
+                
+                {showModelDropdown && (
+                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg max-h-60 overflow-hidden">
+                    <div className="p-2 border-b border-zinc-200 dark:border-zinc-700">
+                      <div className="relative">
+                        <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+                        <input
+                          className="w-full pl-8 pr-3 py-1.5 text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          placeholder="搜索模型..."
+                          value={modelSearch}
+                          onChange={e => setModelSearch(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <div className="overflow-y-auto max-h-48">
+                      {filteredModels.length === 0 ? (
+                        <div className="p-3 text-center text-zinc-400 text-sm">
+                          {models.length === 0 ? '点击右侧按钮获取模型列表' : '未找到匹配的模型'}
+                        </div>
+                      ) : (
+                        filteredModels.map(m => (
+                          <div
+                            key={m}
+                            className={cn(
+                              "px-3 py-2 cursor-pointer flex items-center justify-between text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors",
+                              localSettings.model === m && "bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
+                            )}
+                            onClick={() => selectModel(m)}
+                          >
+                            <span className="truncate">{m}</span>
+                            {localSettings.model === m && <Check className="w-4 h-4 shrink-0" />}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
               <button
                 onClick={fetchModels}
                 disabled={loadingModels}
-                className="bg-zinc-200 dark:bg-zinc-700 px-3 py-2 rounded text-sm hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors text-zinc-800 dark:text-zinc-200"
+                className="flex items-center gap-1.5 bg-zinc-200 dark:bg-zinc-700 px-3 py-2 rounded text-sm hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors text-zinc-800 dark:text-zinc-200 disabled:opacity-50"
+                title="刷新模型列表"
               >
-                {loadingModels ? '...' : '获取模型列表'}
+                <RefreshCw className={cn("w-4 h-4", loadingModels && "animate-spin")} />
+                {loadingModels ? '获取中' : '刷新'}
               </button>
             </div>
+            {localSettings.modelListUpdatedAt && models.length > 0 && (
+              <p className="text-xs text-zinc-400 mt-1">{formatCacheTime(localSettings.modelListUpdatedAt)} · 共 {models.length} 个模型</p>
+            )}
           </div>
 
           {/* Advanced Settings Toggle */}
@@ -471,13 +597,72 @@ export function Settings() {
 
                 <div>
                   <label className="block text-xs text-zinc-500 mb-1">对话自动命名模型 (留空则使用主模型)</label>
-                  <input
-                    className="w-full border rounded px-3 py-2 bg-white dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
-                    value={localSettings.namingModel || ''}
-                    onChange={e => setLocalSettings({ ...localSettings, namingModel: e.target.value })}
-                    placeholder="请输入模型名称...(推荐使用更快速便宜的模型)"
-                    list="model-options"
-                  />
+                  <div ref={namingModelDropdownRef} className="relative">
+                    <div 
+                      className="flex items-center border rounded px-3 py-2 bg-white dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700 cursor-pointer"
+                      onClick={() => setShowNamingModelDropdown(!showNamingModelDropdown)}
+                    >
+                      <input
+                        className="flex-1 bg-transparent border-0 outline-none text-zinc-900 dark:text-zinc-100 cursor-pointer"
+                        value={showNamingModelDropdown ? namingModelSearch : (localSettings.namingModel || '')}
+                        onChange={e => {
+                          setNamingModelSearch(e.target.value);
+                          if (!showNamingModelDropdown) setShowNamingModelDropdown(true);
+                        }}
+                        onFocus={() => setShowNamingModelDropdown(true)}
+                        placeholder="推荐使用更快速便宜的模型"
+                      />
+                      <ChevronDown className={cn("w-4 h-4 text-zinc-400 transition-transform", showNamingModelDropdown && "rotate-180")} />
+                    </div>
+                    
+                    {showNamingModelDropdown && (
+                      <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg max-h-60 overflow-hidden">
+                        <div className="p-2 border-b border-zinc-200 dark:border-zinc-700">
+                          <div className="relative">
+                            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+                            <input
+                              className="w-full pl-8 pr-3 py-1.5 text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              placeholder="搜索模型..."
+                              value={namingModelSearch}
+                              onChange={e => setNamingModelSearch(e.target.value)}
+                            />
+                          </div>
+                        </div>
+                        <div className="overflow-y-auto max-h-48">
+                          {/* 清空选项 */}
+                          <div
+                            className={cn(
+                              "px-3 py-2 cursor-pointer flex items-center justify-between text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors text-zinc-500",
+                              !localSettings.namingModel && "bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
+                            )}
+                            onClick={() => selectNamingModel('')}
+                          >
+                            <span>使用主模型（留空）</span>
+                            {!localSettings.namingModel && <Check className="w-4 h-4 shrink-0" />}
+                          </div>
+                          {filteredNamingModels.length === 0 ? (
+                            <div className="p-3 text-center text-zinc-400 text-sm">
+                              {models.length === 0 ? '请先获取模型列表' : '未找到匹配的模型'}
+                            </div>
+                          ) : (
+                            filteredNamingModels.map(m => (
+                              <div
+                                key={m}
+                                className={cn(
+                                  "px-3 py-2 cursor-pointer flex items-center justify-between text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors",
+                                  localSettings.namingModel === m && "bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
+                                )}
+                                onClick={() => selectNamingModel(m)}
+                              >
+                                <span className="truncate">{m}</span>
+                                {localSettings.namingModel === m && <Check className="w-4 h-4 shrink-0" />}
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             )}

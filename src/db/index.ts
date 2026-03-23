@@ -102,6 +102,10 @@ export interface AISettings {
   maxTokens?: number;
   /** 生成的随机性控制参数（0.0 ~ 2.0，数值越高越具发散性） */
   temperature?: number;
+  /** 缓存的可用模型列表，避免频繁请求 API */
+  modelList?: string[];
+  /** 模型列表缓存时间戳 */
+  modelListUpdatedAt?: number;
 }
 
 /**

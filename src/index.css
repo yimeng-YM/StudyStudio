@@ -8,9 +8,7 @@
   mix-blend-mode: normal;
 }
 
-
 @layer base {
-
   /* Deep Minimalist Theme (Zinc/Neutral based) */
   :root {
     --background: 0 0% 100%;
@@ -91,6 +89,28 @@
     @apply bg-background text-foreground;
   }
 
+  /* 文本选择框样式 - 亮色模式 */
+  ::selection {
+    background-color: hsl(210 100% 50% / 0.2);
+    color: inherit;
+  }
+
+  ::-moz-selection {
+    background-color: hsl(210 100% 50% / 0.2);
+    color: inherit;
+  }
+
+  /* 文本选择框样式 - 暗色模式 */
+  .dark ::selection {
+    background-color: hsl(210 100% 60% / 0.35);
+    color: inherit;
+  }
+
+  .dark ::-moz-selection {
+    background-color: hsl(210 100% 60% / 0.35);
+    color: inherit;
+  }
+
   /* 平滑切换主题动画 */
   body,
   .bg-white,
@@ -114,7 +134,10 @@
   .border-slate-300,
   .border-slate-700,
   .border-slate-800 {
-    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+    transition:
+      background-color 0.3s ease,
+      color 0.3s ease,
+      border-color 0.3s ease;
   }
 }
 
@@ -140,7 +163,6 @@
 }
 
 @layer utilities {
-
   /* Scrollbar Customization */
   ::-webkit-scrollbar {
     background-color: transparent;
@@ -160,6 +182,6 @@
   }
 
   .dark * {
-    scrollbar-color: theme('colors.slate.700') transparent;
+    scrollbar-color: theme("colors.slate.700") transparent;
   }
 }
