@@ -73,8 +73,24 @@ function normalizeAnswerToIndexArray(answer: any): string[] {
   if (Array.isArray(answer)) {
     rawList = answer;
   } else if (typeof answer === 'string') {
-    // Handle comma-separated strings "0,1" or "A,B"
-    rawList = answer.split(',').map(s => s.trim()).filter(s => s !== '');
+    const trimmed = answer.trim();
+    // Check if it's a JSON array format like "[0, 1, 2]" or "[A, B, C]"
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) {
+          rawList = parsed;
+        } else {
+          rawList = [parsed];
+        }
+      } catch {
+        // If JSON parse fails, fall back to comma splitting
+        rawList = trimmed.split(',').map(s => s.trim()).filter(s => s !== '');
+      }
+    } else {
+      // Handle comma-separated strings "0,1" or "A,B"
+      rawList = trimmed.split(',').map(s => s.trim()).filter(s => s !== '');
+    }
   } else {
     rawList = [answer];
   }
