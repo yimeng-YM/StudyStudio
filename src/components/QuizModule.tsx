@@ -107,6 +107,22 @@ function normalizeAnswerToIndexArray(answer: any): string[] {
 }
 
 /**
+ * 将判断题答案归一化为布尔值
+ * @param {any} answer - 原始答案（可能是 true, false, "true", "false" 等）
+ * @returns {boolean | null} 归一化后的布尔值，无效时返回 null
+ */
+function normalizeTrueFalseAnswer(answer: any): boolean | null {
+  if (answer === true) return true;
+  if (answer === false) return false;
+  if (typeof answer === 'string') {
+    const lower = answer.trim().toLowerCase();
+    if (lower === 'true') return true;
+    if (lower === 'false') return false;
+  }
+  return null;
+}
+
+/**
  * 格式化答案用于前端展示
  * @param {any} answer - 原始答案
  * @param {Question} question - 题目对象
@@ -125,7 +141,8 @@ function formatAnswer(answer: any, question: Question) {
       .join(', ');
   }
   if (question.type === 'true_false') {
-    return answer === true || String(answer).toLowerCase() === 'true' ? '正确' : '错误';
+    const normalized = normalizeTrueFalseAnswer(answer);
+    return normalized === true ? '正确' : normalized === false ? '错误' : '无';
   }
   return String(answer || '无');
 }
@@ -330,14 +347,22 @@ function QuestionViewer({ question, index, onEdit, onDelete }: { question: Quest
    */
   let isCorrect = false;
   if (isSubmitted && isObjective) {
-    const normalizedUser = normalizeAnswerToIndexArray(userAnswer).sort();
-    const normalizedCorrect = normalizeAnswerToIndexArray(question.answer).sort();
-    
-    if (question.type === 'single_choice' || question.type === 'true_false') {
-      isCorrect = normalizedUser.length > 0 && normalizedCorrect.length > 0 && normalizedUser[0] === normalizedCorrect[0];
-    } else if (question.type === 'multiple_choice') {
-      isCorrect = normalizedUser.length === normalizedCorrect.length && 
-                  normalizedUser.every((val, i) => val === normalizedCorrect[i]);
+    if (question.type === 'true_false') {
+      // 判断题使用布尔值比较
+      const normalizedUser = normalizeTrueFalseAnswer(userAnswer);
+      const normalizedCorrect = normalizeTrueFalseAnswer(question.answer);
+      isCorrect = normalizedUser !== null && normalizedCorrect !== null && normalizedUser === normalizedCorrect;
+    } else {
+      // 选择题使用索引数组比较
+      const normalizedUser = normalizeAnswerToIndexArray(userAnswer).sort();
+      const normalizedCorrect = normalizeAnswerToIndexArray(question.answer).sort();
+      
+      if (question.type === 'single_choice') {
+        isCorrect = normalizedUser.length > 0 && normalizedCorrect.length > 0 && normalizedUser[0] === normalizedCorrect[0];
+      } else if (question.type === 'multiple_choice') {
+        isCorrect = normalizedUser.length === normalizedCorrect.length &&
+                    normalizedUser.every((val, i) => val === normalizedCorrect[i]);
+      }
     }
   }
 
@@ -427,7 +452,8 @@ function QuestionViewer({ question, index, onEdit, onDelete }: { question: Quest
                   let btnClass = "border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-300";
                   
                   if (isSubmitted) {
-                    const isAnswer = question.answer === val;
+                    const normalizedCorrect = normalizeTrueFalseAnswer(question.answer);
+                    const isAnswer = normalizedCorrect === val;
                     if (isAnswer) btnClass = "border-green-500 bg-green-50 dark:bg-green-900/20 text-green-700";
                     else if (isSelected && !isAnswer) btnClass = "border-red-500 bg-red-50 dark:bg-red-900/20 text-red-700";
                     else btnClass = "opacity-50";
@@ -635,21 +661,21 @@ function QuestionEditor({ question, onSave, onCancel }: { question: Question, on
           <label className="block text-xs font-medium text-zinc-500 mb-1">答案</label>
           <div className="flex gap-4">
             <label className="flex items-center gap-2 cursor-pointer">
-              <input 
-                type="radio" 
-                checked={answer === true} 
-                onChange={() => setAnswer(true)} 
+              <input
+                type="radio"
+                checked={normalizeTrueFalseAnswer(answer) === true}
+                onChange={() => setAnswer(true)}
                 className="text-blue-600"
-              /> 
+              />
               <span className="text-sm">正确</span>
             </label>
             <label className="flex items-center gap-2 cursor-pointer">
-              <input 
-                type="radio" 
-                checked={answer === false} 
+              <input
+                type="radio"
+                checked={normalizeTrueFalseAnswer(answer) === false}
                 onChange={() => setAnswer(false)}
                 className="text-blue-600"
-              /> 
+              />
               <span className="text-sm">错误</span>
             </label>
           </div>
