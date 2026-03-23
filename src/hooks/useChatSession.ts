@@ -47,6 +47,9 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act') {
   const [currentPlan, setCurrentPlan] = useState<string>('');
   const awaitingConfirmation = useRef(false);
   const planExtractedRef = useRef(false);
+  
+  // 用于取消请求的 AbortController
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (sessionId) {
@@ -279,14 +282,30 @@ IMPORTANT: Always respond in Chinese.
       ? ToolDefinitions.filter(t => t.function.name !== 'present_plan' && t.function.name !== 'start_execution')
       : ToolDefinitions;
 
-    await streamAICompletion(
-      messagesWithSystem, 
-      settings, 
-      handleChunk, 
-      activeTools, 
-      handleToolCallChunk,
-      { maxTokens: DEFAULT_MAX_TOKENS }
-    );
+    // 创建新的 AbortController 用于取消请求
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+
+    try {
+      await streamAICompletion(
+        messagesWithSystem, 
+        settings, 
+        handleChunk, 
+        activeTools, 
+        handleToolCallChunk,
+        { maxTokens: DEFAULT_MAX_TOKENS },
+        abortController.signal
+      );
+    } catch (error: any) {
+      // 如果是用户主动取消，不抛出错误
+      if (error.name === 'AbortError') {
+        setStatus('已停止');
+        return;
+      }
+      throw error;
+    } finally {
+      abortControllerRef.current = null;
+    }
     
     setStatus('');
 
@@ -418,6 +437,19 @@ IMPORTANT: Always respond in Chinese.
   };
 
   /**
+   * 停止当前的 AI 生成任务
+   * 会取消正在进行的请求并重置加载状态
+   */
+  const stop = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setLoading(false);
+    setStatus('已停止');
+  };
+
+  /**
    * 重试对话历史中的某一次用户提问
    * 截断该消息之后的所有对话，并基于截断后的历史重新发起请求
    *
@@ -484,5 +516,6 @@ IMPORTANT: Always respond in Chinese.
     currentPlan,
     confirmPlan,
     rejectPlan,
+    stop,
   };
 }

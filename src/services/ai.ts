@@ -180,6 +180,7 @@ export async function getAICompletion(
  * @param tools - 可选参数，注入给模型可调用的本地或远程工具规范描述
  * @param onToolCallChunk - 接收到工具调用流式数据分块时的回调函数
  * @param options - 额外的推理参数（如 maxTokens 和 temperature）
+ * @param abortSignal - 可选的 AbortSignal，用于取消请求
  */
 export async function streamAICompletion(
   messages: Message[], 
@@ -187,7 +188,8 @@ export async function streamAICompletion(
   onChunk: (chunk: string) => void,
   tools?: any[],
   onToolCallChunk?: (toolCallChunk: any) => void,
-  options?: AIRequestOptions
+  options?: AIRequestOptions,
+  abortSignal?: AbortSignal
 ): Promise<void> {
   if (!settings.apiKey) throw new Error("未配置 API Key");
 
@@ -229,7 +231,8 @@ export async function streamAICompletion(
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${settings.apiKey}`
     },
-    body: JSON.stringify(body)
+    body: JSON.stringify(body),
+    signal: abortSignal
   });
 
   if (!response.ok) {

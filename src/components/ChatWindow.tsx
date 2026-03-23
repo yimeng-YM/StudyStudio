@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
-import { Send, Paperclip, X, Trash2, Plus, History, Sparkles, Brain, Zap, RotateCw, Loader2 } from 'lucide-react';
+import { Send, Paperclip, X, Trash2, Plus, History, Sparkles, Brain, Zap, RotateCw, Loader2, Square } from 'lucide-react';
 import { MessageRenderer, ToolCallRenderer } from './MessageRenderer';
 import { db, ChatSession } from '@/db';
 import { processFile } from '@/lib/fileProcessor';
@@ -63,7 +63,7 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
    * 使用自定义 Hook 管理聊天会话
    * 包含消息列表、加载状态、流式渲染状态文字以及发送消息等核心逻辑
    */
-  const { messages, loading, status, currentSessionId, sendMessage, clearSession, retry } = useChatSession(sessionId || null, mode);
+  const { messages, loading, status, currentSessionId, sendMessage, clearSession, retry, stop } = useChatSession(sessionId || null, mode);
 
   /**
    * 实时查询所有历史会话
@@ -398,16 +398,26 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
               }
             }}
           />
-          <button
-            onClick={handleSend}
-            disabled={(!input.trim() && selectedFiles.length === 0) || loading}
-            className={`p-3 rounded-full transition-all duration-300 mb-0.5 shadow-sm ${(!input.trim() && selectedFiles.length === 0) || loading
-              ? 'bg-zinc-100 text-zinc-400 dark:bg-zinc-800 cursor-not-allowed'
-              : 'bg-primary text-primary-foreground hover:bg-primary/90 hover:scale-105 active:scale-95'
-              }`}
-          >
-            <Send size={18} className={loading ? 'animate-pulse' : ''} />
-          </button>
+          {loading ? (
+            <button
+              onClick={stop}
+              className="p-3 rounded-full transition-all duration-300 mb-0.5 shadow-sm bg-red-500 text-white hover:bg-red-600 hover:scale-105 active:scale-95"
+              title="停止生成"
+            >
+              <Square size={18} className="fill-current" />
+            </button>
+          ) : (
+            <button
+              onClick={handleSend}
+              disabled={!input.trim() && selectedFiles.length === 0}
+              className={`p-3 rounded-full transition-all duration-300 mb-0.5 shadow-sm ${!input.trim() && selectedFiles.length === 0
+                ? 'bg-zinc-100 text-zinc-400 dark:bg-zinc-800 cursor-not-allowed'
+                : 'bg-primary text-primary-foreground hover:bg-primary/90 hover:scale-105 active:scale-95'
+                }`}
+            >
+              <Send size={18} />
+            </button>
+          )}
         </div>
       </div>
     </div>
