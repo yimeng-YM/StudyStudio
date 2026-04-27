@@ -77,57 +77,16 @@ export const update_subject = async ({ subjectId, name, description }: { subject
 };
 
 /**
- * 为指定学科创建思维导图。
- * 如果该学科下已存在思维导图，则将新生成的内容合并到现有导图中（通过计算节点坐标偏移防止重叠）。
- * 
- * @param args - 导图创建参数
+ * 为指定学科创建一个全新的独立思维导图实体。
+ * 每次调用均创建新实体，多个导图可在同一学科下共存，互不干扰。
+ * 如需向已有导图追加内容，请使用 add_mindmap_elements；如需修改现有导图，请使用 update_mindmap。
+ *
  * @param args.subjectId - 归属学科 ID
  * @param args.title - 导图标题
  * @param args.content - 包含 React Flow nodes 和 edges 的序列化数据
- * @returns 导图实体 ID 及是否发生合并的标识
+ * @returns 新创建的导图实体 ID 与标题
  */
 export const create_mindmap = async ({ subjectId, title, content }: { subjectId: string; title: string; content: any }) => {
-  const existing = await db.entities.where({ subjectId, type: 'mindmap' }).first();
-  
-  if (existing) {
-    const currentContent = existing.content || { nodes: [], edges: [] };
-    const newNodes = [...(currentContent.nodes || [])];
-    const newEdges = [...(currentContent.edges || [])];
-
-    // 计算当前画布最右侧坐标，新节点在此基础上向右平移 400 像素，避免挤占已有内容空间
-    const maxX = newNodes.length > 0 ? Math.max(...newNodes.map(n => n.position?.x || 0)) : 0;
-    
-    const robustContent = robustParseContent(content);
-    (robustContent.nodes || []).forEach((n: any) => {
-      const idx = newNodes.findIndex(old => old.id === n.id);
-      if (idx >= 0) newNodes[idx] = {
-        ...n,
-        position: {
-          x: (n.position?.x || 0) + maxX + 400,
-          y: n.position?.y || 0
-        }
-      };
-      else newNodes.push({
-        ...n,
-        position: {
-          x: (n.position?.x || 0) + maxX + 400,
-          y: n.position?.y || 0
-        }
-      });
-    });
-
-    (robustContent.edges || []).forEach((e: any) => {
-      const idx = newEdges.findIndex(old => old.id === e.id);
-      if (idx >= 0) newEdges[idx] = e;
-      else newEdges.push(e);
-    });
-
-    existing.content = { nodes: newNodes, edges: newEdges };
-    existing.updatedAt = Date.now();
-    await db.entities.put(existing);
-    return { id: existing.id, title: existing.title, merged: true };
-  }
-
   const id = crypto.randomUUID();
   const now = Date.now();
   await db.entities.add({
@@ -139,7 +98,7 @@ export const create_mindmap = async ({ subjectId, title, content }: { subjectId:
     createdAt: now,
     updatedAt: now,
     lastAccessed: now,
-    order: now
+    order: now,
   });
   return { id, title, merged: false };
 };
@@ -234,14 +193,18 @@ export const create_note = async ({ subjectId, title, content }: { subjectId: st
 
 /**
  * 更新现有笔记内容或标题。
- * 
+ * 返回 _diff 字段供前端展示改动对比视图（不会回传给 AI 上下文）。
+ *
  * @param args - 笔记更新参数
  */
 export const update_note = async ({ entityId, title, content }: { entityId: string; title?: string; content?: any }) => {
   const entity = await db.entities.get(entityId);
   if (!entity) throw new Error(`找不到实体 ${entityId}`);
   if (entity.type !== 'note') throw new Error(`实体 ${entityId} 不是笔记`);
-  
+
+  const oldContent = typeof entity.content === 'string' ? entity.content : '';
+  let newContent: string | undefined;
+
   if (title) entity.title = title;
   if (content !== undefined) {
     const robustContent = robustParseContent(content);
@@ -252,16 +215,38 @@ export const update_note = async ({ entityId, title, content }: { entityId: stri
       actualContent = JSON.stringify(robustContent, null, 2);
     }
     entity.content = actualContent;
+    newContent = typeof actualContent === 'string' ? actualContent : '';
   }
   entity.updatedAt = Date.now();
-  
+
   await db.entities.put(entity);
-  return { id: entity.id, title: entity.title };
+  return {
+    id: entity.id,
+    title: entity.title,
+    ...(newContent !== undefined ? { _diff: { before: oldContent, after: newContent } } : {}),
+  };
 };
 
 /**
+ * 将题目数组格式化为易于 diff 对比的纯文本。
+ * 每道题包含题型、题干、选项、答案和解析，用于在前端生成 diff 视图。
+ */
+function formatQuestionsAsText(questions: any[]): string {
+  if (!Array.isArray(questions) || questions.length === 0) return '（空）';
+  return questions.map((q: any, i: number) => {
+    const parts: string[] = [`Q${i + 1}. [${q.type || '?'}] ${(q.text || '').replace(/\n/g, ' ')}`];
+    if (Array.isArray(q.options) && q.options.length) {
+      parts.push(`  选项: ${q.options.map((o: string, j: number) => `${String.fromCharCode(65 + j)}. ${o}`).join(' | ')}`);
+    }
+    parts.push(`  答案: ${Array.isArray(q.answer) ? q.answer.join(', ') : (q.answer ?? '')}`);
+    if (q.explanation) parts.push(`  解析: ${String(q.explanation).replace(/\n/g, ' ')}`);
+    return parts.join('\n');
+  }).join('\n\n');
+}
+
+/**
  * 创建包含结构化题目的测验题库。
- * 
+ *
  * @param args - 题库参数
  */
 export const create_quiz = async ({ subjectId, title, content }: { subjectId: string; title: string; content: any }) => {
@@ -283,20 +268,28 @@ export const create_quiz = async ({ subjectId, title, content }: { subjectId: st
 
 /**
  * 更新测试题库内容。
- * 
+ * 返回 _diff 字段供前端展示改动对比视图（不会回传给 AI 上下文）。
+ *
  * @param args - 题库更新参数
  */
 export const update_quiz = async ({ entityId, title, content }: { entityId: string; title?: string; content?: any }) => {
   const entity = await db.entities.get(entityId);
   if (!entity) throw new Error(`找不到实体 ${entityId}`);
   if (entity.type !== 'quiz_bank') throw new Error(`实体 ${entityId} 不是题库`);
-  
+
+  const oldQuestions = Array.isArray(entity.content?.questions) ? [...entity.content.questions] : [];
+
   if (title) entity.title = title;
   if (content !== undefined) entity.content = robustParseContent(content);
   entity.updatedAt = Date.now();
-  
+
   await db.entities.put(entity);
-  return { id: entity.id, title: entity.title };
+  const newQuestions = Array.isArray(entity.content?.questions) ? entity.content.questions : [];
+  return {
+    id: entity.id,
+    title: entity.title,
+    _diff: { before: formatQuestionsAsText(oldQuestions), after: formatQuestionsAsText(newQuestions) },
+  };
 };
 
 /**
@@ -363,8 +356,169 @@ export const create_taskboard = async ({ subjectId, title, content }: { subjectI
 };
 
 /**
+ * 通过「精确搜索→替换」的方式修改笔记中的局部内容，无需依赖行号。
+ *
+ * 相比基于行号的方案，此方式具有以下优势：
+ *  - 定位不会因多次连续 patch 而错位（行号会随每次修改漂移，但文本内容不会）
+ *  - AI 只需从读取结果中复制原文即可，无需计算行号
+ *  - 未找到原文时立即报错，不会静默地改错位置
+ *
+ * @param args.entityId - 笔记实体 ID
+ * @param args.search   - 待替换的原始文本（须与笔记内容完全一致，含空格与换行）
+ * @param args.replace  - 替换后的新文本
+ *
+ * @throws 当 search 文本在笔记中不存在时抛出错误
+ * @throws 当 search 文本在笔记中出现多次（有歧义）时抛出错误，要求提供更多上下文
+ */
+export const patch_note_content = async ({
+  entityId,
+  search,
+  replace,
+}: {
+  entityId: string;
+  search: string;
+  replace: string;
+}) => {
+  const entity = await db.entities.get(entityId);
+  if (!entity) throw new Error(`未找到实体 ${entityId}`);
+  if (entity.type !== 'note') throw new Error(`实体 ${entityId} 不是笔记`);
+
+  const content = typeof entity.content === 'string' ? entity.content : '';
+
+  // 精确匹配（含所有空白字符与换行），不使用正则，避免特殊字符误匹配
+  if (!content.includes(search)) {
+    throw new Error(
+      `未在笔记中找到指定文本。请通过 get_entity_content 重新读取最新内容，` +
+      `确保 search 参数与原文完全一致（含空格、标点、换行）。`
+    );
+  }
+
+  const occurrences = content.split(search).length - 1;
+  if (occurrences > 1) {
+    throw new Error(
+      `指定文本在笔记中出现了 ${occurrences} 次，无法唯一定位。` +
+      `请在 search 参数中包含更多上下文（如前后各多加一行）以确保唯一性。`
+    );
+  }
+
+  const newContent = content.replace(search, replace);
+  entity.content = newContent;
+  entity.updatedAt = Date.now();
+  await db.entities.put(entity);
+
+  return {
+    id: entity.id,
+    title: entity.title,
+    _diff: { before: search, after: replace },
+  };
+};
+
+/**
+ * 对题库中的题目进行精细化增删改操作，无需重写全部题目。
+ * 每个操作项可独立指定类型（add / update / delete）及目标题目。
+ *
+ * @param args.entityId - 题库实体 ID
+ * @param args.operations - 操作列表，每项包含：
+ *   - type: 'add' | 'update' | 'delete'
+ *   - question_id: 'update'/'delete' 时必填，要操作的题目 id
+ *   - question: 'add' 时为完整题目对象；'update' 时为需要合并的字段（可部分更新）
+ */
+export const patch_quiz_questions = async ({
+  entityId,
+  operations,
+}: {
+  entityId: string;
+  operations: Array<{
+    type: 'add' | 'update' | 'delete';
+    question_id?: string;
+    question?: any;
+  }>;
+}) => {
+  const entity = await db.entities.get(entityId);
+  if (!entity) throw new Error(`未找到实体 ${entityId}`);
+  if (entity.type !== 'quiz_bank') throw new Error(`实体 ${entityId} 不是题库`);
+
+  const content = entity.content || { questions: [] };
+  const questions: any[] = [...(content.questions || [])];
+  const stats = { added: 0, updated: 0, deleted: 0 };
+
+  // 操作前：快照所有将被 update/delete 的题目（用于 diff 的 before 侧）
+  const beforeSnapshotById: Record<string, any> = {};
+  for (const op of operations) {
+    if ((op.type === 'update' || op.type === 'delete') && op.question_id) {
+      const q = questions.find((q: any) => q.id === op.question_id);
+      if (q) beforeSnapshotById[op.question_id] = { ...q };
+    }
+  }
+
+  for (const op of operations) {
+    if (op.type === 'add' && op.question) {
+      questions.push(op.question);
+      stats.added++;
+    } else if (op.type === 'update' && op.question_id && op.question) {
+      const idx = questions.findIndex((q: any) => q.id === op.question_id);
+      if (idx >= 0) {
+        questions[idx] = { ...questions[idx], ...op.question };
+        stats.updated++;
+      }
+    } else if (op.type === 'delete' && op.question_id) {
+      const idx = questions.findIndex((q: any) => q.id === op.question_id);
+      if (idx >= 0) {
+        questions.splice(idx, 1);
+        stats.deleted++;
+      }
+    }
+  }
+
+  // 操作后：收集 diff 的 before/after 内容
+  const diffBefore: any[] = [];
+  const diffAfter: any[] = [];
+  for (const op of operations) {
+    if (op.type === 'delete' && op.question_id && beforeSnapshotById[op.question_id]) {
+      diffBefore.push(beforeSnapshotById[op.question_id]);
+    } else if (op.type === 'update' && op.question_id) {
+      if (beforeSnapshotById[op.question_id]) diffBefore.push(beforeSnapshotById[op.question_id]);
+      const updated = questions.find((q: any) => q.id === op.question_id);
+      if (updated) diffAfter.push(updated);
+    } else if (op.type === 'add' && op.question) {
+      const added = questions.find((q: any) => q.id === op.question?.id) ?? op.question;
+      diffAfter.push(added);
+    }
+  }
+
+  entity.content = { ...content, questions };
+  entity.updatedAt = Date.now();
+  await db.entities.put(entity);
+
+  return {
+    id: entity.id,
+    title: entity.title,
+    ...stats,
+    total_questions: questions.length,
+    _diff: { before: formatQuestionsAsText(diffBefore), after: formatQuestionsAsText(diffAfter) },
+  };
+};
+
+/**
+ * 清空指定思维导图的全部节点与连线，保留实体元数据（ID、标题等）。
+ * 适用于需要重新规划导图结构但不想删除实体本身的场景。
+ *
+ * @param args.entityId - 思维导图实体 ID
+ */
+export const clear_mindmap = async ({ entityId }: { entityId: string }) => {
+  const entity = await db.entities.get(entityId);
+  if (!entity) throw new Error(`找不到实体 ${entityId}`);
+  if (entity.type !== 'mindmap') throw new Error(`实体 ${entityId} 不是思维导图`);
+
+  entity.content = { nodes: [], edges: [] };
+  entity.updatedAt = Date.now();
+  await db.entities.put(entity);
+  return { id: entity.id, title: entity.title, cleared: true };
+};
+
+/**
  * 覆盖更新任务看板结构。
- * 
+ *
  * @param args - 看板更新参数
  */
 export const update_taskboard = async ({ entityId, title, content }: { entityId: string; title?: string; content?: any }) => {

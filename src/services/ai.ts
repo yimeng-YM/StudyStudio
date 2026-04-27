@@ -34,7 +34,7 @@ export interface ToolCall {
 export interface Message {
   /** 发送者的身份角色 */
   role: 'system' | 'user' | 'assistant' | 'tool';
-  /** 
+  /**
    * 消息具体内容。
    * 支持纯字符串（文本）或者多模态结构体数组，在工具返回场景下允许为 null
    */
@@ -45,6 +45,8 @@ export interface Message {
   tool_calls?: ToolCall[];
   /** 当该消息是工具的执行结果时，需填入对应的调用 ID，以便 AI 将结果与之前的请求对应 */
   tool_call_id?: string;
+  /** DeepSeek thinking 模式的推理内容，回传时必须原样附带，否则 API 会报错 */
+  reasoning_content?: string;
 }
 
 /**
@@ -183,13 +185,14 @@ export async function getAICompletion(
  * @param abortSignal - 可选的 AbortSignal，用于取消请求
  */
 export async function streamAICompletion(
-  messages: Message[], 
-  settings: AISettings, 
+  messages: Message[],
+  settings: AISettings,
   onChunk: (chunk: string) => void,
   tools?: any[],
   onToolCallChunk?: (toolCallChunk: any) => void,
   options?: AIRequestOptions,
-  abortSignal?: AbortSignal
+  abortSignal?: AbortSignal,
+  onReasoningChunk?: (chunk: string) => void
 ): Promise<void> {
   if (!settings.apiKey) throw new Error("未配置 API Key");
 
@@ -274,6 +277,10 @@ export async function streamAICompletion(
             // 触发普通文本分片回调
             if (delta.content) {
               onChunk(delta.content);
+            }
+            // 捕获 DeepSeek thinking 模式的推理内容，必须原样回传给 API
+            if (delta.reasoning_content && onReasoningChunk) {
+              onReasoningChunk(delta.reasoning_content);
             }
             // 触发工具调用的参数流分片回调
             if (delta.tool_calls && onToolCallChunk) {

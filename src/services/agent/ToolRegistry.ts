@@ -7,22 +7,29 @@ import { ToolCall } from '@/services/ai';
  * 将声明的函数名称与实际执行的方法实现（分别来自 readTools 和 writeTools）进行映射。
  */
 export const ToolRegistry = {
+  // 读取工具
   get_subjects: readTools.get_subjects,
   get_subject_details: readTools.get_subject_details,
   get_entity_content: readTools.get_entity_content,
-  
+  get_note_lines: readTools.get_note_lines,
+  get_quiz_questions: readTools.get_quiz_questions,
+
+  // 写入工具
   create_subject: writeTools.create_subject,
   update_subject: writeTools.update_subject,
   create_mindmap: writeTools.create_mindmap,
   update_mindmap: writeTools.update_mindmap,
   add_mindmap_elements: writeTools.add_mindmap_elements,
+  clear_mindmap: writeTools.clear_mindmap,
   create_note: writeTools.create_note,
   update_note: writeTools.update_note,
+  patch_note_content: writeTools.patch_note_content,
   create_quiz: writeTools.create_quiz,
   update_quiz: writeTools.update_quiz,
+  patch_quiz_questions: writeTools.patch_quiz_questions,
   create_taskboard: writeTools.create_taskboard,
   update_taskboard: writeTools.update_taskboard,
-  
+
   // 流程控制工具，用于在对话中辅助 AI 管理任务流状态
   present_plan: async (_args: { plan_summary: string }) => ({ status: 'success', message: 'Plan presented to user, awaiting confirmation.' }),
   start_execution: async () => ({ status: 'success', message: 'Execution started.' }),
@@ -56,11 +63,43 @@ export async function executeTool(toolCall: ToolCall): Promise<any> {
 export const TOOL_USAGE_GUIDE = `
 ## Tool Usage Best Practices
 
-### Core Principle: Generate Rich, Complete Content
-When using any creation tool, always generate as much content as possible:
-- Do not stop after only a few examples.
-- More is better; users can always refine or delete extra content.
-- Prioritize both quality and quantity.
+### Core Principle: Prefer Editing Over Creating
+**Before creating new content, always check if relevant content already exists:**
+1. Call get_subjects to find existing subjects.
+2. Call get_subject_details to see existing notes, quizzes, and mindmaps.
+3. If matching content exists, UPDATE or PATCH it instead of creating a duplicate.
+
+Creating a new entity is only appropriate when:
+- No related entity exists yet.
+- The user explicitly asks to create a new, separate document.
+
+### Targeted Editing — Use Patch Tools for Small Changes
+For notes and quizzes, prefer surgical edits over full rewrites:
+
+| Situation | Preferred Tool |
+|---|---|
+| Changing part of a note | patch_note_content |
+| Fixing or adding a few questions | patch_quiz_questions |
+| Rewriting the majority of a note | update_note |
+| Regenerating most questions | update_quiz |
+
+**Workflow for targeted note edits (exact search-replace, no line numbers):**
+1. get_entity_content — read the note to get the exact current text.
+2. patch_note_content — copy the exact text to change into "search", put new text in "replace".
+   - "search" MUST be a verbatim copy (including all spaces and newlines).
+   - If the text appears multiple times, include surrounding context to make it unique.
+   - On "not found" error: re-read with get_entity_content and copy again carefully.
+
+**Workflow for targeted quiz edits:**
+1. get_quiz_questions — inspect the relevant questions by ID or index range.
+2. patch_quiz_questions — add / update / delete only those questions.
+
+### Mindmaps — Multiple Can Coexist
+- Each call to create_mindmap always creates a new, independent mindmap entity.
+- Multiple mindmaps can coexist under the same subject.
+- To expand an existing mindmap: use add_mindmap_elements.
+- To rebuild a mindmap from scratch: use clear_mindmap then update_mindmap (or add_mindmap_elements).
+- To partially modify structure: use update_mindmap with the full desired content.
 
 ### Quiz Creation (create_quiz / update_quiz)
 Requirements: Generate an extensive set of questions for each quiz bank.
@@ -163,6 +202,64 @@ Returns: The complete content of the entity`,
         type: 'object',
         properties: {
           entityId: { type: 'string', description: 'The ID of the entity' }
+        },
+        required: ['entityId']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_note_lines',
+      description: `Read specific lines from a note without fetching the entire content.
+Use this tool to:
+- Preview a section before making targeted edits
+- Check whether certain content already exists at a location
+- Save tokens by only loading the portion you need
+
+Parameters:
+- entityId: ID of the note entity (required)
+- start_line: First line to return, 1-indexed inclusive (required)
+- end_line: Last line to return, 1-indexed inclusive (optional, defaults to end of file)
+
+Returns: Selected lines with line-number prefixes, plus total_lines for the full document.`,
+      parameters: {
+        type: 'object',
+        properties: {
+          entityId: { type: 'string', description: 'The ID of the note entity' },
+          start_line: { type: 'number', description: 'First line number to read (1-indexed)' },
+          end_line: { type: 'number', description: 'Last line number to read (1-indexed, inclusive). Omit to read to the end.' }
+        },
+        required: ['entityId', 'start_line']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_quiz_questions',
+      description: `Read specific questions from a quiz bank without fetching all questions.
+Use this tool to:
+- Inspect a particular set of questions before editing them
+- Check for duplicate or outdated content
+- Save tokens when the quiz bank is large
+
+Parameters:
+- entityId: ID of the quiz entity (required)
+- question_ids: Array of question IDs to retrieve (optional)
+- start_index: First question to return, 1-indexed inclusive (optional)
+- end_index: Last question to return, 1-indexed inclusive (optional)
+
+If none of question_ids / start_index / end_index is provided, all questions are returned.
+
+Returns: Selected questions each annotated with their 1-based index in the full bank, plus total_questions.`,
+      parameters: {
+        type: 'object',
+        properties: {
+          entityId: { type: 'string', description: 'The ID of the quiz entity' },
+          question_ids: { type: 'array', items: { type: 'string' }, description: 'Specific question IDs to retrieve' },
+          start_index: { type: 'number', description: 'First question index to return (1-indexed)' },
+          end_index: { type: 'number', description: 'Last question index to return (1-indexed, inclusive)' }
         },
         required: ['entityId']
       }
@@ -295,18 +392,39 @@ Use this tool to:
         type: 'object',
         properties: {
           entityId: { type: 'string', description: 'The ID of the mindmap entity' },
-          nodes: { 
-            type: 'array', 
+          nodes: {
+            type: 'array',
             description: 'Array of React Flow nodes to add.',
             items: { type: 'object' }
           },
-          edges: { 
-            type: 'array', 
+          edges: {
+            type: 'array',
             description: 'Array of React Flow edges to add.',
             items: { type: 'object' }
           }
         },
         required: ['entityId', 'nodes', 'edges']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'clear_mindmap',
+      description: `Remove all nodes and edges from an existing mindmap, leaving an empty canvas.
+Use this tool when you want to completely rebuild a mindmap's structure from scratch
+without deleting the entity itself (preserving its ID, title, and association with the subject).
+
+After clearing, use update_mindmap or add_mindmap_elements to populate new content.
+
+Parameters:
+- entityId: ID of the mindmap entity to clear (required)`,
+      parameters: {
+        type: 'object',
+        properties: {
+          entityId: { type: 'string', description: 'The ID of the mindmap entity to clear' }
+        },
+        required: ['entityId']
       }
     }
   },
@@ -351,8 +469,9 @@ Parameters:
     type: 'function',
     function: {
       name: 'update_note',
-      description: `Update existing note content.
-Modify the title or update the content.`,
+      description: `Completely replace an existing note's content or title.
+Use this only when the changes affect the majority of the document.
+For small or targeted edits, prefer patch_note_content (search-replace) instead.`,
       parameters: {
         type: 'object',
         properties: {
@@ -361,6 +480,40 @@ Modify the title or update the content.`,
           content: { type: 'string', description: 'The markdown content of the note. MUST be a raw string, NOT an object.' }
         },
         required: ['entityId']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'patch_note_content',
+      description: `Replace a specific piece of text inside a note using exact search-and-replace — no line numbers needed.
+
+**Always use this instead of update_note** when only part of the note needs to change.
+
+How it works:
+- You provide the exact original text you want to replace (search).
+- You provide the new text to put in its place (replace).
+- The tool finds the exact text and replaces it. If the text is not found, it throws a clear error so you can re-read and try again.
+
+Rules:
+1. Read the note first with get_entity_content (or get_note_lines) to get the exact current text.
+2. Copy the text you want to change VERBATIM into the search field — including all spaces, punctuation, and newlines.
+3. The search text must be unique in the document. If it appears multiple times, include a few lines of surrounding context so it becomes unique.
+4. Do NOT modify the search string — even one extra space will cause a "not found" error.
+
+Parameters:
+- entityId: ID of the note entity (required)
+- search: The exact original text to find. Must be a verbatim copy from the current note content. (required)
+- replace: The new text to put in place of the search text. (required)`,
+      parameters: {
+        type: 'object',
+        properties: {
+          entityId: { type: 'string', description: 'The ID of the note entity' },
+          search: { type: 'string', description: 'Exact original text to find. Must be copied verbatim from the note — including all whitespace and newlines.' },
+          replace: { type: 'string', description: 'New text to substitute in place of the search text.' }
+        },
+        required: ['entityId', 'search', 'replace']
       }
     }
   },
@@ -440,16 +593,16 @@ Parameters:
     type: 'function',
     function: {
       name: 'update_quiz',
-      description: `Update an existing quiz bank.
-Modify the title or update question content.
-Maintain a substantial number of questions when updating.`,
+      description: `Completely replace an existing quiz bank's content or title.
+Use this only when regenerating the majority of the questions.
+For adding, fixing, or deleting a few questions, prefer patch_quiz_questions instead.`,
       parameters: {
         type: 'object',
         properties: {
           entityId: { type: 'string', description: 'The ID of the quiz entity' },
           title: { type: 'string', description: 'New title' },
-          content: { 
-            type: 'object', 
+          content: {
+            type: 'object',
             description: 'Quiz content containing an array of questions.',
             properties: {
               questions: {
@@ -472,6 +625,57 @@ Maintain a substantial number of questions when updating.`,
           }
         },
         required: ['entityId']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'patch_quiz_questions',
+      description: `Add, update, or delete individual questions in an existing quiz bank without rewriting the entire bank.
+Use this tool for targeted changes — fixing a wrong answer, adding a few new questions, removing outdated ones.
+
+**Strongly preferred over update_quiz** whenever:
+- Only a small number of questions need to change
+- You want to append new questions to an existing bank
+- You have already identified the target question IDs via get_quiz_questions
+
+Each operation in the list specifies:
+- type: "add" | "update" | "delete"
+- question_id: required for "update" and "delete" — the id field of the target question
+- question: required for "add" (full question object); for "update" only the fields to merge
+
+Multiple operations can be batched in a single call.`,
+      parameters: {
+        type: 'object',
+        properties: {
+          entityId: { type: 'string', description: 'The ID of the quiz entity' },
+          operations: {
+            type: 'array',
+            description: 'List of add/update/delete operations to perform on questions.',
+            items: {
+              type: 'object',
+              properties: {
+                type: { type: 'string', enum: ['add', 'update', 'delete'], description: 'Operation type' },
+                question_id: { type: 'string', description: 'ID of the question to update or delete' },
+                question: {
+                  type: 'object',
+                  description: 'For "add": complete question object. For "update": fields to merge into the existing question.',
+                  properties: {
+                    id: { type: 'string' },
+                    type: { type: 'string', enum: ['single_choice', 'multiple_choice', 'fill_in_blank', 'true_false', 'short_answer', 'essay'] },
+                    text: { type: 'string' },
+                    options: { type: 'array', items: { type: 'string' } },
+                    answer: { type: 'string' },
+                    explanation: { type: 'string' }
+                  }
+                }
+              },
+              required: ['type']
+            }
+          }
+        },
+        required: ['entityId', 'operations']
       }
     }
   },

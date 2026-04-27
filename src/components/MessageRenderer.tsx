@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import remarkGfm from 'remark-gfm';
@@ -9,7 +9,7 @@ import { vscDarkPlus, prism } from 'react-syntax-highlighter/dist/esm/styles/pri
 
 import 'katex/dist/katex.min.css';
 import { MessageContentPart, ToolCall } from '@/services/ai';
-import { FileText, FileSpreadsheet, FileCode, ChevronDown, ChevronRight, CheckCircle2, Loader2, Eye } from 'lucide-react';
+import { FileText, FileSpreadsheet, FileCode, ChevronDown, ChevronRight, CheckCircle2, Loader2, Eye, GitCompare } from 'lucide-react';
 import { db } from '@/db';
 import mermaid from 'mermaid';
 import { useTheme } from '@/hooks/useTheme';
@@ -56,6 +56,8 @@ const TOOL_NAMES: Record<string, string> = {
   'get_subjects': '获取科目列表',
   'get_subject_details': '获取科目详情',
   'get_entity_content': '获取内容详情',
+  'get_note_lines': '读取笔记片段',
+  'get_quiz_questions': '读取题目详情',
   'read_file': '读取文件',
   'write_to_file': '写入文件',
   'list_files': '列出目录',
@@ -66,10 +68,13 @@ const TOOL_NAMES: Record<string, string> = {
   'create_mindmap': '创建思维导图',
   'update_mindmap': '更新思维导图',
   'add_mindmap_elements': '修改思维导图',
+  'clear_mindmap': '清空思维导图',
   'create_note': '创建笔记',
   'update_note': '更新笔记',
+  'patch_note_content': '精确编辑笔记',
   'create_quiz': '创建测验',
   'update_quiz': '更新测验',
+  'patch_quiz_questions': '精确编辑题库',
   'create_taskboard': '创建任务板',
   'update_taskboard': '更新任务板',
   'codebase_search': '代码搜索',
@@ -95,10 +100,24 @@ const getToolDescription = (name: string, args: string) => {
       case 'create_mindmap': return `创建导图: ${parsed.title}`;
       case 'update_mindmap': return `更新导图: ${parsed.title || '（未命名）'}`;
       case 'add_mindmap_elements': return `修改导图: 添加/更新 ${parsed.nodes?.length || 0} 个节点`;
+      case 'clear_mindmap': return `清空思维导图`;
       case 'create_note': return `创建笔记: ${parsed.title}`;
       case 'update_note': return `更新笔记: ${parsed.title || (parsed.entityId ? parsed.entityId.slice(0, 8) + '...' : '')}`;
+      case 'patch_note_content': return `精确编辑笔记: "${(parsed.search || '').slice(0, 30).replace(/\n/g, '↵')}${(parsed.search || '').length > 30 ? '…' : ''}"`;
       case 'create_quiz': return `创建测验: ${parsed.title}`;
       case 'update_quiz': return `更新测验: ${parsed.title || (parsed.entityId ? parsed.entityId.slice(0, 8) + '...' : '')}`;
+      case 'patch_quiz_questions': {
+        const ops: any[] = parsed.operations || [];
+        const counts = { add: 0, update: 0, delete: 0 } as Record<string, number>;
+        ops.forEach((op: any) => { if (op.type in counts) counts[op.type]++; });
+        const parts: string[] = [];
+        if (counts.add)    parts.push(`新增 ${counts.add} 题`);
+        if (counts.update) parts.push(`修改 ${counts.update} 题`);
+        if (counts.delete) parts.push(`删除 ${counts.delete} 题`);
+        return `精确编辑题库: ${parts.join('、') || '无操作'}`;
+      }
+      case 'get_note_lines': return `读取笔记第 ${parsed.start_line}–${parsed.end_line ?? '末尾'} 行`;
+      case 'get_quiz_questions': return `读取题库题目`;
       case 'apply_diff': return `应用差异: ${parsed.path}`;
       case 'present_plan': return `规划方案已准备就绪`;
       case 'start_execution': return `正在初始化执行环境`;
@@ -128,9 +147,15 @@ function formatToolArgs(args: string, name: string): string {
       case 'create_note':
       case 'update_note':
         return `笔记标题: ${parsed.title || '未命名'} (${(parsed.content || '').length} 字符)`;
+      case 'patch_note_content': {
+        const s = (parsed.search || '').slice(0, 60).replace(/\n/g, '↵');
+        return `搜索: "${s}${(parsed.search || '').length > 60 ? '…' : ''}"`;
+      }
       case 'create_quiz':
       case 'update_quiz':
         return `测验标题: ${parsed.title || '未命名'} (${parsed.content?.questions?.length || 0} 道题目)`;
+      case 'patch_quiz_questions':
+        return `${(parsed.operations || []).length} 个操作`;
       case 'create_taskboard':
       case 'update_taskboard':
         return `任务板标题: ${parsed.title || '未命名'} (${parsed.content?.nodes?.length || 0} 个阶段)`;
@@ -154,22 +179,211 @@ function formatToolArgs(args: string, name: string): string {
   }
 }
 
+// ─── Diff 视图相关逻辑 ───────────────────────────────────────────────────────
+
+type DiffLineItem =
+  | { kind: 'equal';  text: string; oldNum: number; newNum: number }
+  | { kind: 'delete'; text: string; oldNum: number }
+  | { kind: 'insert'; text: string; newNum: number };
+
+/** LCS 行级 diff，最多处理每侧 600 行，超出部分附加截断提示 */
+function computeLineDiff(before: string, after: string): DiffLineItem[] {
+  const MAX = 600;
+  const ol = before.split('\n').slice(0, MAX);
+  const nl = after.split('\n').slice(0, MAX);
+  const m = ol.length;
+  const n = nl.length;
+
+  // DP 表（Uint16Array 节省内存，上限 65535 已足够）
+  const dp: Uint16Array[] = Array.from({ length: m + 1 }, () => new Uint16Array(n + 1));
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = ol[i - 1] === nl[j - 1]
+        ? dp[i - 1][j - 1] + 1
+        : Math.max(dp[i - 1][j], dp[i][j - 1]);
+    }
+  }
+
+  // 回溯
+  const result: DiffLineItem[] = [];
+  let i = m, j = n;
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && ol[i - 1] === nl[j - 1]) {
+      result.unshift({ kind: 'equal', text: ol[i - 1], oldNum: i, newNum: j });
+      i--; j--;
+    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+      result.unshift({ kind: 'insert', text: nl[j - 1], newNum: j });
+      j--;
+    } else {
+      result.unshift({ kind: 'delete', text: ol[i - 1], oldNum: i });
+      i--;
+    }
+  }
+
+  if (before.split('\n').length > MAX || after.split('\n').length > MAX) {
+    result.push({ kind: 'insert', text: `… (内容过长，仅显示前 ${MAX} 行)`, newNum: MAX + 1 });
+  }
+  return result;
+}
+
+type CollapsedItem = DiffLineItem | { kind: 'collapse'; count: number };
+
+/** 折叠连续未改动行，每处保留 context 行上下文 */
+function collapseEqualLines(diff: DiffLineItem[], context = 3): CollapsedItem[] {
+  const out: CollapsedItem[] = [];
+  let i = 0;
+  while (i < diff.length) {
+    if (diff[i].kind !== 'equal') { out.push(diff[i++]); continue; }
+    const start = i;
+    while (i < diff.length && diff[i].kind === 'equal') i++;
+    const len = i - start;
+    const showBefore = start === 0 ? 0 : Math.min(context, len);
+    const showAfter  = i === diff.length ? 0 : Math.min(context, len);
+    const total = showBefore + showAfter;
+    if (len <= total + 2) {
+      for (let k = start; k < i; k++) out.push(diff[k]);
+    } else {
+      for (let k = start; k < start + showBefore; k++) out.push(diff[k]);
+      out.push({ kind: 'collapse', count: len - showBefore - showAfter });
+      for (let k = i - showAfter; k < i; k++) out.push(diff[k]);
+    }
+  }
+  return out;
+}
+
+/** 行级 diff 可视化组件 */
+function DiffViewer({ before, after }: { before: string; after: string }) {
+  const [compact, setCompact] = useState(true);
+  const diff = useMemo(() => computeLineDiff(before, after), [before, after]);
+  const display = useMemo(
+    () => compact ? collapseEqualLines(diff) : diff,
+    [diff, compact]
+  );
+
+  const deleted  = diff.filter(l => l.kind === 'delete').length;
+  const inserted = diff.filter(l => l.kind === 'insert').length;
+  const hasChanges = deleted > 0 || inserted > 0;
+
+  return (
+    <div className="rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-800 text-xs font-mono">
+      {/* 统计栏 */}
+      <div className="flex items-center gap-3 px-3 py-1.5 bg-zinc-50 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 sticky top-0 z-10">
+        {inserted > 0 && (
+          <span className="text-green-600 dark:text-green-400 font-semibold">+{inserted}</span>
+        )}
+        {deleted > 0 && (
+          <span className="text-red-600 dark:text-red-400 font-semibold">-{deleted}</span>
+        )}
+        {!hasChanges && <span className="text-zinc-400">无改动</span>}
+        <div className="flex-1" />
+        <button
+          onClick={() => setCompact(v => !v)}
+          className="text-[10px] text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors px-1.5 py-0.5 rounded border border-zinc-200 dark:border-zinc-700 hover:border-zinc-400 select-none"
+        >
+          {compact ? '展开全文' : '只看改动'}
+        </button>
+      </div>
+
+      {/* diff 行 */}
+      <div className="max-h-[55vh] overflow-y-auto">
+        {display.map((item, idx) => {
+          if (item.kind === 'collapse') {
+            return (
+              <div key={idx} className="flex items-center gap-2 px-3 py-1 bg-zinc-100/60 dark:bg-zinc-800/40 text-zinc-400 select-none cursor-pointer hover:bg-zinc-200/60 dark:hover:bg-zinc-700/40" onClick={() => setCompact(false)}>
+                <span className="w-8 text-right" />
+                <span className="w-8 text-right" />
+                <span className="w-4 text-center">⋯</span>
+                <span>{item.count} 行未改动，点击展开</span>
+              </div>
+            );
+          }
+
+          const isDelete = item.kind === 'delete';
+          const isInsert = item.kind === 'insert';
+          const oldNum = item.kind !== 'insert' ? item.oldNum : undefined;
+          const newNum = item.kind !== 'delete' ? item.newNum : undefined;
+
+          return (
+            <div
+              key={idx}
+              className={`flex items-start group ${
+                isDelete ? 'bg-red-500/10 hover:bg-red-500/15' :
+                isInsert ? 'bg-green-500/10 hover:bg-green-500/15' :
+                'hover:bg-zinc-500/5'
+              }`}
+            >
+              {/* 旧行号 */}
+              <span className="w-9 text-right px-1.5 py-0.5 text-zinc-400/70 select-none flex-shrink-0 border-r border-zinc-200/50 dark:border-zinc-700/50">
+                {oldNum ?? ''}
+              </span>
+              {/* 新行号 */}
+              <span className="w-9 text-right px-1.5 py-0.5 text-zinc-400/70 select-none flex-shrink-0 border-r border-zinc-200/50 dark:border-zinc-700/50">
+                {newNum ?? ''}
+              </span>
+              {/* 类型符号 */}
+              <span className={`w-5 text-center py-0.5 select-none flex-shrink-0 font-bold ${
+                isDelete ? 'text-red-500 dark:text-red-400' :
+                isInsert ? 'text-green-600 dark:text-green-400' :
+                'text-zinc-300 dark:text-zinc-600'
+              }`}>
+                {isDelete ? '−' : isInsert ? '+' : ' '}
+              </span>
+              {/* 内容 */}
+              <span className={`py-0.5 px-2 whitespace-pre-wrap break-all flex-1 min-w-0 ${
+                isDelete ? 'text-red-800 dark:text-red-300' :
+                isInsert ? 'text-green-800 dark:text-green-300' :
+                'text-zinc-600 dark:text-zinc-400'
+              }`}>
+                {item.text || ' '}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+
 /**
  * 工具调用渲染组件
  * 在对话中以卡片形式展示 AI 正在执行的工具操作
  */
 export function ToolCallRenderer({ toolCalls, results = {} }: { toolCalls: ToolCall[], results?: Record<string, string> }) {
   const [selectedToolCall, setSelectedToolCall] = useState<ToolCall | null>(null);
+  const [modalTab, setModalTab] = useState<'content' | 'diff'>('content');
   const isDark = useIsDark();
 
+  // 打开某个工具卡时，如果有 diff 数据则默认展示"改动"页签
+  useEffect(() => {
+    if (selectedToolCall) {
+      setModalTab(getResultDiff(selectedToolCall.id) ? 'diff' : 'content');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedToolCall]);
+
   const isEditable = (name: string) => {
-    return name.startsWith('create_') || 
-           name.startsWith('update_') || 
-           name === 'apply_diff' || 
-           name === 'write_to_file' || 
+    return name.startsWith('create_') ||
+           name.startsWith('update_') ||
+           name === 'apply_diff' ||
+           name === 'write_to_file' ||
            name === 'add_mindmap_elements' ||
+           name === 'patch_note_content' ||
+           name === 'patch_quiz_questions' ||
+           name === 'clear_mindmap' ||
            name === 'present_plan' ||
            name === 'start_execution';
+  };
+
+  /** 从工具结果 JSON 中提取 _diff 字段 */
+  const getResultDiff = (tcId: string): { before: string; after: string } | null => {
+    try {
+      const parsed = JSON.parse(results[tcId] || '{}');
+      return parsed._diff ?? null;
+    } catch {
+      return null;
+    }
   };
 
   return (
@@ -204,7 +418,16 @@ export function ToolCallRenderer({ toolCalls, results = {} }: { toolCalls: ToolC
                   {getToolDescription(tc.function.name, tc.function.arguments)}
                 </span>
               </div>
-              {isComplete && <span className="text-[10px] text-zinc-400 bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded">已完成</span>}
+              {isComplete && (
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  {getResultDiff(tc.id) && (
+                    <span className="flex items-center gap-0.5 text-[10px] text-violet-500 dark:text-violet-400 bg-violet-500/10 px-1.5 py-0.5 rounded">
+                      <GitCompare size={9} /> 改动
+                    </span>
+                  )}
+                  <span className="text-[10px] text-zinc-400 bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded">已完成</span>
+                </div>
+              )}
             </div>
             
             {tc.function.arguments && tc.function.name !== 'present_plan' && (
@@ -227,65 +450,95 @@ export function ToolCallRenderer({ toolCalls, results = {} }: { toolCalls: ToolC
         onClose={() => setSelectedToolCall(null)}
         title={selectedToolCall ? `${TOOL_NAMES[selectedToolCall.function.name] || selectedToolCall.function.name} - 详细内容` : ''}
       >
-        {selectedToolCall && (
-          <div className="space-y-4">
-            <div className="rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-800 p-1 bg-white dark:bg-zinc-950">
-              {(() => {
-                try {
-                  const args = JSON.parse(selectedToolCall.function.arguments);
-                  
-                  // 对于规划工具，使用 Markdown 渲染以提高可读性
-                  if (selectedToolCall.function.name === 'present_plan') {
-                    return (
-                      <div className="p-4 prose dark:prose-invert max-w-none max-h-[60vh] overflow-y-auto">
-                        <ReactMarkdown 
-                          remarkPlugins={[remarkGfm, remarkBreaks]}
-                        >
-                          {args.plan_summary || '暂无详细规划内容'}
-                        </ReactMarkdown>
-                      </div>
-                    );
-                  }
+        {selectedToolCall && (() => {
+          const diff = getResultDiff(selectedToolCall.id);
+          return (
+            <div className="space-y-3">
+              {/* 页签栏（仅当有 diff 数据时显示） */}
+              {diff && (
+                <div className="flex gap-1 p-1 bg-zinc-100 dark:bg-zinc-900 rounded-lg border border-zinc-200 dark:border-zinc-800">
+                  <button
+                    onClick={() => setModalTab('diff')}
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                      modalTab === 'diff'
+                        ? 'bg-white dark:bg-zinc-800 shadow text-zinc-800 dark:text-zinc-200'
+                        : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'
+                    }`}
+                  >
+                    <GitCompare size={12} /> 改动
+                  </button>
+                  <button
+                    onClick={() => setModalTab('content')}
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                      modalTab === 'content'
+                        ? 'bg-white dark:bg-zinc-800 shadow text-zinc-800 dark:text-zinc-200'
+                        : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'
+                    }`}
+                  >
+                    参数
+                  </button>
+                </div>
+              )}
 
-                  // 其他工具使用代码高亮
-                  return (
-                    <SyntaxHighlighter
-                      style={isDark ? vscDarkPlus : prism}
-                      language={selectedToolCall.function.name === 'apply_diff' ? 'diff' : 'json'}
-                      PreTag="div"
-                      className="!m-0 max-h-[60vh] overflow-y-auto text-xs"
-                      wrapLongLines={true}
-                    >
-                      {(() => {
-                        if (selectedToolCall.function.name === 'apply_diff' && args.diff) {
-                          return args.diff;
-                        }
-                        if (args.content && typeof args.content === 'string') {
-                          return args.content;
-                        }
-                        return JSON.stringify(args, null, 2);
-                      })()}
-                    </SyntaxHighlighter>
-                  );
-                } catch (e) {
-                  return (
-                    <div className="p-4 font-mono text-xs whitespace-pre-wrap">
-                      {selectedToolCall.function.arguments}
-                    </div>
-                  );
-                }
-              })()}
+              {/* Diff 视图 */}
+              {diff && modalTab === 'diff' && (
+                <DiffViewer before={diff.before} after={diff.after} />
+              )}
+
+              {/* 原有参数/内容视图 */}
+              {(!diff || modalTab === 'content') && (
+                <div className="rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-800 p-1 bg-white dark:bg-zinc-950">
+                  {(() => {
+                    try {
+                      const args = JSON.parse(selectedToolCall.function.arguments);
+
+                      if (selectedToolCall.function.name === 'present_plan') {
+                        return (
+                          <div className="p-4 prose dark:prose-invert max-w-none max-h-[60vh] overflow-y-auto">
+                            <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
+                              {args.plan_summary || '暂无详细规划内容'}
+                            </ReactMarkdown>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <SyntaxHighlighter
+                          style={isDark ? vscDarkPlus : prism}
+                          language={selectedToolCall.function.name === 'apply_diff' ? 'diff' : 'json'}
+                          PreTag="div"
+                          className="!m-0 max-h-[60vh] overflow-y-auto text-xs"
+                          wrapLongLines={true}
+                        >
+                          {(() => {
+                            if (selectedToolCall.function.name === 'apply_diff' && args.diff) return args.diff;
+                            if (args.content && typeof args.content === 'string') return args.content;
+                            return JSON.stringify(args, null, 2);
+                          })()}
+                        </SyntaxHighlighter>
+                      );
+                    } catch {
+                      return (
+                        <div className="p-4 font-mono text-xs whitespace-pre-wrap">
+                          {selectedToolCall.function.arguments}
+                        </div>
+                      );
+                    }
+                  })()}
+                </div>
+              )}
+
+              <div className="flex justify-end">
+                <button
+                  onClick={() => setSelectedToolCall(null)}
+                  className="px-4 py-2 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 rounded-lg text-sm transition-colors"
+                >
+                  关闭
+                </button>
+              </div>
             </div>
-            <div className="flex justify-end">
-              <button
-                onClick={() => setSelectedToolCall(null)}
-                className="px-4 py-2 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 rounded-lg text-sm transition-colors"
-              >
-                关闭
-              </button>
-            </div>
-          </div>
-        )}
+          );
+        })()}
       </Modal>
     </div>
   );

@@ -220,12 +220,17 @@ export function Settings() {
   const [exportData, setExportData] = useState<{ subjects: any[], entities: any[] }>({ subjects: [], entities: [] });
   const [selectedExportSubjects, setSelectedExportSubjects] = useState<Set<string>>(new Set());
   const [selectedExportEntities, setSelectedExportEntities] = useState<Set<string>>(new Set());
+  const [exportChatHistory, setExportChatHistory] = useState(true);
+  const [exportConfig, setExportConfig] = useState(false);
 
   // Import State
   const [showImportModal, setShowImportModal] = useState(false);
   const [importData, setImportData] = useState<StudyStudioData | null>(null);
   const [selectedImportSubjects, setSelectedImportSubjects] = useState<Set<string>>(new Set());
   const [selectedImportEntities, setSelectedImportEntities] = useState<Set<string>>(new Set());
+  const [importChatHistory, setImportChatHistory] = useState(true);
+  const [importConfig, setImportConfig] = useState(false);
+  const [overwriteConfig, setOverwriteConfig] = useState(false);
 
   // Advanced Settings State
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -287,9 +292,11 @@ export function Settings() {
 
   const handleConfirmExport = async () => {
     try {
-      await DataManager.downloadBackup({ 
+      await DataManager.downloadBackup({
         subjectIds: Array.from(selectedExportSubjects),
-        entityIds: Array.from(selectedExportEntities)
+        entityIds: Array.from(selectedExportEntities),
+        includeChatHistory: exportChatHistory,
+        includeConfig: exportConfig
       });
       showAlert('数据备份文件已开始下载', { title: '导出成功' });
       setShowExportModal(false);
@@ -307,11 +314,14 @@ export function Settings() {
     try {
       const data = await DataManager.parseImportFile(file);
       setImportData(data);
-      
+
       // Default select all
       setSelectedImportSubjects(new Set(data.subjects.map(s => s.id)));
       setSelectedImportEntities(new Set(data.entities.map(e => e.id)));
-      
+      setImportChatHistory(data.chatSessions?.length > 0);
+      setImportConfig(false);
+      setOverwriteConfig(false);
+
       setShowImportModal(true);
     } catch (e) {
       showAlert('文件解析失败: ' + e, { title: '错误' });
@@ -324,7 +334,10 @@ export function Settings() {
     try {
       await DataManager.importStudyData(importData, {
         subjectIds: Array.from(selectedImportSubjects),
-        entityIds: Array.from(selectedImportEntities)
+        entityIds: Array.from(selectedImportEntities),
+        includeChatHistory: importChatHistory,
+        includeConfig: importConfig,
+        overwriteConfig
       });
       showAlert('数据已成功导入，页面将刷新。', { title: '导入成功' });
       setTimeout(() => window.location.reload(), 1500);
@@ -722,13 +735,35 @@ export function Settings() {
       >
         <div className="space-y-4">
           <p className="text-sm text-zinc-500 dark:text-zinc-400">请勾选需要导出的学科及内容：</p>
-          <DataSelectionTree 
+          <DataSelectionTree
             data={exportData}
             selectedSubjectIds={selectedExportSubjects}
             selectedEntityIds={selectedExportEntities}
             onToggleSubject={handleToggleSubject('export')}
             onToggleEntity={handleToggleEntity('export')}
           />
+          <div className="border-t border-zinc-200 dark:border-zinc-700 pt-3 space-y-2">
+            <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">其他内容</p>
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={exportChatHistory}
+                onChange={e => setExportChatHistory(e.target.checked)}
+                className="rounded border-zinc-300 w-4 h-4 text-blue-600 focus:ring-blue-500"
+              />
+              <span className="text-sm text-zinc-700 dark:text-zinc-200">对话记录</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={exportConfig}
+                onChange={e => setExportConfig(e.target.checked)}
+                className="rounded border-zinc-300 w-4 h-4 text-blue-600 focus:ring-blue-500"
+              />
+              <span className="text-sm text-zinc-700 dark:text-zinc-200">AI 配置</span>
+              <span className="text-xs text-zinc-400">（含 API Key，请谨慎共享）</span>
+            </label>
+          </div>
         </div>
       </Modal>
 
@@ -757,13 +792,55 @@ export function Settings() {
         <div className="space-y-4">
           <p className="text-sm text-zinc-500 dark:text-zinc-400">解析成功，请勾选需要导入的内容：</p>
           {importData && (
-            <DataSelectionTree 
+            <DataSelectionTree
               data={importData}
               selectedSubjectIds={selectedImportSubjects}
               selectedEntityIds={selectedImportEntities}
               onToggleSubject={handleToggleSubject('import')}
               onToggleEntity={handleToggleEntity('import')}
             />
+          )}
+          {importData && ((importData.chatSessions?.length > 0) || (importData.config && importData.config.length > 0)) && (
+            <div className="border-t border-zinc-200 dark:border-zinc-700 pt-3 space-y-2">
+              <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">其他内容</p>
+              {importData.chatSessions?.length > 0 && (
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={importChatHistory}
+                    onChange={e => setImportChatHistory(e.target.checked)}
+                    className="rounded border-zinc-300 w-4 h-4 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-zinc-700 dark:text-zinc-200">对话记录</span>
+                  <span className="text-xs text-zinc-400">({importData.chatSessions.length} 条会话)</span>
+                </label>
+              )}
+              {importData.config && importData.config.length > 0 && (
+                <div className="space-y-1.5">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={importConfig}
+                      onChange={e => { setImportConfig(e.target.checked); if (!e.target.checked) setOverwriteConfig(false); }}
+                      className="rounded border-zinc-300 w-4 h-4 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-zinc-700 dark:text-zinc-200">AI 配置</span>
+                  </label>
+                  {importConfig && (
+                    <label className="flex items-center gap-2 cursor-pointer select-none ml-6">
+                      <input
+                        type="checkbox"
+                        checked={overwriteConfig}
+                        onChange={e => setOverwriteConfig(e.target.checked)}
+                        className="rounded border-zinc-300 w-3.5 h-3.5 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-xs text-zinc-600 dark:text-zinc-300">覆盖现有配置</span>
+                      <span className="text-xs text-zinc-400">（不勾选则仅在无配置时写入）</span>
+                    </label>
+                  )}
+                </div>
+              )}
+            </div>
           )}
           <p className="text-xs text-zinc-400">
             注：导入操作会自动处理 ID 冲突，创建副本并重命名，不会覆盖现有数据。

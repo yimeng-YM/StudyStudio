@@ -148,6 +148,8 @@ export interface ChatMessage {
   tool_call_id?: string;
   /** 当 role='tool' 时，记录工具名称；当 role='user'/'assistant' 且存在多个发言者时用于区分身份 */
   name?: string;
+  /** DeepSeek thinking 模式的推理内容，必须在后续请求中原样回传 */
+  reasoning_content?: string;
   /** 消息创建时间戳 */
   createdAt: number;
 }

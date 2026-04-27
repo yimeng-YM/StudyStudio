@@ -60,7 +60,8 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act') {
           content: m.content,
           name: m.name,
           tool_calls: m.tool_calls,
-          tool_call_id: m.tool_call_id
+          tool_call_id: m.tool_call_id,
+          reasoning_content: m.reasoning_content
         })));
       });
     } else {
@@ -108,6 +109,7 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act') {
       name: msg.name,
       tool_calls: msg.tool_calls,
       tool_call_id: msg.tool_call_id,
+      reasoning_content: msg.reasoning_content,
       createdAt: Date.now()
     });
     
@@ -278,6 +280,10 @@ IMPORTANT: Always respond in Chinese.
       });
     };
 
+    const handleReasoningChunk = (chunk: string) => {
+      aiMessage.reasoning_content = (aiMessage.reasoning_content ?? '') + chunk;
+    };
+
     const activeTools = mode === 'act' 
       ? ToolDefinitions.filter(t => t.function.name !== 'present_plan' && t.function.name !== 'start_execution')
       : ToolDefinitions;
@@ -288,13 +294,14 @@ IMPORTANT: Always respond in Chinese.
 
     try {
       await streamAICompletion(
-        messagesWithSystem, 
-        settings, 
-        handleChunk, 
-        activeTools, 
+        messagesWithSystem,
+        settings,
+        handleChunk,
+        activeTools,
         handleToolCallChunk,
         { maxTokens: DEFAULT_MAX_TOKENS },
-        abortController.signal
+        abortController.signal,
+        handleReasoningChunk
       );
     } catch (error: any) {
       // 如果是用户主动取消，不抛出错误
@@ -378,11 +385,25 @@ IMPORTANT: Always respond in Chinese.
       }
 
       setMessages(prev => [...prev, ...toolMessages]);
-      
+
       const calledPresent = aiMessage.tool_calls.some(tc => tc.function.name === 'present_plan');
       if (calledPresent) return;
 
-      await processAgentLoop([...currentMessages, aiMessage, ...toolMessages], activeSessionId, skipPlanning);
+      // 去除 _diff 字段后再回传给 AI，避免无效 token 消耗
+      const toolMessagesForAI = toolMessages.map(m => {
+        if (m.role === 'tool' && typeof m.content === 'string') {
+          try {
+            const parsed = JSON.parse(m.content);
+            if (parsed._diff !== undefined) {
+              const { _diff: _removed, ...rest } = parsed;
+              return { ...m, content: JSON.stringify(rest) };
+            }
+          } catch {}
+        }
+        return m;
+      });
+
+      await processAgentLoop([...currentMessages, aiMessage, ...toolMessagesForAI], activeSessionId, skipPlanning);
     }
   };
 

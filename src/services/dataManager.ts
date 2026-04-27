@@ -22,6 +22,8 @@ export interface StudyStudioData {
   chatMessages: any[];
   /** 缓存的附件和多媒体资源集合 */
   attachments: any[];
+  /** AI 配置（接口地址、密钥、模型等） */
+  config?: any[];
 }
 
 /**
@@ -33,6 +35,10 @@ export interface ExportOptions {
   subjectIds?: string[];
   /** 指定要导出的独立实体 ID 列表 */
   entityIds?: string[];
+  /** 是否包含对话记录（默认 true） */
+  includeChatHistory?: boolean;
+  /** 是否包含 AI 配置（默认 false） */
+  includeConfig?: boolean;
 }
 
 /**
@@ -44,6 +50,12 @@ export interface ImportSelection {
   subjectIds?: string[];
   /** 期望导入的实体 ID 列表 */
   entityIds?: string[];
+  /** 是否导入对话记录（默认 true） */
+  includeChatHistory?: boolean;
+  /** 是否导入 AI 配置（默认 false） */
+  includeConfig?: boolean;
+  /** 导入配置时是否覆盖现有配置（默认 false = 跳过已有配置） */
+  overwriteConfig?: boolean;
 }
 
 /**
@@ -59,54 +71,64 @@ export const DataManager = {
    * @returns 组装好的全量或局部应用数据对象
    */
   async exportData(options?: ExportOptions): Promise<StudyStudioData> {
-    const { subjectIds, entityIds: selectedEntityIds } = options || {};
-    
+    const { subjectIds, entityIds: selectedEntityIds, includeChatHistory = true, includeConfig = false } = options || {};
+
     let subjects: any[], entities: any[], relations: any[], chatSessions: any[], chatMessages: any[], attachments: any[];
 
     if ((subjectIds && subjectIds.length > 0) || (selectedEntityIds && selectedEntityIds.length > 0)) {
       // 1. 抽取实体数据
       if (selectedEntityIds && selectedEntityIds.length > 0) {
-        // 如果指定了具体实体 ID，则严格按照列表导出
         entities = await db.entities.where('id').anyOf(selectedEntityIds).toArray();
       } else if (subjectIds && subjectIds.length > 0) {
-        // 如果仅指定了学科 ID，则导出该学科下的所有实体
         entities = await db.entities.where('subjectId').anyOf(subjectIds).toArray();
       } else {
         entities = [];
       }
-      
+
       const exportEntityIds = new Set(entities.map(e => e.id));
       const exportSubjectIds = new Set(subjectIds || []);
-      // 确保实体所属的学科也被一并导出，维持外键完整性
       entities.forEach(e => exportSubjectIds.add(e.subjectId));
 
       // 2. 抽取对应的学科数据
       subjects = await db.subjects.where('id').anyOf(Array.from(exportSubjectIds)).toArray();
 
-      // 3. 抽取关系数据（仅当关系的源和目标都在本次导出范围内时，才进行导出，避免断链）
+      // 3. 抽取关系数据
       const allRelations = await db.relations.toArray();
       relations = allRelations.filter(r => exportEntityIds.has(r.sourceId) && exportEntityIds.has(r.targetId));
 
-      // 4. 抽取聊天会话数据（目前采取全量导出策略）
-      const allSessions = await db.chatSessions.toArray();
-      chatSessions = allSessions;
-      const sessionIds = new Set(chatSessions.map(s => s.id));
+      // 4. 按选项决定是否导出对话记录
+      if (includeChatHistory) {
+        const allSessions = await db.chatSessions.toArray();
+        chatSessions = allSessions;
+        const sessionIds = new Set(chatSessions.map(s => s.id));
+        const allMessages = await db.chatMessages.toArray();
+        chatMessages = allMessages.filter(m => sessionIds.has(m.sessionId));
+      } else {
+        chatSessions = [];
+        chatMessages = [];
+      }
 
-      // 5. 抽取聊天消息（仅导出属于上述会话的消息）
-      const allMessages = await db.chatMessages.toArray();
-      chatMessages = allMessages.filter(m => sessionIds.has(m.sessionId));
-
-      // 6. 抽取附件数据（出于简化逻辑考虑，执行全量导出）
+      // 5. 抽取附件数据
       attachments = await db.attachments.toArray();
     } else {
       // 未指定过滤条件，执行全量数据库导出
       subjects = await db.subjects.toArray();
       entities = await db.entities.toArray();
       relations = await db.relations.toArray();
-      chatSessions = await db.chatSessions.toArray();
-      chatMessages = await db.chatMessages.toArray();
+
+      if (includeChatHistory) {
+        chatSessions = await db.chatSessions.toArray();
+        chatMessages = await db.chatMessages.toArray();
+      } else {
+        chatSessions = [];
+        chatMessages = [];
+      }
+
       attachments = await db.attachments.toArray();
     }
+
+    // 6. 按选项决定是否导出 AI 配置
+    const config = includeConfig ? await db.settings.toArray() : undefined;
 
     return {
       version: 2,
@@ -116,7 +138,8 @@ export const DataManager = {
       relations,
       chatSessions,
       chatMessages,
-      attachments
+      attachments,
+      ...(config !== undefined && { config })
     };
   },
 
@@ -182,20 +205,20 @@ export const DataManager = {
    * @param selection - 用户勾选的指定导入项
    */
   async importStudyData(data: StudyStudioData, selection?: ImportSelection): Promise<void> {
-    await db.transaction('rw', [db.subjects, db.entities, db.relations, db.chatSessions, db.chatMessages, db.attachments], async () => {
-      // 记录旧 ID 到新 ID 的映射，用于修复关系外键
+    const { includeChatHistory = true, includeConfig = false, overwriteConfig = false } = selection || {};
+
+    await db.transaction('rw', [db.subjects, db.entities, db.relations, db.chatSessions, db.chatMessages, db.attachments, db.settings], async () => {
       const idMap = new Map<string, string>();
       const timestamp = Date.now();
-      // ID 冲突时的重新生成策略
-      const generateNewId = (oldId: string) => `${oldId}_imported_${timestamp}_${Math.random().toString(36).substr(2, 5)}`;
+      const generateNewId = (oldId: string) => `${oldId}_imported_${timestamp}_${Math.random().toString(36).slice(2, 7)}`;
 
       // 过滤出用户允许导入的学科数据
-      const subjectsToImport = data.subjects.filter(s => 
+      const subjectsToImport = data.subjects.filter(s =>
         !selection?.subjectIds || selection.subjectIds.includes(s.id)
       );
-      
-      // 过滤出用户允许导入的实体数据，同时要求该实体所属学科也在导入列表中，或数据库中已存在
-      const entitiesToImport = data.entities.filter(e => 
+
+      // 过滤出用户允许导入的实体数据
+      const entitiesToImport = data.entities.filter(e =>
         (!selection?.entityIds || selection.entityIds.includes(e.id)) &&
         (!selection?.subjectIds || selection.subjectIds.includes(e.subjectId) || subjectsToImport.find(s => s.id === e.subjectId))
       );
@@ -207,8 +230,6 @@ export const DataManager = {
       for (const item of subjectsToImport) {
         const oldId = item.id;
         const existing = await db.subjects.get(oldId);
-        
-        // 若存在同名/同 ID 学科，则进行复制操作，避免覆盖现有数据
         if (existing) {
           const newId = generateNewId(oldId);
           idMap.set(oldId, newId);
@@ -223,14 +244,10 @@ export const DataManager = {
       const newEntities = [];
       for (const item of entitiesToImport) {
         const oldId = item.id;
-        
-        // 如果父学科的 ID 发生了变更，则同步更新实体的外键
         if (item.subjectId && idMap.has(item.subjectId)) {
           item.subjectId = idMap.get(item.subjectId);
         }
-
         const existing = await db.entities.get(oldId);
-        // 若本地已有相同实体，同样采用复制策略
         if (existing) {
           const newId = generateNewId(oldId);
           idMap.set(oldId, newId);
@@ -241,75 +258,76 @@ export const DataManager = {
       }
       await db.entities.bulkAdd(newEntities);
 
-      // 3. 处理实体间的关联关系，修复引用的新 ID
+      // 3. 处理实体间的关联关系
       if (data.relations) {
         const newRelations = [];
         for (const item of data.relations) {
-          // 如果关系的两端节点有任何一方未被导入，则直接舍弃该关系记录
           if (!importEntityIds.has(item.sourceId) || !importEntityIds.has(item.targetId)) continue;
-
           if (idMap.has(item.sourceId)) item.sourceId = idMap.get(item.sourceId);
           if (idMap.has(item.targetId)) item.targetId = idMap.get(item.targetId);
-
           const existing = await db.relations.get(item.id);
-          if (existing) {
-            item.id = generateNewId(item.id);
-          }
+          if (existing) item.id = generateNewId(item.id);
           newRelations.push(item);
         }
         await db.relations.bulkAdd(newRelations);
       }
 
-      // 4. 处理并插入 AI 会话记录
-      if (data.chatSessions) {
-        const newSessions = [];
-        for (const item of data.chatSessions) {
-          const oldId = item.id;
-          const existing = await db.chatSessions.get(oldId);
-          if (existing) {
-            const newId = generateNewId(oldId);
-            idMap.set(oldId, newId);
-            item.id = newId;
-            item.title = `${item.title} (导入)`;
+      // 4. 按选项决定是否导入对话记录
+      if (includeChatHistory) {
+        if (data.chatSessions) {
+          const newSessions = [];
+          for (const item of data.chatSessions) {
+            const oldId = item.id;
+            const existing = await db.chatSessions.get(oldId);
+            if (existing) {
+              const newId = generateNewId(oldId);
+              idMap.set(oldId, newId);
+              item.id = newId;
+              item.title = `${item.title} (导入)`;
+            }
+            newSessions.push(item);
           }
-          newSessions.push(item);
+          await db.chatSessions.bulkAdd(newSessions);
         }
-        await db.chatSessions.bulkAdd(newSessions);
+
+        if (data.chatMessages) {
+          const newMessages = [];
+          for (const item of data.chatMessages) {
+            if (!item.sessionId) continue;
+            if (idMap.has(item.sessionId)) item.sessionId = idMap.get(item.sessionId);
+            const existing = await db.chatMessages.get(item.id);
+            if (existing) item.id = generateNewId(item.id);
+            newMessages.push(item);
+          }
+          await db.chatMessages.bulkAdd(newMessages);
+        }
       }
 
-      // 5. 处理并插入聊天消息，确保消息依然挂载在正确的会话下
-      if (data.chatMessages) {
-        const newMessages = [];
-        for (const item of data.chatMessages) {
-          if (!item.sessionId) continue;
-          
-          let targetSessionId = item.sessionId;
-          // 修复聊天消息对应的会话 ID
-          if (idMap.has(item.sessionId)) {
-            targetSessionId = idMap.get(item.sessionId);
-          }
-          item.sessionId = targetSessionId;
-
-          const existing = await db.chatMessages.get(item.id);
-          if (existing) {
-            item.id = generateNewId(item.id);
-          }
-          newMessages.push(item);
-        }
-        await db.chatMessages.bulkAdd(newMessages);
-      }
-
-      // 6. 处理并插入多媒体附件
+      // 5. 处理并插入多媒体附件
       if (data.attachments) {
         const newAttachments = [];
         for (const item of data.attachments) {
           const existing = await db.attachments.get(item.id);
-          if (existing) {
-            item.id = generateNewId(item.id);
-          }
+          if (existing) item.id = generateNewId(item.id);
           newAttachments.push(item);
         }
         await db.attachments.bulkAdd(newAttachments);
+      }
+
+      // 6. 按选项决定是否导入 AI 配置
+      if (includeConfig && data.config && data.config.length > 0) {
+        if (overwriteConfig) {
+          // 覆盖模式：直接 put（新增或替换）
+          await db.settings.bulkPut(data.config);
+        } else {
+          // 跳过模式：仅在对应记录不存在时才写入
+          for (const item of data.config) {
+            const existing = await db.settings.get(item.id);
+            if (!existing) {
+              await db.settings.add(item);
+            }
+          }
+        }
       }
     });
   },
