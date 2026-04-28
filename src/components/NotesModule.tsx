@@ -444,7 +444,61 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
   );
 }
 
+const READING_POS_PREFIX = 'readingPos_note_';
+
+function getReadingPos(id: string): number {
+  const v = localStorage.getItem(READING_POS_PREFIX + id);
+  return v ? parseInt(v, 10) : 0;
+}
+
+function saveReadingPos(id: string, pos: number) {
+  localStorage.setItem(READING_POS_PREFIX + id, String(pos));
+}
+
 function NoteDetail({ selectedNote, isEditing, editTitle, editContent, setEditTitle, setEditContent, setIsEditing, saveNote, deleteNote, undoEdit, redoEdit, canUndo, canRedo, insertMarkdown, handleImageUpload, textAreaRef, fileInputRef }: any) {
+  const readingRef = useRef<HTMLDivElement>(null);
+  const scrollTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  // 阅读模式：恢复滚动位置
+  useEffect(() => {
+    if (!isEditing && selectedNote && readingRef.current) {
+      const saved = getReadingPos(selectedNote.id);
+      if (saved > 0) {
+        readingRef.current.scrollTop = saved;
+      }
+    }
+  }, [selectedNote?.id, isEditing]);
+
+  // 阅读模式：保存滚动位置（防抖）
+  const handleReadingScroll = () => {
+    if (!selectedNote) return;
+    if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
+    scrollTimerRef.current = setTimeout(() => {
+      if (readingRef.current) {
+        saveReadingPos(selectedNote.id, readingRef.current.scrollTop);
+      }
+    }, 300);
+  };
+
+  // 编辑模式：textarea 滚动时保存
+  const handleEditScroll = () => {
+    if (!selectedNote || !textAreaRef.current) return;
+    if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
+    scrollTimerRef.current = setTimeout(() => {
+      saveReadingPos(selectedNote.id + '_edit', textAreaRef.current.scrollTop);
+    }, 300);
+  };
+
+  // 编辑模式：恢复 textarea 滚动位置
+  useEffect(() => {
+    if (isEditing && selectedNote && textAreaRef.current) {
+      const saved = getReadingPos(selectedNote.id + '_edit');
+      if (saved > 0) {
+        textAreaRef.current.scrollTop = saved;
+      }
+    }
+  }, [selectedNote?.id, isEditing]);
+
   if (!selectedNote) {
     return (
       <div className="flex-1 flex items-center justify-center text-zinc-400 bg-white dark:bg-zinc-900/50 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800">
@@ -505,11 +559,16 @@ function NoteDetail({ selectedNote, isEditing, editTitle, editContent, setEditTi
               className="w-full flex-1 resize-none focus:outline-none bg-transparent text-zinc-800 dark:text-zinc-200 font-mono p-3 text-sm"
               value={editContent}
               onChange={e => setEditContent(e.target.value)}
+              onScroll={handleEditScroll}
               placeholder="开始写作..."
             />
           </div>
         ) : (
-          <div className="prose dark:prose-invert max-w-none text-zinc-800 dark:text-zinc-200 overflow-y-auto h-full text-sm">
+          <div
+            ref={readingRef}
+            className="prose dark:prose-invert max-w-none text-zinc-800 dark:text-zinc-200 overflow-y-auto h-full text-sm"
+            onScroll={handleReadingScroll}
+          >
             <MessageRenderer content={selectedNote.content} />
           </div>
         )}

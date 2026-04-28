@@ -22,6 +22,8 @@ export interface StudyStudioData {
   chatMessages: any[];
   /** 缓存的附件和多媒体资源集合 */
   attachments: any[];
+  /** 题库练习记录 */
+  quizRecords?: any[];
   /** AI 配置（接口地址、密钥、模型等） */
   config?: any[];
 }
@@ -74,6 +76,7 @@ export const DataManager = {
     const { subjectIds, entityIds: selectedEntityIds, includeChatHistory = true, includeConfig = false } = options || {};
 
     let subjects: any[], entities: any[], relations: any[], chatSessions: any[], chatMessages: any[], attachments: any[];
+    let exportEntityIds: Set<string> = new Set();
 
     if ((subjectIds && subjectIds.length > 0) || (selectedEntityIds && selectedEntityIds.length > 0)) {
       // 1. 抽取实体数据
@@ -85,7 +88,7 @@ export const DataManager = {
         entities = [];
       }
 
-      const exportEntityIds = new Set(entities.map(e => e.id));
+      exportEntityIds = new Set(entities.map(e => e.id));
       const exportSubjectIds = new Set(subjectIds || []);
       entities.forEach(e => exportSubjectIds.add(e.subjectId));
 
@@ -134,11 +137,21 @@ export const DataManager = {
       attachments = await db.attachments.toArray();
     }
 
-    // 6. 按选项决定是否导出 AI 配置
+    // 7. 导出题库练习记录
+    let quizRecords: any[] = [];
+    if (exportEntityIds && exportEntityIds.size > 0) {
+      const entityIdsArr = Array.from(exportEntityIds);
+      const allRecords = await db.quizRecords.toArray();
+      quizRecords = allRecords.filter(r => entityIdsArr.includes(r.quizId));
+    } else {
+      quizRecords = await db.quizRecords.toArray();
+    }
+
+    // 8. 按选项决定是否导出 AI 配置
     const config = includeConfig ? await db.settings.toArray() : undefined;
 
     return {
-      version: 2,
+      version: 3,
       timestamp: Date.now(),
       subjects,
       entities,
@@ -146,6 +159,7 @@ export const DataManager = {
       chatSessions,
       chatMessages,
       attachments,
+      quizRecords,
       ...(config !== undefined && { config })
     };
   },

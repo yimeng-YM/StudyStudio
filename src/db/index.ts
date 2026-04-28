@@ -185,6 +185,27 @@ export interface StudyRecord {
 }
 
 /**
+ * 题库练习记录。
+ * 记录每道题的作答历史，用于追踪练习进度和正确率。
+ */
+export interface QuizRecord {
+  /** 记录唯一标识，格式为 `${quizId}_${questionId}` */
+  id: string;
+  /** 所属题库 ID */
+  quizId: string;
+  /** 题目 ID */
+  questionId: string;
+  /** 用户最后一次提交的答案 */
+  userAnswer: any;
+  /** 最后一次判题结果（主观题为 null） */
+  isCorrect: boolean | null;
+  /** 最后一次作答时间戳 */
+  attemptedAt: number;
+  /** 累计作答次数 */
+  attemptCount: number;
+}
+
+/**
  * 基于 Dexie 封装的本地 IndexedDB 数据库管理类。
  * 负责定义数据表结构、索引规则以及控制跨版本的数据迁移逻辑。
  */
@@ -197,6 +218,7 @@ export class StudyStudioDB extends Dexie {
   chatMessages!: Table<ChatMessage>;
   attachments!: Table<Attachment>;
   studyRecords!: Table<StudyRecord>;
+  quizRecords!: Table<QuizRecord>;
 
   constructor() {
     super('StudyStudioDB');
@@ -259,6 +281,11 @@ export class StudyStudioDB extends Dexie {
     this.version(9).stores({
       chatSessions: 'id, title, mode, createdAt, updatedAt',
       chatMessages: 'id, sessionId, role, createdAt'
+    });
+
+    // 版本10：新增题库练习记录表
+    this.version(10).stores({
+      quizRecords: 'id, quizId, questionId, attemptedAt'
     });
   }
 }

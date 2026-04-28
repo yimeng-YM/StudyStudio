@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, Entity } from '@/db';
+import { db, Entity, QuizRecord } from '@/db';
 import {
   Plus, Trash, Edit, ArrowUp, ArrowDown, SortAsc, Clock, GripVertical,
   CheckCircle2, FileText, ListChecks, Type, AlignLeft, X, Check, XCircle, RefreshCw,
@@ -318,21 +318,57 @@ function MarkdownEditor({ value, onChange, placeholder, minHeight = "80px", auto
  * 题目展示与答题交互组件
  * 处理不同题型的渲染、用户输入提交以及自动评分逻辑
  */
-function QuestionViewer({ question, index, onEdit, onDelete }: { question: Question, index: number, onEdit: () => void, onDelete: () => void }) {
-  /** @type {[any, Function]} 用户填写的答案状态 */
+function QuestionViewer({ question, index, quizId, existingRecord, onEdit, onDelete, onRecordSaved }: { question: Question, index: number, quizId: string, existingRecord?: QuizRecord | null, onEdit: () => void, onDelete: () => void, onRecordSaved?: () => void }) {
   const [userAnswer, setUserAnswer] = useState<any>(question.type === 'multiple_choice' ? [] : '');
-  /** @type {[boolean, Function]} 题目是否已提交批改 */
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [attemptCount, setAttemptCount] = useState(0);
 
-  /**
-   * 当题目切换（如排序变更）时，重置当前答题状态
-   */
   useEffect(() => {
-    setUserAnswer(question.type === 'multiple_choice' ? [] : '');
-    setIsSubmitted(false);
-  }, [question.id]);
+    if (existingRecord) {
+      setUserAnswer(existingRecord.userAnswer ?? (question.type === 'multiple_choice' ? [] : ''));
+      setIsSubmitted(true);
+      setAttemptCount(existingRecord.attemptCount || 1);
+    } else {
+      setUserAnswer(question.type === 'multiple_choice' ? [] : '');
+      setIsSubmitted(false);
+      setAttemptCount(0);
+    }
+  }, [question.id, existingRecord]);
 
-  const handleSubmit = () => setIsSubmitted(true);
+  const handleSubmit = async () => {
+    setIsSubmitted(true);
+    const isObjective = ['single_choice', 'multiple_choice', 'true_false'].includes(question.type);
+    let correct: boolean | null = null;
+    if (isObjective) {
+      if (question.type === 'true_false') {
+        const normalizedUser = normalizeTrueFalseAnswer(userAnswer);
+        const normalizedCorrect = normalizeTrueFalseAnswer(question.answer);
+        correct = normalizedUser !== null && normalizedCorrect !== null && normalizedUser === normalizedCorrect;
+      } else {
+        const normalizedUser = normalizeAnswerToIndexArray(userAnswer).sort();
+        const normalizedCorrect = normalizeAnswerToIndexArray(question.answer).sort();
+        if (question.type === 'single_choice') {
+          correct = normalizedUser.length > 0 && normalizedCorrect.length > 0 && normalizedUser[0] === normalizedCorrect[0];
+        } else if (question.type === 'multiple_choice') {
+          correct = normalizedUser.length === normalizedCorrect.length &&
+                    normalizedUser.every((val, i) => val === normalizedCorrect[i]);
+        }
+      }
+    }
+    const newCount = (existingRecord?.attemptCount || 0) + 1;
+    setAttemptCount(newCount);
+    await db.quizRecords.put({
+      id: `${quizId}_${question.id}`,
+      quizId,
+      questionId: question.id,
+      userAnswer,
+      isCorrect: correct,
+      attemptedAt: Date.now(),
+      attemptCount: newCount
+    });
+    onRecordSaved?.();
+  };
+
   const handleReset = () => {
     setIsSubmitted(false);
     setUserAnswer(question.type === 'multiple_choice' ? [] : '');
@@ -382,6 +418,9 @@ function QuestionViewer({ question, index, onEdit, onDelete }: { question: Quest
               ) : (
                 <span className="text-red-600 text-xs font-bold flex items-center gap-1 shrink-0"><XCircle size={14}/> 回答错误</span>
               )
+            )}
+            {attemptCount > 0 && (
+              <span className="text-zinc-400 text-xs shrink-0">作答 {attemptCount} 次</span>
             )}
           </div>
 
@@ -731,10 +770,60 @@ function QuestionEditor({ question, onSave, onCancel }: { question: Question, on
   );
 }
 
+const QUIZ_READING_POS_PREFIX = 'readingPos_quiz_';
+
+function getQuizReadingPos(id: string): number {
+  const v = localStorage.getItem(QUIZ_READING_POS_PREFIX + id);
+  return v ? parseInt(v, 10) : 0;
+}
+
+function saveQuizReadingPos(id: string, pos: number) {
+  localStorage.setItem(QUIZ_READING_POS_PREFIX + id, String(pos));
+}
+
 function QuizEditor({ quiz, isEditingTitle, setIsEditingTitle, editTitle, setEditTitle, onUpdateTitle, onDeleteQuiz }: any) {
   const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
   const questions = (quiz.content as QuizContent)?.questions || [];
   const { showConfirm } = useDialog();
+  const questionListRef = useRef<HTMLDivElement>(null);
+  const scrollTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  // 加载该题库的练习记录
+  const records = useLiveQuery(() => db.quizRecords.where({ quizId: quiz.id }).toArray(), [quiz.id]);
+  const recordMap = useMemo(() => {
+    const map = new Map<string, QuizRecord>();
+    if (records) records.forEach(r => map.set(r.questionId, r));
+    return map;
+  }, [records]);
+
+  // 练习统计
+  const stats = useMemo(() => {
+    if (!records || records.length === 0) return null;
+    const attempted = records.length;
+    const correctCount = records.filter(r => r.isCorrect === true).length;
+    const objectiveTotal = records.filter(r => r.isCorrect !== null).length;
+    return { attempted, correctCount, objectiveTotal };
+  }, [records]);
+
+  // 恢复滚动位置
+  useEffect(() => {
+    if (questionListRef.current) {
+      const saved = getQuizReadingPos(quiz.id);
+      if (saved > 0) {
+        questionListRef.current.scrollTop = saved;
+      }
+    }
+  }, [quiz.id]);
+
+  // 保存滚动位置（防抖）
+  const handleQuestionListScroll = () => {
+    if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
+    scrollTimerRef.current = setTimeout(() => {
+      if (questionListRef.current) {
+        saveQuizReadingPos(quiz.id, questionListRef.current.scrollTop);
+      }
+    }, 300);
+  };
 
   const handleExport = async () => {
     try {
@@ -775,8 +864,13 @@ function QuizEditor({ quiz, isEditingTitle, setIsEditingTitle, editTitle, setEdi
     if (confirmed) {
       const newQuestions = questions.filter(q => q.id !== id);
       await updateQuestions(newQuestions);
+      await db.quizRecords.delete(`${quiz.id}_${id}`);
     }
   };
+
+  // 修改了记录后刷新（强制重新查询）
+  const [, setRefreshKey] = useState(0);
+  const handleRecordSaved = () => setRefreshKey(k => k + 1);
 
   return (
     <div className="flex flex-col h-full">
@@ -793,7 +887,7 @@ function QuizEditor({ quiz, isEditingTitle, setIsEditingTitle, editTitle, setEdi
               autoFocus
             />
           ) : (
-            <h2 
+            <h2
               onClick={() => {
                 setEditTitle(quiz.title);
                 setIsEditingTitle(true);
@@ -803,19 +897,37 @@ function QuizEditor({ quiz, isEditingTitle, setIsEditingTitle, editTitle, setEdi
               {quiz.title}
             </h2>
           )}
-          <div className="text-xs text-zinc-500 mt-1 ml-1">
-            共 {questions.length} 题 · 创建于 {new Date(quiz.createdAt).toLocaleDateString()}
+          <div className="text-xs text-zinc-500 mt-1 ml-1 space-x-2">
+            <span>共 {questions.length} 题</span>
+            <span>·</span>
+            <span>创建于 {new Date(quiz.createdAt).toLocaleDateString()}</span>
+            {stats && (
+              <>
+                <span>·</span>
+                <span className="text-blue-600 dark:text-blue-400">
+                  已练 {stats.attempted}/{questions.length} 题
+                </span>
+                {stats.objectiveTotal > 0 && (
+                  <>
+                    <span>·</span>
+                    <span className="text-green-600 dark:text-green-400">
+                      正确率 {Math.round((stats.correctCount / stats.objectiveTotal) * 100)}%
+                    </span>
+                  </>
+                )}
+              </>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button 
+          <button
             onClick={handleExport}
             className="p-2 text-zinc-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors"
             title="导出题库"
           >
             <Upload size={18} />
           </button>
-           <button 
+           <button
             onClick={onDeleteQuiz}
             className="p-2 text-zinc-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
             title="删除题库"
@@ -826,7 +938,7 @@ function QuizEditor({ quiz, isEditingTitle, setIsEditingTitle, editTitle, setEdi
       </div>
 
       {/* Question List */}
-      <div className="flex-1 overflow-y-auto py-4 space-y-6">
+      <div ref={questionListRef} onScroll={handleQuestionListScroll} className="flex-1 overflow-y-auto py-4 space-y-6">
         {questions.length === 0 ? (
           <div className="text-center py-20 text-zinc-400">
             <div className="mb-2">开始添加题目</div>
@@ -836,17 +948,20 @@ function QuizEditor({ quiz, isEditingTitle, setIsEditingTitle, editTitle, setEdi
           questions.map((q, index) => (
             <div key={q.id} className="relative group/item bg-white dark:bg-zinc-900/50 rounded-xl border border-zinc-200 dark:border-zinc-800/50 p-4 transition-all hover:border-zinc-300 dark:hover:border-zinc-700">
               {editingQuestionId === q.id ? (
-                <QuestionEditor 
-                  question={q} 
-                  onSave={(updates) => updateQuestion(q.id, updates)} 
-                  onCancel={() => setEditingQuestionId(null)} 
+                <QuestionEditor
+                  question={q}
+                  onSave={(updates) => updateQuestion(q.id, updates)}
+                  onCancel={() => setEditingQuestionId(null)}
                 />
               ) : (
-                <QuestionViewer 
-                  question={q} 
+                <QuestionViewer
+                  question={q}
                   index={index}
+                  quizId={quiz.id}
+                  existingRecord={recordMap.get(q.id) || null}
                   onEdit={() => setEditingQuestionId(q.id)}
                   onDelete={() => deleteQuestion(q.id)}
+                  onRecordSaved={handleRecordSaved}
                 />
               )}
 
