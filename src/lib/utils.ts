@@ -2,6 +2,24 @@ import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
 
 /**
+ * 安全生成 UUID v4，兼容非安全上下文（如局域网 IP HTTP 访问）。
+ * crypto.randomUUID() 仅在 https 或 localhost 下可用，
+ * 在 http://192.168.x.x 等场景下会报错，此处提供 fallback。
+ */
+export function generateUUID(): string {
+  try {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+      return crypto.randomUUID();
+    }
+  } catch (_) { /* fallback */ }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+/**
  * 合并 Tailwind CSS 类名工具函数。
  * 结合了 clsx 和 tailwind-merge：首先使用 clsx 处理条件类名，
  * 然后使用 twMerge 解决 Tailwind 样式冲突（例如后续类名覆盖前置类名）。

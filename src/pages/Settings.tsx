@@ -455,9 +455,9 @@ export function Settings() {
   if (isLoading || !localSettings) return <div className="p-8">加载中...</div>;
 
   return (
-    <div className="h-full w-full overflow-y-auto p-8">
+    <div className="h-full w-full overflow-y-auto p-4 md:p-8 pb-20 md:pb-8">
       <div className="max-w-2xl">
-        <h1 className="text-3xl font-bold mb-6 text-zinc-900 dark:text-zinc-100">设置</h1>
+        <h1 className="text-2xl md:text-3xl font-bold mb-4 md:mb-6 text-zinc-900 dark:text-zinc-100">设置</h1>
         <div className="space-y-6 border p-6 rounded-lg bg-zinc-50 dark:bg-zinc-900 dark:border-zinc-800">
           <h2 className="text-xl font-semibold text-zinc-800 dark:text-zinc-200">AI 配置</h2>
 

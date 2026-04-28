@@ -56,21 +56,13 @@ export function DialogProvider({ children }: { children: ReactNode }) {
   const [inputValue, setInputValue] = useState('');
   const [resolvePromise, setResolvePromise] = useState<((value: any) => void) | null>(null);
 
-  /**
-   * 清除状态，关闭对话框
-   */
   const closeDialog = useCallback(() => {
     setDialog(null);
     setInputValue('');
     setResolvePromise(null);
   }, []);
 
-  /**
-   * 处理确认操作
-   * 根据不同类型返回不同的 Promise 结果
-   */
   const handleConfirm = useCallback(() => {
-    // 危险操作校验：如果设置了 matchValue，必须输入匹配才能确认
     if (dialog?.matchValue && inputValue !== dialog.matchValue) return;
 
     if (resolvePromise) {
@@ -109,7 +101,6 @@ export function DialogProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  // 公开方法：显示 Confirm
   const showConfirm = useCallback((message: string, options: Partial<DialogOptions> = {}) => {
     return new Promise<boolean>((resolve) => {
       setDialog({ ...options, message, type: 'confirm' });
@@ -117,7 +108,6 @@ export function DialogProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  // 公开方法：显示 Prompt
   const showPrompt = useCallback((message: string, defaultValue: string = '', options: Partial<DialogOptions> = {}) => {
     return new Promise<string | null>((resolve) => {
       setDialog({ ...options, message, defaultValue, type: 'prompt' });
@@ -131,7 +121,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
       {children}
       {/* 渲染当前激活的对话框 */}
       {dialog && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 animate-in fade-in duration-200" style={{ touchAction: 'manipulation' }}>
           <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-2xl w-full max-w-md mx-4 border dark:border-zinc-800 overflow-hidden animate-in zoom-in-95 duration-200">
             {/* 对话框头部 */}
             <div className="p-4 border-b dark:border-zinc-800 flex justify-between items-center bg-zinc-50/50 dark:bg-zinc-900/50">
@@ -165,6 +155,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
                 <button
                   onClick={handleCancel}
                   className="px-4 py-2 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-lg transition-colors font-medium"
+                  style={{ minHeight: '44px' }}
                 >
                   {dialog.cancelText || '取消'}
                 </button>
@@ -173,6 +164,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
                 onClick={handleConfirm}
                 disabled={dialog.type === 'prompt' && !!dialog.matchValue && inputValue !== dialog.matchValue}
                 className="px-4 py-2 bg-primary text-primary-foreground hover:opacity-90 rounded-lg transition-all shadow hover:shadow-md font-medium disabled:opacity-50 disabled:cursor-not-allowed disabled:grayscale"
+                style={{ touchAction: 'manipulation', minHeight: '44px' }}
               >
                 {dialog.confirmText || '确定'}
               </button>

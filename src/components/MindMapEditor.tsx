@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import ReactFlow, {
   MiniMap,
   Background,
@@ -26,7 +27,7 @@ import { ViewControls } from './ViewControls';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useMindMapContext } from '@/hooks/useUIContext';
 import * as dagre from 'dagre';
-import { cn } from '@/lib/utils';
+import { cn, generateUUID } from '@/lib/utils';
 
 /**
  * 思维导图编辑器组件属性
@@ -58,6 +59,7 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
   const { setCenter, fitView } = useReactFlow();
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [showLayoutMenu, setShowLayoutMenu] = useState(false);
+  const [layoutMenuPos, setLayoutMenuPos] = useState({ left: 0, bottom: 0 });
   /** @type {[string | null, Function]} 当前选中的思维导图记录ID */
   const [selectedMindMapId, setSelectedMindMapId] = useState<string | null>(null);
   const { showAlert, showConfirm, showPrompt } = useDialog();
@@ -114,7 +116,7 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
     if (mindMaps && mindMaps.length > 0 && !selectedMindMapId) {
       setSelectedMindMapId(mindMaps[0].id);
     } else if (mindMaps && mindMaps.length === 0) {
-      const id = crypto.randomUUID();
+      const id = generateUUID();
       const now = Date.now();
       db.entities.add({
         id,
@@ -279,7 +281,7 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
     const parent = nodes.find(n => n.id === parentId);
     if (!parent) return;
 
-    const id = crypto.randomUUID();
+    const id = generateUUID();
     const newNode: Node = {
       id,
       type: 'custom',
@@ -322,7 +324,7 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
     const parent = nodes.find(n => n.id === parentId);
     if (!parent) return;
 
-    const id = crypto.randomUUID();
+    const id = generateUUID();
     const newNode: Node = {
       id,
       type: 'custom',
@@ -367,7 +369,7 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
     if (!exist) {
       const confirmed = await showConfirm(`是否为 "${label}" 创建详细知识笔记？`, { title: '新建笔记' });
       if (confirmed) {
-        noteId = crypto.randomUUID();
+        noteId = generateUUID();
         await db.entities.add({
           id: noteId,
           subjectId,
@@ -410,7 +412,7 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
     let boardEdges = entity?.content?.edges || [];
 
     if (!entity) {
-      const id = crypto.randomUUID();
+      const id = generateUUID();
       entity = {
         id,
         subjectId,
@@ -424,12 +426,12 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
     }
 
     const itemsToAdd = taskItemsToAdd.length > 0
-      ? taskItemsToAdd.map(t => ({ id: crypto.randomUUID(), text: t, completed: false }))
-      : [{ id: crypto.randomUUID(), text: taskLabelToAdd, completed: false }];
+      ? taskItemsToAdd.map(t => ({ id: generateUUID(), text: t, completed: false }))
+      : [{ id: generateUUID(), text: taskLabelToAdd, completed: false }];
 
     if (selectedBlockId === 'new') {
       const newNode = {
-        id: crypto.randomUUID(),
+        id: generateUUID(),
         type: 'taskBlock',
         position: { x: Math.random() * 200 + 100, y: Math.random() * 200 + 100 },
         data: { title: newBlockName, items: itemsToAdd }
@@ -469,7 +471,7 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
     const label = await showPrompt("输入新中心主题名称:", "中心主题");
     if (!label) return;
 
-    const id = crypto.randomUUID();
+    const id = generateUUID();
     const newNode: Node = {
       id,
       type: 'custom',
@@ -487,11 +489,28 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
     setTimeout(() => jumpToNode(id), 100);
   }, [nodes, edges, setNodes, takeSnapshot, showPrompt, jumpToNode]);
 
+  const handleEditNode = useCallback(async (nodeId: string) => {
+    const node = nodes.find(n => n.id === nodeId);
+    if (!node) return;
+    const label = await showPrompt("输入新标签:", node.data.label, { title: "编辑节点" });
+    if (label !== null) {
+      const newNodes = nodes.map((n) => {
+        if (n.id === node.id) {
+          return { ...n, data: { ...n.data, label } };
+        }
+        return n;
+      });
+      takeSnapshot(newNodes, edges);
+      setNodes(newNodes);
+    }
+  }, [nodes, edges, setNodes, showPrompt, takeSnapshot]);
+
   const nodesWithHandlers = useMemo(() => {
     return nodes.map((node) => ({
       ...node,
       data: {
         ...node.data,
+        onEdit: () => handleEditNode(node.id),
         onAddChild: () => handleAddChild(node.id),
         onAddSibling: () => handleAddSibling(node.id),
         onDelete: () => handleDeleteNode(node.id),
@@ -499,7 +518,7 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
         onTask: () => handleTask(node.id),
       },
     }));
-  }, [nodes, handleAddChild, handleAddSibling, handleDeleteNode, handleNote, handleTask]);
+  }, [nodes, handleEditNode, handleAddChild, handleAddSibling, handleDeleteNode, handleNote, handleTask]);
 
   /**
    * 节点连接事件处理，用户手动拖拽连线时触发
@@ -712,17 +731,6 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
     }
   }, [nodes, edges, setNodes, setEdges, takeSnapshot, fitView]);
 
-  // 点击外部关闭菜单
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (showLayoutMenu && !(e.target as HTMLElement).closest('.layout-menu-container')) {
-        setShowLayoutMenu(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showLayoutMenu]);
-
   const handleEdgeClick = useCallback((event: React.MouseEvent, edge: Edge) => {
     event.stopPropagation();
     showConfirm('确定要删除这条连接线吗？', { title: '删除连接' }).then((confirmed: boolean) => {
@@ -787,92 +795,41 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
             fitView
           >
             <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
-            
-            {/* Top Navigation Bar */}
-            <Panel position="top-center" className="flex items-center gap-2 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md px-4 py-2 rounded-full border border-zinc-200 dark:border-zinc-800 shadow-lg mt-4 max-w-[90vw]">
-              <button
-                onClick={handleAddRootNode}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-full text-xs font-medium hover:bg-blue-700 transition-colors shrink-0"
-              >
-                <Plus size={14} /> 新增中心主题
-              </button>
-              
-              <div className="w-px h-4 bg-zinc-200 dark:bg-zinc-800 mx-1 shrink-0" />
-              
-              <div className="relative shrink-0 layout-menu-container">
-                <button
-                  onClick={() => setShowLayoutMenu(!showLayoutMenu)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-full text-xs font-medium text-zinc-700 dark:text-zinc-300 transition-all border border-transparent hover:border-blue-200"
-                >
-                  <LayoutIcon size={14} className="text-blue-500" />
-                  <span>自动整理</span>
-                  <ChevronDown size={12} className={cn("transition-transform", showLayoutMenu && "rotate-180")} />
-                </button>
 
-                {showLayoutMenu && (
-                  <div className="absolute top-full left-0 mt-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl p-1 min-w-[140px] z-[100] animate-in fade-in slide-in-from-top-2">
-                    <button
-                      onClick={() => { onLayout('LR'); setShowLayoutMenu(false); }}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded transition-colors"
-                    >
-                      <ArrowRight size={14} />
-                      朝右整理
-                    </button>
-                    <button
-                      onClick={() => { onLayout('RL'); setShowLayoutMenu(false); }}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded transition-colors"
-                    >
-                      <ArrowLeft size={14} />
-                      朝左整理
-                    </button>
-                    <button
-                      onClick={() => { onLayout('TB'); setShowLayoutMenu(false); }}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded transition-colors"
-                    >
-                      <ArrowDown size={14} />
-                      朝下整理
-                    </button>
-                    <button
-                      onClick={() => { onLayout('BT'); setShowLayoutMenu(false); }}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded transition-colors"
-                    >
-                      <ArrowUp size={14} />
-                      朝上整理
-                    </button>
-                    <div className="h-px bg-zinc-100 dark:bg-zinc-800 my-1" />
-                    <button
-                      onClick={() => { onLayout('Radial'); setShowLayoutMenu(false); }}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded transition-colors"
-                    >
-                      <GitBranch size={14} />
-                      发散整理
-                    </button>
-                  </div>
-                )}
+            {/* Mobile: full-width toolbar */}
+            <div className="md:hidden absolute top-0 left-0 right-0 z-10 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800">
+              <div className="flex items-center gap-1.5 px-2 py-1.5 overflow-x-auto scrollbar-none">
+                <button onClick={handleAddRootNode} className="flex items-center gap-1 px-2 py-1 bg-blue-600 text-white rounded-full text-xs font-medium hover:bg-blue-700 transition-colors shrink-0 whitespace-nowrap"><Plus size={14} />中心主题</button>
+                <div className="w-px h-4 bg-zinc-200 dark:bg-zinc-800 mx-1 shrink-0" />
+                <button onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setLayoutMenuPos({ left: r.left, bottom: r.bottom }); setShowLayoutMenu(!showLayoutMenu); }} className="flex items-center gap-1 px-2 py-1 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-full text-xs font-medium text-zinc-700 dark:text-zinc-300 transition-all border border-transparent hover:border-blue-200 shrink-0 whitespace-nowrap"><LayoutIcon size={14} className="text-blue-500" />整理<ChevronDown size={12} className={cn("transition-transform", showLayoutMenu && "rotate-180")} /></button>
+                <div className="w-px h-4 bg-zinc-200 dark:bg-zinc-800 mx-1 shrink-0" />
+                <div className="flex items-center gap-2 overflow-x-auto scrollbar-none">
+                  {rootNodes.map(node => (
+                    <button key={node.id} onClick={() => jumpToNode(node.id)} className="flex items-center gap-1 px-2 py-1 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-full text-xs font-medium text-zinc-700 dark:text-zinc-300 transition-all border border-transparent hover:border-blue-200 dark:hover:border-blue-800 shrink-0 whitespace-nowrap"><Target size={12} className="text-blue-500" />{node.data.label}</button>
+                  ))}
+                  {rootNodes.length === 0 && <span className="text-xs text-zinc-400 px-1 shrink-0">暂无中心主题</span>}
+                </div>
               </div>
+            </div>
 
-              <div className="w-px h-4 bg-zinc-200 dark:bg-zinc-800 mx-1 shrink-0" />
-              
-              {/* Scrollable themes section */}
-              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
-                {rootNodes.map(node => (
-                  <button
-                    key={node.id}
-                    onClick={() => jumpToNode(node.id)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-full text-xs font-medium text-zinc-700 dark:text-zinc-300 transition-all border border-transparent hover:border-blue-200 dark:hover:border-blue-800 shrink-0"
-                  >
-                    <Target size={12} className="text-blue-500" />
-                    {node.data.label}
-                  </button>
-                ))}
-                
-                {rootNodes.length === 0 && (
-                  <span className="text-xs text-zinc-400 px-2 shrink-0">暂无中心主题</span>
-                )}
+            {/* Desktop: floating pill */}
+            <Panel position="top-center" className="hidden md:block bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md rounded-full border border-zinc-200 dark:border-zinc-800 shadow-lg mt-4 overflow-visible">
+              <div className="flex items-center gap-2 px-4 py-2 overflow-x-auto scrollbar-none">
+                <button onClick={handleAddRootNode} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-full text-xs font-medium hover:bg-blue-700 transition-colors shrink-0 whitespace-nowrap"><Plus size={14} /> 新增中心主题</button>
+                <div className="w-px h-4 bg-zinc-200 dark:bg-zinc-800 mx-1 shrink-0" />
+                <button onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setLayoutMenuPos({ left: r.left, bottom: r.bottom }); setShowLayoutMenu(!showLayoutMenu); }} className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-full text-xs font-medium text-zinc-700 dark:text-zinc-300 transition-all border border-transparent hover:border-blue-200 whitespace-nowrap"><LayoutIcon size={14} className="text-blue-500" />自动整理<ChevronDown size={12} className={cn("transition-transform", showLayoutMenu && "rotate-180")} /></button>
+                <div className="w-px h-4 bg-zinc-200 dark:bg-zinc-800 mx-1 shrink-0" />
+                <div className="flex items-center gap-2 overflow-x-auto scrollbar-none">
+                  {rootNodes.map(node => (
+                    <button key={node.id} onClick={() => jumpToNode(node.id)} className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-full text-xs font-medium text-zinc-700 dark:text-zinc-300 transition-all border border-transparent hover:border-blue-200 dark:hover:border-blue-800 shrink-0 whitespace-nowrap"><Target size={12} className="text-blue-500" />{node.data.label}</button>
+                  ))}
+                  {rootNodes.length === 0 && <span className="text-xs text-zinc-400 px-2 shrink-0">暂无中心主题</span>}
+                </div>
               </div>
             </Panel>
 
-            <Panel position="bottom-left" className="mb-4 ml-4">
+            {/* View Controls - Bottom Left, above mobile nav */}
+            <Panel position="bottom-left" className="mb-16 md:mb-4 ml-2 md:ml-4">
               <ViewControls
                 onUndo={handleUndo}
                 onRedo={handleRedo}
@@ -889,20 +846,23 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
               />
             </Panel>
 
-            <MiniMap
-              nodeColor={() => {
-                if (theme === 'dark') return '#555';
-                return '#eee';
-              }}
-              maskColor={theme === 'dark' ? 'rgba(0, 0, 0, 0.7)' : 'rgba(240, 240, 240, 0.6)'}
-              style={{
-                borderRadius: '12px',
-                overflow: 'hidden',
-                border: theme === 'dark' ? '1px solid #333' : '1px solid #e2e2e2',
-                backgroundColor: theme === 'dark' ? '#1a1a1a' : '#fff'
-              }}
-              className="shadow-lg"
-            />
+            {/* MiniMap - hidden on mobile, top-right on desktop */}
+            <div className="hidden md:block">
+              <MiniMap
+                nodeColor={() => {
+                  if (theme === 'dark') return '#555';
+                  return '#eee';
+                }}
+                maskColor={theme === 'dark' ? 'rgba(0, 0, 0, 0.7)' : 'rgba(240, 240, 240, 0.6)'}
+                style={{
+                  borderRadius: '12px',
+                  overflow: 'hidden',
+                  border: theme === 'dark' ? '1px solid #333' : '1px solid #e2e2e2',
+                  backgroundColor: theme === 'dark' ? '#1a1a1a' : '#fff'
+                }}
+                className="shadow-lg"
+              />
+            </div>
             {nodes.length === 0 && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                 <div className="bg-white/50 dark:bg-zinc-900/50 backdrop-blur-sm p-6 rounded-2xl border border-dashed border-zinc-300 dark:border-zinc-700 text-center">
@@ -922,6 +882,34 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
           </div>
         )}
       </div>
+
+      {/* 整理下拉菜单 - 通过 portal 渲染到 body 以避免被 ReactFlow 容器裁切 */}
+      {showLayoutMenu && createPortal(
+        <div className="fixed z-[150] bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl p-1 min-w-[140px] animate-in fade-in slide-in-from-top-2 duration-150"
+          style={{
+            left: layoutMenuPos.left,
+            top: layoutMenuPos.bottom + 8,
+          }}
+        >
+          <button onClick={() => { onLayout('LR'); setShowLayoutMenu(false); }}
+            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded transition-colors"><ArrowRight size={14} />朝右整理</button>
+          <button onClick={() => { onLayout('RL'); setShowLayoutMenu(false); }}
+            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded transition-colors"><ArrowLeft size={14} />朝左整理</button>
+          <button onClick={() => { onLayout('TB'); setShowLayoutMenu(false); }}
+            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded transition-colors"><ArrowDown size={14} />朝下整理</button>
+          <button onClick={() => { onLayout('BT'); setShowLayoutMenu(false); }}
+            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded transition-colors"><ArrowUp size={14} />朝上整理</button>
+          <div className="h-px bg-zinc-100 dark:bg-zinc-800 my-1" />
+          <button onClick={() => { onLayout('Radial'); setShowLayoutMenu(false); }}
+            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded transition-colors"><GitBranch size={14} />发散整理</button>
+        </div>,
+        document.body
+      )}
+
+      {/* 点击遮罩关闭下拉 */}
+      {showLayoutMenu && (
+        <div className="fixed inset-0 z-[140]" onClick={() => setShowLayoutMenu(false)} />
+      )}
 
       <Modal
         isOpen={isTaskModalOpen}

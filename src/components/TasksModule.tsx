@@ -16,6 +16,7 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { db, Entity } from '@/db';
+import { generateUUID } from '@/lib/utils';
 import { Plus, Target } from 'lucide-react';
 import { TaskBoardNode, TaskBlockData } from './TaskBoardNode';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -122,7 +123,7 @@ function TasksModuleInner({ subjectId, initialSessionId }: TasksModuleProps) {
           }];
 
           const newEntity: Entity = {
-            id: crypto.randomUUID(),
+            id: generateUUID(),
             subjectId,
             type: 'task_board',
             title: 'Task Board',
@@ -164,7 +165,7 @@ function TasksModuleInner({ subjectId, initialSessionId }: TasksModuleProps) {
     } else if (currentNodes.length > 0) {
       // 如果不存在看板实体且已有节点，则创建新实体
       const newEntity: Entity = {
-        id: crypto.randomUUID(),
+        id: generateUUID(),
         subjectId,
         type: 'task_board',
         title: 'Task Board',
@@ -220,7 +221,7 @@ function TasksModuleInner({ subjectId, initialSessionId }: TasksModuleProps) {
             });
           } else if (cleanNodes.length > 0) {
             db.entities.add({
-              id: crypto.randomUUID(),
+              id: generateUUID(),
               subjectId,
               type: 'task_board',
               title: 'Task Board',
@@ -256,7 +257,7 @@ function TasksModuleInner({ subjectId, initialSessionId }: TasksModuleProps) {
 
   /** 在画布随机位置添加一个新的任务清单块 */
   const addBlock = useCallback(() => {
-    const id = crypto.randomUUID();
+    const id = generateUUID();
     const newNode: Node = {
       id,
       type: 'taskBlock',
@@ -278,7 +279,7 @@ function TasksModuleInner({ subjectId, initialSessionId }: TasksModuleProps) {
     const item = parentNode.data.items?.find((i: any) => i.id === itemId);
     const title = item ? `${item.text} - 子任务` : '子任务清单';
 
-    const newNodeId = crypto.randomUUID();
+    const newNodeId = generateUUID();
     const newNode: Node = {
       id: newNodeId,
       type: 'taskBlock',
@@ -407,62 +408,62 @@ function TasksModuleInner({ subjectId, initialSessionId }: TasksModuleProps) {
           fitView
         >
           <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
-          
-          {/* Top Navigation Bar */}
-          <Panel position="top-center" className="flex items-center gap-2 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md px-4 py-2 rounded-full border border-zinc-200 dark:border-zinc-800 shadow-lg mt-4 max-w-[80vw] overflow-x-auto no-scrollbar">
-            <button
-              onClick={addBlock}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-full text-xs font-medium hover:bg-blue-700 transition-colors shrink-0"
-            >
-              <Plus size={14} /> 添加任务块
-            </button>
-            
-            {nodes.length > 0 && (
-              <>
+
+          {/* Mobile: full-width toolbar bar */}
+          <div className="md:hidden absolute top-0 left-0 right-0 z-10 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800">
+            <div className="flex items-center gap-1.5 px-2 py-1.5 overflow-x-auto scrollbar-none">
+              <button onClick={addBlock} className="flex items-center gap-1 px-2 py-1 bg-blue-600 text-white rounded-full text-xs font-medium hover:bg-blue-700 transition-colors shrink-0 whitespace-nowrap"><Plus size={14} /> 添加任务块</button>
+              {nodes.length > 0 && <>
                 <div className="w-px h-4 bg-zinc-200 dark:bg-zinc-800 mx-1 shrink-0" />
-                
                 {nodes.map(node => (
-                  <button
-                    key={node.id}
-                    onClick={() => jumpToNode(node.id)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-full text-xs font-medium text-zinc-700 dark:text-zinc-300 transition-all shrink-0 border border-transparent hover:border-blue-200 dark:hover:border-blue-800"
-                  >
-                    <Target size={12} className="text-blue-500" />
-                    {node.data.title || '未命名'}
-                  </button>
+                  <button key={node.id} onClick={() => jumpToNode(node.id)} className="flex items-center gap-1 px-2 py-1 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-full text-xs font-medium text-zinc-700 dark:text-zinc-300 transition-all shrink-0 border border-transparent hover:border-blue-200 dark:hover:border-blue-800 whitespace-nowrap"><Target size={12} className="text-blue-500" />{node.data.title || '未命名'}</button>
                 ))}
-              </>
-            )}
-            
-            {nodes.length === 0 && (
-              <span className="text-xs text-zinc-400 px-2">暂无任务块</span>
-            )}
+              </>}
+              {nodes.length === 0 && <span className="text-xs text-zinc-400 px-2 shrink-0">暂无任务块</span>}
+            </div>
+          </div>
+
+          {/* Desktop: floating pill */}
+          <Panel position="top-center" className="hidden md:block bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md rounded-full border border-zinc-200 dark:border-zinc-800 shadow-lg mt-4 overflow-visible">
+            <div className="flex items-center gap-2 px-4 py-2 overflow-x-auto scrollbar-none">
+              <button onClick={addBlock} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-full text-xs font-medium hover:bg-blue-700 transition-colors shrink-0 whitespace-nowrap"><Plus size={14} /> 添加任务块</button>
+              {nodes.length > 0 && <>
+                <div className="w-px h-4 bg-zinc-200 dark:bg-zinc-800 mx-1 shrink-0" />
+                {nodes.map(node => (
+                  <button key={node.id} onClick={() => jumpToNode(node.id)} className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-full text-xs font-medium text-zinc-700 dark:text-zinc-300 transition-all shrink-0 border border-transparent hover:border-blue-200 dark:hover:border-blue-800 whitespace-nowrap"><Target size={12} className="text-blue-500" />{node.data.title || '未命名'}</button>
+                ))}
+              </>}
+              {nodes.length === 0 && <span className="text-xs text-zinc-400 px-2 shrink-0">暂无任务块</span>}
+            </div>
           </Panel>
 
-          {/* View Controls - Bottom Left */}
-          <Panel position="bottom-left" className="mb-4 ml-4">
-            <ViewControls 
-              isSelectionMode={isSelectionMode} 
+          {/* View Controls - Bottom Left, above mobile nav */}
+          <Panel position="bottom-left" className="mb-16 md:mb-4 ml-2 md:ml-4">
+            <ViewControls
+              isSelectionMode={isSelectionMode}
               onSelectionModeChange={setIsSelectionMode}
               onDeleteSelected={handleDeleteSelected}
               hasSelection={nodes.some(n => n.selected) || edges.some(e => e.selected)}
             />
           </Panel>
 
-          <MiniMap
-            nodeColor={() => {
-              if (theme === 'dark') return '#555';
-              return '#eee';
-            }}
-            maskColor={theme === 'dark' ? 'rgba(0, 0, 0, 0.7)' : 'rgba(240, 240, 240, 0.6)'}
-            style={{
-              borderRadius: '12px',
-              overflow: 'hidden',
-              border: theme === 'dark' ? '1px solid #333' : '1px solid #e2e2e2',
-              backgroundColor: theme === 'dark' ? '#1a1a1a' : '#fff'
-            }}
-            className="shadow-lg"
-          />
+          {/* MiniMap - hidden on mobile */}
+          <div className="hidden md:block">
+            <MiniMap
+              nodeColor={() => {
+                if (theme === 'dark') return '#555';
+                return '#eee';
+              }}
+              maskColor={theme === 'dark' ? 'rgba(0, 0, 0, 0.7)' : 'rgba(240, 240, 240, 0.6)'}
+              style={{
+                borderRadius: '12px',
+                overflow: 'hidden',
+                border: theme === 'dark' ? '1px solid #333' : '1px solid #e2e2e2',
+                backgroundColor: theme === 'dark' ? '#1a1a1a' : '#fff'
+              }}
+              className="shadow-lg"
+            />
+          </div>
           
           {nodes.length === 0 && (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">

@@ -1,6 +1,7 @@
 import { memo, useState } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
 import { Plus, X, Check, Trash2, GitBranch } from 'lucide-react';
+import { generateUUID } from '@/lib/utils';
 
 /**
  * 任务项数据结构
@@ -46,7 +47,7 @@ export const TaskBoardNode = memo(({ data, selected }: NodeProps<TaskBlockData>)
   const addItem = (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!newItemText.trim()) return;
-    const newItem: TaskItem = { id: crypto.randomUUID(), text: newItemText, completed: false };
+    const newItem: TaskItem = { id: generateUUID(), text: newItemText, completed: false };
     data.onChange?.({ items: [...data.items, newItem] });
     setNewItemText('');
   };

@@ -5,10 +5,10 @@ import {
   Plus, Trash, Edit, ArrowUp, ArrowDown, SortAsc, Clock, GripVertical,
   CheckCircle2, FileText, ListChecks, Type, AlignLeft, X, Check, XCircle, RefreshCw,
   Image as ImageIcon, Bold, Italic, Strikethrough, List, ListOrdered, Heading1, Heading2, Heading3,
-  Quote, Code, Link as LinkIcon, Download, Upload
+  Quote, Code, Link as LinkIcon, Download, Upload, ArrowLeft
 } from 'lucide-react';
 import { DataManager } from '@/services/dataManager';
-import { cn } from '@/lib/utils';
+import { cn, generateUUID } from '@/lib/utils';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { MessageRenderer } from '@/components/MessageRenderer';
 import { useUIContext } from '@/hooks/useUIContext';
@@ -170,7 +170,7 @@ function ImageUploadButton({ onUpload, className }: { onUpload: (markdown: strin
     reader.onload = async (event) => {
       const base64 = event.target?.result as string;
       if (base64) {
-        let id = crypto.randomUUID();
+        let id = generateUUID();
         await db.attachments.add({
           id,
           data: base64,
@@ -754,7 +754,7 @@ function QuizEditor({ quiz, isEditingTitle, setIsEditingTitle, editTitle, setEdi
 
   const addQuestion = async (type: Question['type']) => {
     const newQuestion: Question = {
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       type,
       text: '',
       options: ['single_choice', 'multiple_choice'].includes(type) ? ['', '', '', ''] : undefined,
@@ -944,7 +944,7 @@ export function QuizModule({ subjectId }: QuizModuleProps) {
   };
 
   const createQuiz = async () => {
-    const id = crypto.randomUUID();
+    const id = generateUUID();
     const now = Date.now();
     const newQuiz = {
       id,
@@ -983,119 +983,156 @@ export function QuizModule({ subjectId }: QuizModuleProps) {
     setIsEditingTitle(false);
   };
 
-  return (
-    <div className="flex h-full gap-4 relative">
-      {/* Quiz List (Left Sidebar) */}
-      <div className="w-80 border-r pr-4 flex flex-col relative shrink-0">
-        <div className="flex flex-col gap-2 mb-4">
-          <div className="flex gap-2">
-            <button onClick={createQuiz} className="flex-1 flex items-center justify-center gap-2 bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700 transition-colors">
-              <Plus size={16} /> 新建题库
-            </button>
-            <button 
-              onClick={() => fileInputRef.current?.click()}
-              className="px-3 py-2 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
-              title="导入题库"
-            >
-              <Download size={16} />
-            </button>
-            <input 
-              type="file" 
-              ref={fileInputRef} 
-              className="hidden" 
-              accept=".json" 
-              onChange={handleImport} 
-            />
-          </div>
-          {/* Sort Toolbar */}
-          <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800 p-1 rounded-lg">
-            <button onClick={() => setSortMode('name')} className={cn("p-1.5 rounded transition-colors flex-1 flex justify-center", sortMode === 'name' ? "bg-white dark:bg-zinc-700 shadow-sm text-blue-600" : "text-zinc-400 hover:text-zinc-600")} title="按名称"><SortAsc size={14} /></button>
-            <button onClick={() => setSortMode('lastAccessed')} className={cn("p-1.5 rounded transition-colors flex-1 flex justify-center", sortMode === 'lastAccessed' ? "bg-white dark:bg-zinc-700 shadow-sm text-blue-600" : "text-zinc-400 hover:text-zinc-600")} title="按时间"><Clock size={14} /></button>
-            <button onClick={() => setSortMode('manual')} className={cn("p-1.5 rounded transition-colors flex-1 flex justify-center", sortMode === 'manual' ? "bg-white dark:bg-zinc-700 shadow-sm text-blue-600" : "text-zinc-400 hover:text-zinc-600")} title="手动"><GripVertical size={14} /></button>
-            <div className="w-px h-4 bg-zinc-300 dark:bg-zinc-600 mx-1" />
-            <button onClick={() => setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')} className="p-1.5 rounded text-zinc-400 hover:text-zinc-600 transition-colors">
-              {sortDirection === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
-            </button>
-          </div>
-        </div>
+  const handleSelectQuiz = async (quiz: Entity) => {
+    setSelectedQuizId(quiz.id);
+    setEditTitle(quiz.title);
+    setIsEditingTitle(false);
+    await db.entities.update(quiz.id, { lastAccessed: Date.now() });
+  };
 
-        <div className="space-y-2 overflow-y-auto flex-1">
-          {quizzes?.map((quiz, idx) => (
-            <div
-              key={quiz.id}
-              onClick={async () => {
-                setSelectedQuizId(quiz.id);
-                setEditTitle(quiz.title);
-                setIsEditingTitle(false);
-                await db.entities.update(quiz.id, { lastAccessed: Date.now() });
-              }}
-              className={cn(
-                "p-3 rounded cursor-pointer transition-all group relative animate-in slide-in-from-left duration-300",
-                selectedQuizId === quiz.id ? 'bg-zinc-200 dark:bg-zinc-800' : 'hover:bg-zinc-100 dark:hover:bg-zinc-900'
-              )}
-              style={{ animationDelay: `${idx * 30}ms` }}
-            >
-              <div className="flex justify-between items-start gap-2">
-                <div className="min-w-0 flex-1">
-                  <div className="font-medium truncate text-slate-800 dark:text-slate-200">{quiz.title}</div>
-                  <div className="text-xs text-slate-500">{new Date(quiz.updatedAt).toLocaleDateString()} · {(quiz.content as QuizContent)?.questions?.length || 0} 题</div>
-                </div>
-                {/* Manual Sort Controls */}
-                {sortMode === 'manual' && quizzes && quizzes.length > 1 && (
-                  <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                    <button 
-                      onClick={async (e) => {
-                        e.stopPropagation();
-                        if (idx > 0 && quizzes) {
-                          const prevOrder = quizzes[idx - 1].order || 0;
-                          const currOrder = quiz.order || 0;
-                          await db.entities.update(quizzes[idx - 1].id, { order: currOrder });
-                          await db.entities.update(quiz.id, { order: prevOrder });
-                        }
-                      }}
-                      disabled={idx === 0}
-                      className="p-0.5 text-zinc-400 hover:text-zinc-600 disabled:opacity-20 disabled:cursor-not-allowed"
-                    >
-                      <ArrowUp size={12} />
-                    </button>
-                    <button 
-                      onClick={async (e) => {
-                        e.stopPropagation();
-                        if (idx < quizzes.length - 1 && quizzes) {
-                          const nextOrder = quizzes[idx + 1].order || 0;
-                          const currOrder = quiz.order || 0;
-                          await db.entities.update(quizzes[idx + 1].id, { order: currOrder });
-                          await db.entities.update(quiz.id, { order: nextOrder });
-                        }
-                      }}
-                      disabled={idx === quizzes.length - 1}
-                      className="p-0.5 text-zinc-400 hover:text-zinc-600 disabled:opacity-20 disabled:cursor-not-allowed"
-                    >
-                      <ArrowDown size={12} />
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
+  const handleBackToList = () => {
+    setSelectedQuizId(null);
+    setIsEditingTitle(false);
+  };
+
+  const quizListContent = (
+    <div className="md:w-80 md:border-r md:border-zinc-200 md:dark:border-zinc-800 md:pr-4 flex flex-col relative shrink-0">
+      <div className="flex flex-col gap-2 mb-4">
+        <div className="flex gap-2">
+          <button onClick={createQuiz} className="flex-1 flex items-center justify-center gap-2 bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700 transition-colors">
+            <Plus size={16} /> 新建题库
+          </button>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="px-3 py-2 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+            title="导入题库"
+          >
+            <Download size={16} />
+          </button>
+          <input
+            type="file"
+            ref={fileInputRef}
+            className="hidden"
+            accept=".json"
+            onChange={handleImport}
+          />
+        </div>
+        {/* Sort Toolbar */}
+        <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800 p-1 rounded-lg">
+          <button onClick={() => setSortMode('name')} className={cn("p-1.5 rounded transition-colors flex-1 flex justify-center", sortMode === 'name' ? "bg-white dark:bg-zinc-700 shadow-sm text-blue-600" : "text-zinc-400 hover:text-zinc-600")} title="按名称"><SortAsc size={14} /></button>
+          <button onClick={() => setSortMode('lastAccessed')} className={cn("p-1.5 rounded transition-colors flex-1 flex justify-center", sortMode === 'lastAccessed' ? "bg-white dark:bg-zinc-700 shadow-sm text-blue-600" : "text-zinc-400 hover:text-zinc-600")} title="按时间"><Clock size={14} /></button>
+          <button onClick={() => setSortMode('manual')} className={cn("p-1.5 rounded transition-colors flex-1 flex justify-center", sortMode === 'manual' ? "bg-white dark:bg-zinc-700 shadow-sm text-blue-600" : "text-zinc-400 hover:text-zinc-600")} title="手动"><GripVertical size={14} /></button>
+          <div className="w-px h-4 bg-zinc-300 dark:bg-zinc-600 mx-1" />
+          <button onClick={() => setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')} className="p-1.5 rounded text-zinc-400 hover:text-zinc-600 transition-colors">
+            {sortDirection === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
+          </button>
         </div>
       </div>
 
-      {/* Quiz Editor (Main Content) */}
-      <div className="flex-1 flex flex-col bg-white dark:bg-zinc-900/50 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800 p-4 relative overflow-hidden">
-        {selectedQuiz ? (
-          <QuizEditor 
-            quiz={selectedQuiz} 
-            isEditingTitle={isEditingTitle}
-            setIsEditingTitle={setIsEditingTitle}
-            editTitle={editTitle}
-            setEditTitle={setEditTitle}
-            onUpdateTitle={updateQuizTitle}
-            onDeleteQuiz={() => deleteQuiz(selectedQuiz.id)}
-          />
+      <div className="space-y-2 overflow-y-auto flex-1">
+        {quizzes?.map((quiz, idx) => (
+          <div
+            key={quiz.id}
+            onClick={() => handleSelectQuiz(quiz)}
+            className={cn(
+              "p-3 rounded cursor-pointer transition-all group relative animate-in slide-in-from-left duration-300",
+              selectedQuizId === quiz.id ? 'bg-zinc-200 dark:bg-zinc-800' : 'hover:bg-zinc-100 dark:hover:bg-zinc-900'
+            )}
+            style={{ animationDelay: `${idx * 30}ms` }}
+          >
+            <div className="flex justify-between items-start gap-2">
+              <div className="min-w-0 flex-1">
+                <div className="font-medium truncate text-slate-800 dark:text-slate-200">{quiz.title}</div>
+                <div className="text-xs text-slate-500">{new Date(quiz.updatedAt).toLocaleDateString()} · {(quiz.content as QuizContent)?.questions?.length || 0} 题</div>
+              </div>
+              {sortMode === 'manual' && quizzes && quizzes.length > 1 && (
+                <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                  <button
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      if (idx > 0 && quizzes) {
+                        const prevOrder = quizzes[idx - 1].order || 0;
+                        const currOrder = quiz.order || 0;
+                        await db.entities.update(quizzes[idx - 1].id, { order: currOrder });
+                        await db.entities.update(quiz.id, { order: prevOrder });
+                      }
+                    }}
+                    disabled={idx === 0}
+                    className="p-0.5 text-zinc-400 hover:text-zinc-600 disabled:opacity-20 disabled:cursor-not-allowed"
+                  >
+                    <ArrowUp size={12} />
+                  </button>
+                  <button
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      if (idx < quizzes.length - 1 && quizzes) {
+                        const nextOrder = quizzes[idx + 1].order || 0;
+                        const currOrder = quiz.order || 0;
+                        await db.entities.update(quizzes[idx + 1].id, { order: currOrder });
+                        await db.entities.update(quiz.id, { order: nextOrder });
+                      }
+                    }}
+                    disabled={idx === quizzes.length - 1}
+                    className="p-0.5 text-zinc-400 hover:text-zinc-600 disabled:opacity-20 disabled:cursor-not-allowed"
+                  >
+                    <ArrowDown size={12} />
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="flex h-full gap-4 relative pb-14 md:pb-0">
+      {/* Desktop: two-column layout */}
+      <div className="hidden md:flex h-full gap-4 w-full">
+        {quizListContent}
+        <div className="flex-1 flex flex-col bg-white dark:bg-zinc-900/50 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800 p-4 relative overflow-hidden">
+          {selectedQuiz ? (
+            <QuizEditor
+              quiz={selectedQuiz}
+              isEditingTitle={isEditingTitle}
+              setIsEditingTitle={setIsEditingTitle}
+              editTitle={editTitle}
+              setEditTitle={setEditTitle}
+              onUpdateTitle={updateQuizTitle}
+              onDeleteQuiz={() => deleteQuiz(selectedQuiz.id)}
+            />
+          ) : (
+            <div className="flex items-center justify-center h-full text-zinc-400 text-sm">
+              选择一个题库以查看或编辑，或者创建新题库。
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Mobile: list-first-then-detail */}
+      <div className="md:hidden flex flex-col h-full w-full">
+        {!selectedQuiz ? (
+          <div className="flex-1 overflow-y-auto px-3 pt-3">{quizListContent}</div>
         ) : (
-          <div className="flex items-center justify-center h-full text-zinc-400">
-            选择一个题库以查看或编辑，或者创建新题库。
+          <div className="flex flex-col h-full">
+            <div className="flex items-center gap-2 px-3 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 shrink-0">
+              <button onClick={handleBackToList} className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg">
+                <ArrowLeft size={20} />
+              </button>
+              <span className="font-medium text-sm truncate">{selectedQuiz.title}</span>
+            </div>
+            <div className="flex-1 overflow-hidden p-3">
+              <QuizEditor
+                quiz={selectedQuiz}
+                isEditingTitle={isEditingTitle}
+                setIsEditingTitle={setIsEditingTitle}
+                editTitle={editTitle}
+                setEditTitle={setEditTitle}
+                onUpdateTitle={updateQuizTitle}
+                onDeleteQuiz={() => deleteQuiz(selectedQuiz.id)}
+              />
+            </div>
           </div>
         )}
       </div>

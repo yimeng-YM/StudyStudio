@@ -3,12 +3,12 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db, Entity } from '@/db';
 import {
   Plus, Trash, Edit, Save, ArrowUp, ArrowDown, SortAsc, Clock, GripVertical,
-  ImageIcon, Undo, Redo,
+  ImageIcon, Undo, Redo, ArrowLeft,
   Bold, Italic, Strikethrough, List, ListOrdered, Heading1, Heading2, Heading3,
   Quote, Code, Link as LinkIcon
 } from 'lucide-react';
 import { MessageRenderer } from './MessageRenderer';
-import { cn } from '@/lib/utils';
+import { cn, generateUUID } from '@/lib/utils';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useHistory } from '@/hooks/useHistory';
 import { useAIStore } from '@/store/useAIStore';
@@ -27,10 +27,8 @@ interface NotesModuleProps {
 }
 
 export function NotesModule({ subjectId, initialNoteId, initialSessionId }: NotesModuleProps) {
-  /** @type {['name' | 'lastAccessed' | 'manual', Function]} 笔记排序模式 */
   const [sortMode, setSortMode] = useState<'name' | 'lastAccessed' | 'manual'>(() =>
     (localStorage.getItem('notesSortMode') as any) || 'lastAccessed');
-  /** @type {['asc' | 'desc', Function]} 笔记排序方向 */
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>(() =>
     (localStorage.getItem('notesSortDirection') as any) || 'desc');
 
@@ -140,7 +138,7 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
    * 创建新笔记记录并进入编辑模式
    */
   const createNote = async () => {
-    const id = crypto.randomUUID();
+    const id = generateUUID();
     const now = Date.now();
     const newNote = {
       id,
@@ -287,7 +285,7 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
       if (base64) {
         let id: string;
         try {
-          id = crypto.randomUUID();
+          id = generateUUID();
         } catch (e) {
           console.error("Crypto UUID failed, using timestamp fallback", e);
           id = `img-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -345,126 +343,100 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
     isEditing
   );
 
+  const handleSelectNote = (note: Entity) => {
+    setSelectedNote(note);
+    setEditContent(note.content);
+    setEditTitle(note.title);
+    setIsEditing(false);
+    db.entities.update(note.id, { lastAccessed: Date.now() });
+  };
+
+  const handleBackToList = () => {
+    setSelectedNote(null);
+    setIsEditing(false);
+  };
+
   return (
-    <div className="flex h-full gap-4 relative">
-      <NotesList
-        notes={notes}
-        selectedNote={selectedNote}
-        setSelectedNote={setSelectedNote}
-        setEditContent={setEditContent}
-        setEditTitle={setEditTitle}
-        setIsEditing={setIsEditing}
-        createNote={createNote}
-        moveNote={moveNote}
-        sortMode={sortMode}
-        setSortMode={setSortMode}
-        sortDirection={sortDirection}
-        setSortDirection={setSortDirection}
-      />
+    <div className="flex h-full gap-4 relative pb-14 md:pb-0">
+      {/* Desktop: two-column layout */}
+      <div className="hidden md:flex h-full gap-4 w-full">
+        <NotesList
+          notes={notes}
+          selectedNote={selectedNote}
+          onSelectNote={handleSelectNote}
+          createNote={createNote}
+          moveNote={moveNote}
+          sortMode={sortMode}
+          setSortMode={setSortMode}
+          sortDirection={sortDirection}
+          setSortDirection={setSortDirection}
+        />
+        <NoteDetail
+          selectedNote={selectedNote}
+          isEditing={isEditing}
+          editTitle={editTitle}
+          editContent={editContent}
+          setEditTitle={setEditTitle}
+          setEditContent={setEditContent}
+          setIsEditing={setIsEditing}
+          saveNote={saveNote}
+          deleteNote={deleteNote}
+          undoEdit={undoEdit}
+          redoEdit={redoEdit}
+          canUndo={canUndo}
+          canRedo={canRedo}
+          insertMarkdown={insertMarkdown}
+          handleImageUpload={handleImageUpload}
+          textAreaRef={textAreaRef}
+          fileInputRef={fileInputRef}
+        />
+      </div>
 
-      <div className="flex-1 flex flex-col bg-white dark:bg-zinc-900/50 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800 p-4 relative overflow-hidden">
-        {selectedNote ? (
-          <>
-            <div className="flex justify-between items-center mb-4 border-b dark:border-slate-800 pb-2">
-              {isEditing ? (
-                <input
-                  value={editTitle}
-                  onChange={e => setEditTitle(e.target.value)}
-                  className="text-xl font-bold bg-transparent border-b focus:outline-none text-slate-800 dark:text-slate-200"
-                />
-              ) : (
-                <h2 className="text-xl font-bold text-slate-800 dark:text-slate-200">{selectedNote.title}</h2>
-              )}
-
-              <div className="flex gap-2">
-                {/* AI Button Removed */}
-                {isEditing ? (
-                  <>
-                    <button
-                      onClick={undoEdit}
-                      disabled={!canUndo}
-                      className="p-2 rounded hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 text-slate-600 dark:text-slate-400 transition-colors"
-                      title="撤销"
-                    >
-                      <Undo size={20} />
-                    </button>
-                    <button
-                      onClick={redoEdit}
-                      disabled={!canRedo}
-                      className="p-2 rounded hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 text-slate-600 dark:text-slate-400 transition-colors"
-                      title="重做"
-                    >
-                      <Redo size={20} />
-                    </button>
-
-                    <button onClick={saveNote} className="text-green-600 hover:text-green-700 bg-green-50 dark:bg-green-900/20 p-2 rounded"><Save size={20} /></button>
-                  </>
-                ) : (
-                  <button onClick={() => setIsEditing(true)} className="text-blue-600 hover:text-blue-700 bg-blue-50 dark:bg-blue-900/20 p-2 rounded"><Edit size={20} /></button>
-                )}
-
-                {isEditing && (
-                  <>
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      className="text-slate-600 hover:text-slate-700 bg-slate-50 dark:bg-slate-800 p-2 rounded"
-                      title="插入图片"
-                    >
-                      <ImageIcon size={20} />
-                    </button>
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      className="hidden"
-                      accept="image/*"
-                      onChange={handleImageUpload}
-                    />
-                  </>
-                )}
-
-                <button onClick={() => deleteNote(selectedNote.id)} className="text-red-600 hover:text-red-700 bg-red-50 dark:bg-red-900/20 p-2 rounded"><Trash size={20} /></button>
-              </div>
-            </div>
-
-            <div className="flex-1 overflow-hidden flex gap-4">
-              <div className={`flex-1 flex flex-col min-w-0 h-full ${isEditing ? 'border border-zinc-200 dark:border-zinc-700 rounded' : ''}`}>
-                {isEditing ? (
-                  <>
-                    <div className="flex flex-wrap items-center gap-1 p-2 bg-zinc-50 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700">
-                      <button onClick={() => insertMarkdown('**', '**')} className="p-1.5 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400" title="加粗"><Bold size={16} /></button>
-                      <button onClick={() => insertMarkdown('*', '*')} className="p-1.5 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400" title="斜体"><Italic size={16} /></button>
-                      <button onClick={() => insertMarkdown('~~', '~~')} className="p-1.5 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400" title="删除线"><Strikethrough size={16} /></button>
-                      <div className="w-px h-4 bg-zinc-300 dark:bg-zinc-600 mx-1" />
-                      <button onClick={() => insertMarkdown('# ', '', true)} className="p-1.5 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400" title="一级标题"><Heading1 size={16} /></button>
-                      <button onClick={() => insertMarkdown('## ', '', true)} className="p-1.5 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400" title="二级标题"><Heading2 size={16} /></button>
-                      <button onClick={() => insertMarkdown('### ', '', true)} className="p-1.5 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400" title="三级标题"><Heading3 size={16} /></button>
-                      <div className="w-px h-4 bg-zinc-300 dark:bg-zinc-600 mx-1" />
-                      <button onClick={() => insertMarkdown('- ', '', true)} className="p-1.5 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400" title="无序列表"><List size={16} /></button>
-                      <button onClick={() => insertMarkdown('1. ', '', true)} className="p-1.5 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400" title="有序列表"><ListOrdered size={16} /></button>
-                      <button onClick={() => insertMarkdown('> ', '', true)} className="p-1.5 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400" title="引用"><Quote size={16} /></button>
-                      <div className="w-px h-4 bg-zinc-300 dark:bg-zinc-600 mx-1" />
-                      <button onClick={() => insertMarkdown('```\n', '\n```', true)} className="p-1.5 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400" title="代码块"><Code size={16} /></button>
-                      <button onClick={() => insertMarkdown('[', '](url)')} className="p-1.5 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400" title="链接"><LinkIcon size={16} /></button>
-                    </div>
-                    <textarea
-                      ref={textAreaRef}
-                      className="w-full h-full resize-none focus:outline-none bg-transparent text-zinc-800 dark:text-zinc-200 font-mono p-3 border-0"
-                      value={editContent}
-                      onChange={e => setEditContent(e.target.value)}
-                      placeholder="开始写作..."
-                    />
-                  </>
-                ) : (
-                  <div className="prose dark:prose-invert max-w-none text-zinc-800 dark:text-zinc-200 overflow-y-auto">
-                    <MessageRenderer content={selectedNote.content} />
-                  </div>
-                )}
-              </div>
-            </div>
-          </>
+      {/* Mobile: list-first-then-detail */}
+      <div className="md:hidden flex flex-col h-full w-full">
+        {!selectedNote ? (
+          <div className="flex-1 overflow-y-auto px-3 pt-3">
+            <NotesList
+              notes={notes}
+              selectedNote={selectedNote}
+              onSelectNote={handleSelectNote}
+              createNote={createNote}
+              moveNote={moveNote}
+              sortMode={sortMode}
+              setSortMode={setSortMode}
+              sortDirection={sortDirection}
+              setSortDirection={setSortDirection}
+            />
+          </div>
         ) : (
-          <div className="flex items-center justify-center h-full text-zinc-400">
-            选择一个笔记以查看或编辑，或者使用 AI 助手创建新笔记。
+          <div className="flex flex-col h-full">
+            <div className="flex items-center gap-2 px-3 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 shrink-0">
+              <button onClick={handleBackToList} className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg">
+                <ArrowLeft size={20} />
+              </button>
+              <span className="font-medium text-sm truncate">{selectedNote.title}</span>
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <NoteDetail
+                selectedNote={selectedNote}
+                isEditing={isEditing}
+                editTitle={editTitle}
+                editContent={editContent}
+                setEditTitle={setEditTitle}
+                setEditContent={setEditContent}
+                setIsEditing={setIsEditing}
+                saveNote={saveNote}
+                deleteNote={deleteNote}
+                undoEdit={undoEdit}
+                redoEdit={redoEdit}
+                canUndo={canUndo}
+                canRedo={canRedo}
+                insertMarkdown={insertMarkdown}
+                handleImageUpload={handleImageUpload}
+                textAreaRef={textAreaRef}
+                fileInputRef={fileInputRef}
+              />
+            </div>
           </div>
         )}
       </div>
@@ -472,9 +444,83 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
   );
 }
 
-function NotesList({ notes, selectedNote, setSelectedNote, setEditContent, setEditTitle, setIsEditing, createNote, moveNote, sortMode, setSortMode, sortDirection, setSortDirection }: any) {
+function NoteDetail({ selectedNote, isEditing, editTitle, editContent, setEditTitle, setEditContent, setIsEditing, saveNote, deleteNote, undoEdit, redoEdit, canUndo, canRedo, insertMarkdown, handleImageUpload, textAreaRef, fileInputRef }: any) {
+  if (!selectedNote) {
+    return (
+      <div className="flex-1 flex items-center justify-center text-zinc-400 bg-white dark:bg-zinc-900/50 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800">
+        选择一个笔记以查看或编辑
+      </div>
+    );
+  }
   return (
-    <div className="w-80 border-r pr-4 flex flex-col relative shrink-0">
+    <div className="flex-1 flex flex-col bg-white dark:bg-zinc-900/50 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800 p-4 overflow-hidden">
+      <div className="flex justify-between items-center mb-4 border-b dark:border-slate-800 pb-2">
+        {isEditing ? (
+          <input
+            value={editTitle}
+            onChange={e => setEditTitle(e.target.value)}
+            className="text-lg md:text-xl font-bold bg-transparent border-b focus:outline-none text-slate-800 dark:text-slate-200 flex-1"
+          />
+        ) : (
+          <h2 className="text-lg md:text-xl font-bold text-slate-800 dark:text-slate-200 truncate">{selectedNote.title}</h2>
+        )}
+
+        <div className="flex gap-1 md:gap-2 shrink-0 ml-2">
+          {isEditing ? (
+            <>
+              <button onClick={undoEdit} disabled={!canUndo} className="p-1.5 md:p-2 rounded hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 text-slate-600 dark:text-slate-400" title="撤销"><Undo size={18} /></button>
+              <button onClick={redoEdit} disabled={!canRedo} className="p-1.5 md:p-2 rounded hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 text-slate-600 dark:text-slate-400" title="重做"><Redo size={18} /></button>
+              <button onClick={saveNote} className="text-green-600 hover:text-green-700 bg-green-50 dark:bg-green-900/20 p-1.5 md:p-2 rounded"><Save size={18} /></button>
+              <button onClick={() => fileInputRef.current?.click()} className="text-slate-600 hover:text-slate-700 bg-slate-50 dark:bg-slate-800 p-1.5 md:p-2 rounded" title="插入图片"><ImageIcon size={18} /></button>
+              <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageUpload} />
+            </>
+          ) : (
+            <button onClick={() => setIsEditing(true)} className="text-blue-600 hover:text-blue-700 bg-blue-50 dark:bg-blue-900/20 p-1.5 md:p-2 rounded"><Edit size={18} /></button>
+          )}
+          <button onClick={() => deleteNote(selectedNote.id)} className="text-red-600 hover:text-red-700 bg-red-50 dark:bg-red-900/20 p-1.5 md:p-2 rounded"><Trash size={18} /></button>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-hidden">
+        {isEditing ? (
+          <div className="h-full flex flex-col border border-zinc-200 dark:border-zinc-700 rounded">
+            <div className="flex flex-wrap items-center gap-0.5 p-1.5 bg-zinc-50 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 overflow-x-auto">
+              <button onClick={() => insertMarkdown('**', '**')} className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400 shrink-0" title="加粗"><Bold size={14} /></button>
+              <button onClick={() => insertMarkdown('*', '*')} className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400 shrink-0" title="斜体"><Italic size={14} /></button>
+              <button onClick={() => insertMarkdown('~~', '~~')} className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400 shrink-0" title="删除线"><Strikethrough size={14} /></button>
+              <div className="w-px h-4 bg-zinc-300 dark:bg-zinc-600 mx-0.5 shrink-0" />
+              <button onClick={() => insertMarkdown('# ', '', true)} className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400 shrink-0" title="一级标题"><Heading1 size={14} /></button>
+              <button onClick={() => insertMarkdown('## ', '', true)} className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400 shrink-0" title="二级标题"><Heading2 size={14} /></button>
+              <button onClick={() => insertMarkdown('### ', '', true)} className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400 shrink-0" title="三级标题"><Heading3 size={14} /></button>
+              <div className="w-px h-4 bg-zinc-300 dark:bg-zinc-600 mx-0.5 shrink-0" />
+              <button onClick={() => insertMarkdown('- ', '', true)} className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400 shrink-0" title="无序列表"><List size={14} /></button>
+              <button onClick={() => insertMarkdown('1. ', '', true)} className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400 shrink-0" title="有序列表"><ListOrdered size={14} /></button>
+              <button onClick={() => insertMarkdown('> ', '', true)} className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400 shrink-0" title="引用"><Quote size={14} /></button>
+              <div className="w-px h-4 bg-zinc-300 dark:bg-zinc-600 mx-0.5 shrink-0" />
+              <button onClick={() => insertMarkdown('```\n', '\n```', true)} className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400 shrink-0" title="代码块"><Code size={14} /></button>
+              <button onClick={() => insertMarkdown('[', '](url)')} className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400 shrink-0" title="链接"><LinkIcon size={14} /></button>
+            </div>
+            <textarea
+              ref={textAreaRef}
+              className="w-full flex-1 resize-none focus:outline-none bg-transparent text-zinc-800 dark:text-zinc-200 font-mono p-3 text-sm"
+              value={editContent}
+              onChange={e => setEditContent(e.target.value)}
+              placeholder="开始写作..."
+            />
+          </div>
+        ) : (
+          <div className="prose dark:prose-invert max-w-none text-zinc-800 dark:text-zinc-200 overflow-y-auto h-full text-sm">
+            <MessageRenderer content={selectedNote.content} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function NotesList({ notes, selectedNote, onSelectNote, createNote, moveNote, sortMode, setSortMode, sortDirection, setSortDirection }: any) {
+  return (
+    <div className="md:w-80 md:border-r md:border-zinc-200 md:dark:border-zinc-800 md:pr-4 flex flex-col relative shrink-0">
       <div className="flex flex-col gap-2 mb-4">
         <div className="flex gap-2">
           <button onClick={createNote} className="flex-1 flex items-center justify-center gap-2 bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700 transition-colors">
@@ -513,11 +559,7 @@ function NotesList({ notes, selectedNote, setSelectedNote, setEditContent, setEd
           <div
             key={note.id}
             onClick={async () => {
-              setSelectedNote(note);
-              setEditContent(note.content);
-              setEditTitle(note.title);
-              setIsEditing(false);
-              await db.entities.update(note.id, { lastAccessed: Date.now() });
+              onSelectNote(note);
             }}
             className={cn(
               "p-3 rounded cursor-pointer transition-all group relative animate-in slide-in-from-left duration-300",

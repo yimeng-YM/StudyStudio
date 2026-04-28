@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/db';
-import { cn } from '@/lib/utils';
-import { LayoutDashboard, BookOpen, Settings, Plus, Sparkles, ArrowUp, ArrowDown, SortAsc, Clock, GripVertical, HelpCircle } from 'lucide-react';
+import { cn, generateUUID } from '@/lib/utils';
+import { LayoutDashboard, BookOpen, Settings, Plus, Sparkles, ArrowUp, ArrowDown, SortAsc, Clock, GripVertical, HelpCircle, X } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { ThemeToggle } from '@/components/ThemeToggle';
 
@@ -11,16 +11,21 @@ import { useResizable } from '@/hooks/useResizable';
 import { ResizeHandle } from '@/components/ui/ResizeHandle';
 import { ICON_MAP, ICON_OPTIONS } from '@/lib/icons';
 
+interface SidebarProps {
+  isMobileOpen?: boolean;
+  onMobileClose?: () => void;
+}
+
 /**
  * 侧边栏组件
- * 
+ *
  * 核心功能：
- * 1. 响应式布局：支持展开和收起（图标化）模式，适应不同屏幕空间。
+ * 1. 响应式布局：桌面端支持展开和收起（图标化）模式；移动端渲染为滑出抽屉。
  * 2. 动态导航：展示固定功能入口（首页、AI 对话等）及动态从数据库加载的学科列表。
  * 3. 学科管理：提供添加新学科的功能，并支持多种排序模式（名称、时间、手动）。
  * 4. 宽度调整：在展开模式下，支持通过拖拽右边界来自定义侧边栏宽度。
  */
-export function Sidebar() {
+export function Sidebar({ isMobileOpen, onMobileClose }: SidebarProps = {}) {
   // 侧边栏宽度调整逻辑
   const { width, startResizing } = useResizable({
     initialWidth: 256,
@@ -108,7 +113,7 @@ export function Sidebar() {
     if (newSubjectName.trim()) {
       const now = Date.now();
       await db.subjects.add({
-        id: crypto.randomUUID(),
+        id: generateUUID(),
         name: newSubjectName,
         icon: selectedIcon,
         createdAt: now,
@@ -131,24 +136,47 @@ export function Sidebar() {
     setIsCollapsed(prev => !prev);
   };
 
-  // 最终显示的侧边栏宽度：收起时固定为 74px，展开时使用自定义宽度
+  const isMobileDrawer = isMobileOpen !== undefined;
   const sidebarWidth = isCollapsed ? 74 : width;
 
-  return (
-    <>
-      <div
-        style={{ width: sidebarWidth }}
-        className="bg-white/60 dark:bg-zinc-950 backdrop-blur-xl h-screen border-r border-slate-200/50 dark:border-zinc-800/50 flex flex-col p-4 relative shrink-0 transition-[width] duration-300 ease-in-out"
-      >
-        {/* 宽度调整手柄：仅在展开模式下显示 */}
-        {!isCollapsed && (
-          <ResizeHandle
-            onMouseDown={startResizing}
-            className="absolute right-0 top-0 bottom-0 cursor-col-resize w-1 hover:w-1.5 active:w-1.5 hover:bg-blue-400/50 z-50 translate-x-1/2"
-          />
-        )}
+  const sidebarContent = (
+    <div
+      style={{ width: isMobileDrawer ? 280 : sidebarWidth }}
+      className={cn(
+        "bg-white/60 dark:bg-zinc-950 backdrop-blur-xl h-full flex flex-col p-4 relative shrink-0 transition-[width] duration-300 ease-in-out",
+        !isMobileDrawer && "border-r border-slate-200/50 dark:border-zinc-800/50"
+      )}
+    >
+      {/* 宽度调整手柄：桌面端展开模式下显示 */}
+      {!isCollapsed && !isMobileDrawer && (
+        <ResizeHandle
+          onMouseDown={startResizing}
+          className="absolute right-0 top-0 bottom-0 cursor-col-resize w-1 hover:w-1.5 active:w-1.5 hover:bg-blue-400/50 z-50 translate-x-1/2"
+        />
+      )}
 
-        {/* Logo 区域 */}
+      {/* 移动端关闭按钮 */}
+      {isMobileDrawer && (
+        <div className="flex items-center justify-between mb-2 md:hidden">
+          <div className="flex items-center gap-2">
+            {!logoError ? (
+              <img src="/logos.png" alt="StudyStudio" className="w-7 h-7 object-contain" onError={() => setLogoError(true)} />
+            ) : (
+              <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-xs">S</div>
+            )}
+            <span className="font-bold text-slate-800 dark:text-slate-100">StudyStudio</span>
+          </div>
+          <button
+            onClick={onMobileClose}
+            className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
+          >
+            <X size={20} />
+          </button>
+        </div>
+      )}
+
+      {/* Logo 区域 (仅桌面端显示) */}
+      {!isMobileDrawer && (
         <div className={`flex items-center ${isCollapsed ? 'justify-center' : (!logoError ? 'justify-center' : 'gap-2')} px-0 py-4 mb-4 min-h-[3.5rem] relative`}>
           {!logoError ? (
             <img
@@ -166,129 +194,134 @@ export function Sidebar() {
             </>
           )}
         </div>
+      )}
 
-        {/* 导航菜单区域 */}
-        <nav className="space-y-1 flex-1 overflow-y-auto scrollbar-none">
-          {/* 首页入口 */}
-          <NavLink
-            to="/"
-            className={({ isActive }) => cn(
-              "flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 hover:-translate-y-0.5",
-              isActive ? "bg-primary text-primary-foreground dark:bg-zinc-800/80 dark:text-zinc-100 shadow-md shadow-primary/20 dark:shadow-none" : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
-              isCollapsed && "justify-center px-0"
-            )}
-            title={isCollapsed ? "首页" : undefined}
-          >
-            <LayoutDashboard size={20} className="shrink-0" />
-            {!isCollapsed && <span>首页</span>}
-          </NavLink>
-
-          {/* 学科列表标题及排序控件 */}
-          {!isCollapsed && (
-            <div className="pt-4 pb-2 px-3 text-xs font-semibold text-muted-foreground/70 uppercase tracking-wider flex justify-between items-center whitespace-nowrap overflow-hidden">
-              <span>学科列表</span>
-              <div className="flex items-center gap-0.5">
-                <button onClick={() => setSortMode('name')} className={cn("p-0.5 rounded", sortMode === 'name' ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground")} title="名称排序"><SortAsc size={12} /></button>
-                <button onClick={() => setSortMode('lastAccessed')} className={cn("p-0.5 rounded", sortMode === 'lastAccessed' ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground")} title="最近访问排序"><Clock size={12} /></button>
-                <button onClick={() => setSortMode('manual')} className={cn("p-0.5 rounded", sortMode === 'manual' ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground")} title="手动排序"><GripVertical size={12} /></button>
-                <button onClick={() => setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')} className="p-0.5 rounded text-muted-foreground hover:text-foreground" title="切换升/降序">
-                  {sortDirection === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />}
-                </button>
-              </div>
-            </div>
+      {/* 导航菜单区域 */}
+      <nav className="space-y-1 flex-1 overflow-y-auto scrollbar-none">
+        {/* 首页入口 */}
+        <NavLink
+          to="/"
+          onClick={() => onMobileClose?.()}
+          className={({ isActive }) => cn(
+            "flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 hover:-translate-y-0.5",
+            isActive ? "bg-primary text-primary-foreground dark:bg-zinc-800/80 dark:text-zinc-100 shadow-md shadow-primary/20 dark:shadow-none" : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
+            isCollapsed && !isMobileDrawer && "justify-center px-0"
           )}
-          {isCollapsed && <div className="h-4" />}
+          title={isCollapsed && !isMobileDrawer ? "首页" : undefined}
+        >
+          <LayoutDashboard size={20} className="shrink-0" />
+          {(!isCollapsed || isMobileDrawer) && <span>首页</span>}
+        </NavLink>
 
-          {/* 动态学科列表项 */}
-          {subjects?.map((subject, idx) => (
+        {/* 学科列表标题及排序控件 */}
+        {(!isCollapsed || isMobileDrawer) && (
+          <div className="pt-4 pb-2 px-3 text-xs font-semibold text-muted-foreground/70 uppercase tracking-wider flex justify-between items-center whitespace-nowrap overflow-hidden">
+            <span>学科列表</span>
+            <div className="flex items-center gap-0.5">
+              <button onClick={() => setSortMode('name')} className={cn("p-0.5 rounded", sortMode === 'name' ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground")} title="名称排序"><SortAsc size={12} /></button>
+              <button onClick={() => setSortMode('lastAccessed')} className={cn("p-0.5 rounded", sortMode === 'lastAccessed' ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground")} title="最近访问排序"><Clock size={12} /></button>
+              <button onClick={() => setSortMode('manual')} className={cn("p-0.5 rounded", sortMode === 'manual' ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground")} title="手动排序"><GripVertical size={12} /></button>
+              <button onClick={() => setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')} className="p-0.5 rounded text-muted-foreground hover:text-foreground" title="切换升/降序">
+                {sortDirection === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />}
+              </button>
+            </div>
+          </div>
+        )}
+        {isCollapsed && !isMobileDrawer && <div className="h-4" />}
+
+        {/* 动态学科列表项 */}
+        {subjects?.map((subject, idx) => (
+          <NavLink
+            key={subject.id}
+            to={`/subject/${subject.id}`}
+            onClick={() => { handleSubjectClick(subject.id); onMobileClose?.(); }}
+            className={({ isActive }) => cn(
+              "flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 group justify-between animate-in slide-in-from-left hover:-translate-y-0.5",
+              isActive ? "bg-primary text-primary-foreground dark:bg-zinc-800/80 dark:text-zinc-100 shadow-md shadow-primary/20 dark:shadow-none is-active" : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
+              isCollapsed && !isMobileDrawer && "justify-center px-0"
+            )}
+            style={!isMobileDrawer ? { animationDelay: `${idx * 20}ms` } : undefined}
+            title={isCollapsed && !isMobileDrawer ? subject.name : undefined}
+          >
+            <div className="flex items-center gap-2 overflow-hidden">
+              {(() => {
+                const Icon = ICON_MAP[subject.icon || 'BookOpen'] || BookOpen;
+                return <Icon size={18} className="shrink-0" />;
+              })()}
+              {(!isCollapsed || isMobileDrawer) && <span className="truncate">{subject.name}</span>}
+            </div>
+            {!isCollapsed && !isMobileDrawer && (
+              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                {sortMode === 'manual' && (
+                  <div className="flex flex-col gap-0.5" onClick={e => e.preventDefault()}>
+                    <button onClick={(e) => moveSubject(e, subject.id, 'up')} disabled={idx === 0} className="text-muted-foreground hover:text-foreground disabled:opacity-0"><ArrowUp size={10} /></button>
+                    <button onClick={(e) => moveSubject(e, subject.id, 'down')} disabled={idx === (subjects?.length || 0) - 1} className="text-muted-foreground hover:text-foreground disabled:opacity-0"><ArrowDown size={10} /></button>
+                  </div>
+                )}
+              </div>
+            )}
+          </NavLink>
+        ))}
+
+        {/* 添加学科按钮 */}
+        <button
+          onClick={() => setIsAddModalOpen(true)}
+          className={cn(
+            "w-full flex items-center gap-2 px-3 py-2 mt-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-md transition-colors",
+            isCollapsed && !isMobileDrawer && "justify-center px-0"
+          )}
+          title={isCollapsed && !isMobileDrawer ? "添加学科" : undefined}
+        >
+          <Plus size={18} />
+          {(!isCollapsed || isMobileDrawer) && "添加学科"}
+        </button>
+      </nav>
+
+      {/* 底部区域：桌面端显示辅助导航和主题切换，移动端仅主题切换 */}
+      <div className="border-t dark:border-zinc-800/50 pt-4 space-y-1">
+        {!isMobileDrawer && (
+          <>
             <NavLink
-              key={subject.id}
-              to={`/subject/${subject.id}`}
-              onClick={() => handleSubjectClick(subject.id)}
+              to="/ai-chat"
               className={({ isActive }) => cn(
-                "flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 group justify-between animate-in slide-in-from-left hover:-translate-y-0.5",
-                isActive ? "bg-primary text-primary-foreground dark:bg-zinc-800/80 dark:text-zinc-100 shadow-md shadow-primary/20 dark:shadow-none is-active" : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
+                "flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 hover:-translate-y-0.5",
+                isActive ? "bg-primary text-primary-foreground dark:bg-zinc-800/80 dark:text-zinc-100 shadow-md shadow-primary/20 dark:shadow-none" : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
                 isCollapsed && "justify-center px-0"
               )}
-              style={{ animationDelay: `${idx * 20}ms` }}
-              title={isCollapsed ? subject.name : undefined}
+              title={isCollapsed ? "AI 历史记录" : undefined}
             >
-              <div className="flex items-center gap-2 overflow-hidden">
-                {(() => {
-                  const Icon = ICON_MAP[subject.icon || 'BookOpen'] || BookOpen;
-                  return <Icon size={18} className="shrink-0" />;
-                })()}
-                {!isCollapsed && <span className="truncate">{subject.name}</span>}
-              </div>
-              {/* 手动排序时的移动按钮 */}
-              {!isCollapsed && (
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  {sortMode === 'manual' && (
-                    <div className="flex flex-col gap-0.5" onClick={e => e.preventDefault()}>
-                      <button onClick={(e) => moveSubject(e, subject.id, 'up')} disabled={idx === 0} className="text-muted-foreground hover:text-foreground disabled:opacity-0"><ArrowUp size={10} /></button>
-                      <button onClick={(e) => moveSubject(e, subject.id, 'down')} disabled={idx === (subjects?.length || 0) - 1} className="text-muted-foreground hover:text-foreground disabled:opacity-0"><ArrowDown size={10} /></button>
-                    </div>
-                  )}
-                </div>
-              )}
+              <Sparkles size={18} />
+              {!isCollapsed && "AI 历史记录"}
             </NavLink>
-          ))}
+            <NavLink
+              to="/docs"
+              className={({ isActive }) => cn(
+                "flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 hover:-translate-y-0.5",
+                isActive ? "bg-primary text-primary-foreground dark:bg-zinc-800/80 dark:text-zinc-100 shadow-md shadow-primary/20 dark:shadow-none" : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
+                isCollapsed && "justify-center px-0"
+              )}
+              title={isCollapsed ? "使用文档" : undefined}
+            >
+              <HelpCircle size={18} />
+              {!isCollapsed && "使用文档"}
+            </NavLink>
+            <NavLink
+              to="/settings"
+              className={({ isActive }) => cn(
+                "flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 hover:-translate-y-0.5",
+                isActive ? "bg-primary text-primary-foreground dark:bg-zinc-800/80 dark:text-zinc-100 shadow-md shadow-primary/20 dark:shadow-none" : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
+                isCollapsed && "justify-center px-0"
+              )}
+              title={isCollapsed ? "设置" : undefined}
+            >
+              <Settings size={18} />
+              {!isCollapsed && "设置"}
+            </NavLink>
+          </>
+        )}
 
-          {/* 添加学科按钮 */}
-          <button
-            onClick={() => setIsAddModalOpen(true)}
-            className={cn(
-              "w-full flex items-center gap-2 px-3 py-2 mt-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-md transition-colors",
-              isCollapsed && "justify-center px-0"
-            )}
-            title={isCollapsed ? "添加学科" : undefined}
-          >
-            <Plus size={18} />
-            {!isCollapsed && "添加学科"}
-          </button>
-        </nav>
-
-        {/* 底部固定功能区域 */}
-        <div className="border-t dark:border-zinc-800/50 pt-4 space-y-1">
-          <NavLink
-            to="/ai-chat"
-            className={({ isActive }) => cn(
-              "flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 hover:-translate-y-0.5",
-              isActive ? "bg-primary text-primary-foreground dark:bg-zinc-800/80 dark:text-zinc-100 shadow-md shadow-primary/20 dark:shadow-none" : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
-              isCollapsed && "justify-center px-0"
-            )}
-            title={isCollapsed ? "AI 历史记录" : undefined}
-          >
-            <Sparkles size={18} />
-            {!isCollapsed && "AI 历史记录"}
-          </NavLink>
-          <NavLink
-            to="/docs"
-            className={({ isActive }) => cn(
-              "flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 hover:-translate-y-0.5",
-              isActive ? "bg-primary text-primary-foreground dark:bg-zinc-800/80 dark:text-zinc-100 shadow-md shadow-primary/20 dark:shadow-none" : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
-              isCollapsed && "justify-center px-0"
-            )}
-            title={isCollapsed ? "使用文档" : undefined}
-          >
-            <HelpCircle size={18} />
-            {!isCollapsed && "使用文档"}
-          </NavLink>
-          <NavLink
-            to="/settings"
-            className={({ isActive }) => cn(
-              "flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 hover:-translate-y-0.5",
-              isActive ? "bg-primary text-primary-foreground dark:bg-zinc-800/80 dark:text-zinc-100 shadow-md shadow-primary/20 dark:shadow-none" : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
-              isCollapsed && "justify-center px-0"
-            )}
-            title={isCollapsed ? "设置" : undefined}
-          >
-            <Settings size={18} />
-            {!isCollapsed && "设置"}
-          </NavLink>
-
-          {/* 底部控件：折叠切换与主题切换 */}
-          <div className={cn("flex items-center justify-between px-3 py-2 mt-2", isCollapsed && "justify-center px-0 flex-col gap-2")}>
+        <div className={cn("flex items-center justify-between px-3 py-2 mt-2", isCollapsed && !isMobileDrawer && "justify-center px-0 flex-col gap-2")}>
+          {!isMobileDrawer && (
             <button
               onClick={toggleCollapse}
               className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-md transition-colors"
@@ -296,10 +329,40 @@ export function Sidebar() {
             >
               <GripVertical size={20} className={cn("transition-transform", isCollapsed && "rotate-90")} />
             </button>
+          )}
+          <div className={cn(isMobileDrawer && "ml-auto")}>
             <ThemeToggle />
           </div>
         </div>
       </div>
+    </div>
+  );
+
+  return (
+    <>
+      {/* 桌面端侧边栏 */}
+      {!isMobileDrawer && sidebarContent}
+
+      {/* 移动端抽屉 + 遮罩 */}
+      {isMobileDrawer && (
+        <>
+          <div
+            className={cn(
+              "fixed inset-0 z-50 bg-black/50 transition-opacity duration-300 md:hidden",
+              isMobileOpen ? "opacity-100" : "opacity-0 pointer-events-none"
+            )}
+            onClick={onMobileClose}
+          />
+          <div
+            className={cn(
+              "fixed top-0 left-0 z-50 h-full transition-transform duration-300 ease-out md:hidden",
+              isMobileOpen ? "translate-x-0" : "-translate-x-full"
+            )}
+          >
+            {sidebarContent}
+          </div>
+        </>
+      )}
 
       {/* 添加学科模态框 */}
       <Modal

@@ -1,4 +1,5 @@
 import { db } from '@/db';
+import { generateUUID } from '@/lib/utils';
 
 /**
  * 鲁棒的 AI 工具参数内容解析器。
@@ -43,7 +44,7 @@ function robustParseContent(content: any): any {
  * @returns 创建成功的学科 ID 与名称
  */
 export const create_subject = async ({ name, description }: { name: string; description?: string }) => {
-  const id = crypto.randomUUID();
+  const id = generateUUID();
   const now = Date.now();
   await db.subjects.add({
     id,
@@ -87,7 +88,7 @@ export const update_subject = async ({ subjectId, name, description }: { subject
  * @returns 新创建的导图实体 ID 与标题
  */
 export const create_mindmap = async ({ subjectId, title, content }: { subjectId: string; title: string; content: any }) => {
-  const id = crypto.randomUUID();
+  const id = generateUUID();
   const now = Date.now();
   await db.entities.add({
     id,
@@ -164,7 +165,7 @@ export const add_mindmap_elements = async ({ entityId, nodes, edges }: { entityI
  * @param args - 笔记参数
  */
 export const create_note = async ({ subjectId, title, content }: { subjectId: string; title: string; content: any }) => {
-  const id = crypto.randomUUID();
+  const id = generateUUID();
   const now = Date.now();
   
   const robustContent = robustParseContent(content);
@@ -250,7 +251,7 @@ function formatQuestionsAsText(questions: any[]): string {
  * @param args - 题库参数
  */
 export const create_quiz = async ({ subjectId, title, content }: { subjectId: string; title: string; content: any }) => {
-  const id = crypto.randomUUID();
+  const id = generateUUID();
   const now = Date.now();
   await db.entities.add({
     id,
@@ -339,7 +340,7 @@ export const create_taskboard = async ({ subjectId, title, content }: { subjectI
     return { id: existing.id, title: existing.title, merged: true };
   }
 
-  const id = crypto.randomUUID();
+  const id = generateUUID();
   const now = Date.now();
   await db.entities.add({
     id,

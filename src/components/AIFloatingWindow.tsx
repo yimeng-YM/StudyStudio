@@ -3,6 +3,8 @@ import { useAIStore } from '@/store/useAIStore';
 import { ChatWindow } from './ChatWindow';
 import { Sparkles, X, Minus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useIsMobile } from '@/hooks/useIsMobile';
+import { cn } from '@/lib/utils';
 
 /**
  * AI 悬浮窗口组件
@@ -29,6 +31,7 @@ export function AIFloatingWindow() {
         setGlobalSessionId
     } = useAIStore();
 
+    const isMobile = useIsMobile();
     const [windowPos, setWindowPos] = useState({ x: 0, y: 0 });
     const [transformOrigin, setTransformOrigin] = useState('bottom right');
 
@@ -210,7 +213,8 @@ export function AIFloatingWindow() {
         <>
             {overlay}
 
-            {/* 触发按钮 - 始终可见且可独立拖拽位置 */}
+            {/* 触发按钮 - 移动端窗口打开时隐藏 */}
+            {(!isMobile || !isFloatingWindowOpen) && (
             <div
                 className="fixed z-50 cursor-move"
                 style={{
@@ -233,33 +237,43 @@ export function AIFloatingWindow() {
                     {isFloatingWindowOpen ? <X size={24} /> : <Sparkles size={24} className="group-hover:animate-pulse" />}
                 </motion.button>
             </div>
+            )}
 
             {/* AI 对话窗口 */}
             <AnimatePresence>
-                <motion.div
-                    initial={{ opacity: 0, scale: 0.5 }}
-                    animate={{ 
-                        opacity: isFloatingWindowOpen ? 1 : 0, 
-                        scale: isFloatingWindowOpen ? 1 : 0.5,
-                        pointerEvents: isFloatingWindowOpen ? 'auto' : 'none'
+                {isFloatingWindowOpen && (
+                  <motion.div
+                    initial={isMobile ? { opacity: 0 } : { opacity: 0, scale: 0.5 }}
+                    animate={{
+                        opacity: 1,
+                        scale: 1,
+                        pointerEvents: 'auto'
                     }}
+                    exit={isMobile ? { opacity: 0 } : { opacity: 0, scale: 0.5 }}
                     transition={{ type: "spring", bounce: 0.2, duration: 0.3 }}
-                    className="fixed z-[60] bg-white dark:bg-zinc-950 border dark:border-zinc-800 shadow-2xl rounded-xl overflow-hidden flex flex-col"
-                    style={{
+                    className={cn(
+                      "fixed z-[60] bg-white dark:bg-zinc-950 border dark:border-zinc-800 shadow-2xl overflow-hidden flex flex-col",
+                      isMobile
+                        ? "inset-0 rounded-none"
+                        : "rounded-xl"
+                    )}
+                    style={isMobile ? undefined : {
                         left: windowPos.x,
                         top: windowPos.y,
                         width: floatingWindowSize.width,
                         height: floatingWindowSize.height,
                         transformOrigin: transformOrigin,
-                        visibility: isFloatingWindowOpen ? 'visible' : 'hidden'
                     }}
-                >
-                        {/* 标题栏 - 支持拖拽窗口位置 */}
+                  >
+                        {/* 标题栏 - 桌面端支持拖拽 */}
                         <div
-                            className="p-3 bg-zinc-50 dark:bg-zinc-900 border-b dark:border-zinc-800 flex items-center justify-between cursor-move select-none shrink-0"
-                            style={{ touchAction: 'none' }}
-                            onMouseDown={(e) => startDrag(e, 'window')}
-                            onTouchStart={(e) => startDrag(e, 'window')}
+                            className={cn(
+                              "p-3 bg-zinc-50 dark:bg-zinc-900 border-b dark:border-zinc-800 flex items-center justify-between select-none shrink-0",
+                              !isMobile && "cursor-move"
+                            )}
+                            style={{ touchAction: isMobile ? undefined : 'none' }}
+                            onMouseDown={isMobile ? undefined : (e) => startDrag(e, 'window')}
+                            onTouchStart={isMobile ? undefined : (e) => startDrag(e, 'window')}
                         >
                             <div className="flex items-center gap-2 font-medium text-zinc-800 dark:text-zinc-100">
                                 <Sparkles size={18} className="text-blue-500" />
@@ -290,7 +304,8 @@ export function AIFloatingWindow() {
                             />
                         </div>
 
-                        {/* 调整大小手柄 */}
+                        {/* 调整大小手柄 - 桌面端 */}
+                        {!isMobile && (
                         <div
                             className="absolute bottom-0 right-0 w-6 h-6 cursor-nwse-resize z-[70] flex items-end justify-end p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-tl transition-colors"
                             style={{ touchAction: 'none' }}
@@ -305,7 +320,9 @@ export function AIFloatingWindow() {
                                 <path d="M9 21h2" />
                             </svg>
                         </div>
+                        )}
                     </motion.div>
+                )}
             </AnimatePresence>
         </>
     );

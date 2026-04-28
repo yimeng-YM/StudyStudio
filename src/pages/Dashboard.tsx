@@ -2,6 +2,7 @@ import { useMemo, useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/db';
 import { BookOpen, CheckSquare, FileText, ArrowUp, ArrowDown, Clock, GripVertical, SortAsc, CalendarDays } from 'lucide-react';
+import { ThemeToggle } from '@/components/ThemeToggle';
 import { Link, useLocation } from 'react-router-dom';
 import { ICON_MAP } from '@/lib/icons';
 import { useAIStore } from '@/store/useAIStore';
@@ -238,23 +239,31 @@ export function Dashboard() {
     };
 
     return (
-        <div className="h-full w-full overflow-y-auto">
-            <div className="p-8 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
+        <div className="h-full w-full overflow-y-auto pb-20 md:pb-0">
+            <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6 md:space-y-8 animate-in fade-in duration-500">
+                {/* Mobile header with logo + theme toggle */}
+                <div className="md:hidden flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <img src="/logos.png" alt="StudyStudio" className="w-7 h-7 object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                    <span className="font-bold text-lg text-zinc-800 dark:text-zinc-100">StudyStudio</span>
+                  </div>
+                  <ThemeToggle />
+                </div>
                 <div>
-                    <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-100 mb-2">欢迎回来</h1>
-                    <p className="text-zinc-600 dark:text-zinc-400">这里是你的学习概览。</p>
+                    <h1 className="text-2xl md:text-3xl font-bold text-zinc-900 dark:text-zinc-100 mb-1 md:mb-2">欢迎回来</h1>
+                    <p className="text-sm md:text-base text-zinc-600 dark:text-zinc-400">这里是你的学习概览。</p>
                 </div>
 
                 {/* Time & Study Duration Row */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
                     <motion.div
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="bg-gradient-to-br from-blue-500 to-blue-600 p-6 rounded-xl shadow-md text-white flex flex-col justify-center relative overflow-hidden"
+                        className="bg-gradient-to-br from-blue-500 to-blue-600 p-5 md:p-6 rounded-xl shadow-md text-white flex flex-col justify-center relative overflow-hidden"
                     >
                         <div className="relative z-10">
-                            <div className="text-sm text-blue-100 mb-1">{dateString}</div>
-                            <div className="text-4xl font-bold tracking-tight">{timeString}</div>
+                            <div className="text-xs md:text-sm text-blue-100 mb-1">{dateString}</div>
+                            <div className="text-3xl md:text-4xl font-bold tracking-tight">{timeString}</div>
                         </div>
                         <div className="absolute -right-6 -top-6 text-blue-400/30">
                             <Clock size={120} />
@@ -265,75 +274,75 @@ export function Dashboard() {
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.1 }}
-                        className="bg-white dark:bg-zinc-900/50 p-6 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 flex items-center justify-between"
+                        className="bg-white dark:bg-zinc-900/50 p-5 md:p-6 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 flex items-center justify-between"
                     >
                         <div>
-                            <div className="text-sm text-zinc-500 dark:text-zinc-500 mb-1">今日沉浸时间</div>
-                            <div className="text-3xl font-bold text-zinc-900 dark:text-zinc-100">
+                            <div className="text-xs md:text-sm text-zinc-500 dark:text-zinc-500 mb-1">今日沉浸时间</div>
+                            <div className="text-2xl md:text-3xl font-bold text-zinc-900 dark:text-zinc-100">
                                 {formatDuration(todayDuration)}
                             </div>
                         </div>
-                        <div className="p-4 bg-zinc-100 dark:bg-zinc-800 rounded-full text-zinc-700 dark:text-zinc-300">
-                            <Clock size={32} />
+                        <div className="p-3 md:p-4 bg-zinc-100 dark:bg-zinc-800 rounded-full text-zinc-700 dark:text-zinc-300">
+                            <Clock size={28} className="md:w-8 md:h-8" />
                         </div>
                     </motion.div>
                 </div>
 
                 {/* Stats Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="grid grid-cols-3 md:grid-cols-3 gap-3 md:gap-6">
                     <motion.div
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.1 }}
-                        className="bg-white dark:bg-zinc-900/50 p-6 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 flex items-center gap-4"
+                        className="bg-white dark:bg-zinc-900/50 p-3 md:p-6 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 flex items-center gap-2 md:gap-4"
                     >
-                        <div className="p-4 bg-zinc-100 dark:bg-zinc-800 rounded-lg text-zinc-700 dark:text-zinc-300">
-                            <BookOpen size={24} />
+                        <div className="p-2 md:p-4 bg-zinc-100 dark:bg-zinc-800 rounded-lg text-zinc-700 dark:text-zinc-300">
+                            <BookOpen size={20} className="md:w-6 md:h-6" />
                         </div>
                         <div>
-                            <div className="text-sm text-zinc-500 dark:text-zinc-500">总学科</div>
-                            <div className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">{subjectCount || 0}</div>
+                            <div className="text-[10px] md:text-sm text-zinc-500 dark:text-zinc-500">总学科</div>
+                            <div className="text-lg md:text-2xl font-bold text-zinc-900 dark:text-zinc-100">{subjectCount || 0}</div>
                         </div>
                     </motion.div>
                     <motion.div
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.2 }}
-                        className="bg-white dark:bg-zinc-900/50 p-6 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 flex items-center gap-4"
+                        className="bg-white dark:bg-zinc-900/50 p-3 md:p-6 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 flex items-center gap-2 md:gap-4"
                     >
-                        <div className="p-4 bg-zinc-100 dark:bg-zinc-800 rounded-lg text-zinc-700 dark:text-zinc-300">
-                            <FileText size={24} />
+                        <div className="p-2 md:p-4 bg-zinc-100 dark:bg-zinc-800 rounded-lg text-zinc-700 dark:text-zinc-300">
+                            <FileText size={20} className="md:w-6 md:h-6" />
                         </div>
                         <div>
-                            <div className="text-sm text-zinc-500 dark:text-zinc-500">累计笔记</div>
-                            <div className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">{noteCount || 0}</div>
+                            <div className="text-[10px] md:text-sm text-zinc-500 dark:text-zinc-500">累计笔记</div>
+                            <div className="text-lg md:text-2xl font-bold text-zinc-900 dark:text-zinc-100">{noteCount || 0}</div>
                         </div>
                     </motion.div>
                     <motion.div
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.3 }}
-                        className="bg-white dark:bg-zinc-900/50 p-6 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 flex items-center gap-4"
+                        className="bg-white dark:bg-zinc-900/50 p-3 md:p-6 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 flex items-center gap-2 md:gap-4"
                     >
-                        <div className="p-4 bg-zinc-100 dark:bg-zinc-800 rounded-lg text-zinc-700 dark:text-zinc-300">
-                            <CheckSquare size={24} />
+                        <div className="p-2 md:p-4 bg-zinc-100 dark:bg-zinc-800 rounded-lg text-zinc-700 dark:text-zinc-300">
+                            <CheckSquare size={20} className="md:w-6 md:h-6" />
                         </div>
                         <div>
-                            <div className="text-sm text-zinc-500 dark:text-zinc-500">待办任务</div>
-                            <div className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">{totalPendingTasks}</div>
+                            <div className="text-[10px] md:text-sm text-zinc-500 dark:text-zinc-500">待办任务</div>
+                            <div className="text-lg md:text-2xl font-bold text-zinc-900 dark:text-zinc-100">{totalPendingTasks}</div>
                         </div>
                     </motion.div>
                 </div>
 
-                <div className="space-y-8">
+                <div className="space-y-6 md:space-y-8">
                     {/* Calendar Heatmap */}
-                    <div className="space-y-4">
+                    <div className="space-y-3 md:space-y-4">
                         <div className="flex items-center gap-2">
-                            <CalendarDays className="text-zinc-800 dark:text-zinc-200" size={20} />
-                            <h2 className="text-xl font-bold text-zinc-800 dark:text-zinc-200">学习打卡日历</h2>
+                            <CalendarDays className="text-zinc-800 dark:text-zinc-200" size={18} />
+                            <h2 className="text-lg md:text-xl font-bold text-zinc-800 dark:text-zinc-200">学习打卡日历</h2>
                         </div>
-                        <div className="bg-white dark:bg-zinc-900/50 p-6 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 overflow-x-auto">
-                            <div className="flex gap-2 min-w-max">
+                        <div className="bg-white dark:bg-zinc-900/50 p-4 md:p-6 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 overflow-x-auto">
+                            <div className="flex gap-1.5 md:gap-2 min-w-max">
                                 {calendarData?.map((day) => {
                                     let colorClass = "bg-zinc-100 dark:bg-zinc-800/50";
                                     if (day.duration > 0) colorClass = "bg-blue-200 dark:bg-blue-900/40";
@@ -344,7 +353,7 @@ export function Dashboard() {
                                     return (
                                         <div 
                                             key={day.date} 
-                                            className={cn("w-6 h-6 rounded-md transition-colors", colorClass)}
+                                            className={cn("w-5 h-5 md:w-6 md:h-6 rounded-md transition-colors", colorClass)}
                                             title={`${day.date}: ${day.duration} 分钟`}
                                         />
                                     );
@@ -363,8 +372,8 @@ export function Dashboard() {
                     </div>
 
                     {/* Recent Tasks */}
-                    <div className="space-y-4">
-                        <h2 className="text-xl font-bold text-zinc-800 dark:text-zinc-200">待办事项</h2>
+                    <div className="space-y-3 md:space-y-4">
+                        <h2 className="text-lg md:text-xl font-bold text-zinc-800 dark:text-zinc-200">待办事项</h2>
                         <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 overflow-hidden">
                             {recentTasks?.map(task => (
                                 <div key={task.id} className="p-4 border-b dark:border-zinc-800 last:border-0 flex items-center gap-3">
@@ -411,20 +420,20 @@ export function Dashboard() {
                                 </button>
                             </div>
                         </div>
-                        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                        <div className="grid gap-3 md:gap-4 sm:grid-cols-2 lg:grid-cols-3">
                             {allSubjects?.map((subject, idx) => (
                                 <Link
                                     key={subject.id}
                                     to={`/subject/${subject.id}`}
                                     onClick={() => handleSubjectClick(subject.id)}
-                                    className="block bg-white dark:bg-zinc-900 p-6 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 hover:border-blue-500 transition-all group relative animate-in fade-in zoom-in duration-300"
+                                    className="block bg-white dark:bg-zinc-900 p-4 md:p-6 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 hover:border-blue-500 transition-all group relative animate-in fade-in zoom-in duration-300"
                                     style={{ animationDelay: `${idx * 50}ms` }}
                                 >
                                     <div className="flex items-start justify-between">
-                                        <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-blue-600 mb-4">
+                                        <div className="p-2 md:p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-blue-600 mb-3 md:mb-4">
                                             {(() => {
                                                 const Icon = ICON_MAP[subject.icon || 'BookOpen'] || BookOpen;
-                                                return <Icon size={24} />;
+                                                return <Icon size={20} className="md:w-6 md:h-6" />;
                                             })()}
                                         </div>
                                         <div className="flex items-center gap-1">
@@ -445,14 +454,14 @@ export function Dashboard() {
                                         </div>
                                     </div>
                                     <div>
-                                        <div className="font-semibold text-lg text-zinc-800 dark:text-zinc-200 mb-1 group-hover:text-blue-600 transition-colors">{subject.name}</div>
-                                        <div className="text-sm text-zinc-500">创建于 {new Date(subject.createdAt).toLocaleDateString()}</div>
+                                        <div className="font-semibold text-base md:text-lg text-zinc-800 dark:text-zinc-200 mb-1 group-hover:text-blue-600 transition-colors">{subject.name}</div>
+                                        <div className="text-xs md:text-sm text-zinc-500">创建于 {new Date(subject.createdAt).toLocaleDateString()}</div>
                                     </div>
                                 </Link>
                             ))}
                             {(!allSubjects || allSubjects.length === 0) && (
-                                <div className="col-span-full text-center py-12 text-zinc-500 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl border border-dashed border-zinc-300 dark:border-zinc-700">
-                                    暂无学科，请点击侧边栏创建新学科
+                                <div className="col-span-full text-center py-8 md:py-12 text-zinc-500 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl border border-dashed border-zinc-300 dark:border-zinc-700 text-sm">
+                                    暂无学科，请点击侧边栏或左上角菜单创建新学科
                                 </div>
                             )}
                         </div>

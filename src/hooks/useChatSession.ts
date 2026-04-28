@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { db } from '@/db';
+import { generateUUID } from '@/lib/utils';
 import { Message, streamAICompletion } from '@/services/ai';
 import { useAIStore, getFullContextPrompt } from '@/store/useAIStore';
 import { ToolDefinitions, executeTool } from '@/services/agent/ToolRegistry';
@@ -81,7 +82,7 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act') {
    * @returns 新创建的会话 ID
    */
   const createSession = async (title: string) => {
-    const newSessionId = crypto.randomUUID();
+    const newSessionId = generateUUID();
     const now = Date.now();
     await db.chatSessions.add({
       id: newSessionId,
@@ -102,7 +103,7 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act') {
    */
   const saveMessage = async (msg: Message, sId: string) => {
     await db.chatMessages.add({
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       sessionId: sId,
       role: msg.role as any,
       content: msg.content,

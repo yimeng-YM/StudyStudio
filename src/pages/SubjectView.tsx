@@ -105,11 +105,19 @@ export function SubjectView() {
 
   if (!subject) return <div className="p-8">加载中...</div>;
 
+  const tabs = [
+    { key: 'mindmap' as const, label: '导图', icon: Network },
+    { key: 'notes' as const, label: '笔记', icon: FileText },
+    { key: 'quiz' as const, label: '题库', icon: Library },
+    { key: 'tasks' as const, label: '任务', icon: CheckSquare },
+  ];
+
   return (
     <div className="h-full flex flex-col">
-      <div className="border-b px-8 py-4 bg-white dark:bg-black border-zinc-200 dark:border-zinc-800 flex items-center justify-between sticky top-0 z-10">
+      {/* Header */}
+      <div className="border-b px-4 md:px-8 py-3 md:py-4 bg-white dark:bg-black border-zinc-200 dark:border-zinc-800 flex items-center justify-between sticky top-0 z-10 gap-2">
         <div
-          className="flex items-center gap-3 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-900 px-3 py-1.5 rounded-xl transition-colors group"
+          className="flex items-center gap-2 md:gap-3 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-900 px-2 md:px-3 py-1.5 rounded-xl transition-colors group shrink-0 min-w-0"
           onClick={() => {
             setEditForm({ name: subject.name, icon: subject.icon || 'BookOpen' });
             setIsEditModalOpen(true);
@@ -118,58 +126,49 @@ export function SubjectView() {
         >
           {(() => {
             const Icon = ICON_MAP[subject.icon || 'BookOpen'] || BookOpen;
-            return <Icon size={28} className="text-primary group-hover:scale-110 transition-transform" />;
+            return <Icon size={22} className="md:w-7 md:h-7 text-primary group-hover:scale-110 transition-transform shrink-0" />;
           })()}
-          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">
+          <h1 className="text-lg md:text-2xl font-bold text-slate-800 dark:text-slate-100 truncate">
             {subject.name}
           </h1>
         </div>
 
-        <div className="flex space-x-2 bg-zinc-100 dark:bg-zinc-900 p-1 rounded-lg">
-          <button
-            onClick={() => setActiveTab('mindmap')}
-            className={cn(
-              "px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition-colors",
-              activeTab === 'mindmap' ? "bg-white dark:bg-zinc-800 shadow-sm text-zinc-900 dark:text-zinc-100" : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
-            )}
-          >
-            <Network size={16} />
-            思维导图
-          </button>
-          <button
-            onClick={() => setActiveTab('notes')}
-            className={cn(
-              "px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition-colors",
-              activeTab === 'notes' ? "bg-white dark:bg-zinc-800 shadow-sm text-zinc-900 dark:text-zinc-100" : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
-            )}
-          >
-            <FileText size={16} />
-            详细知识
-          </button>
-          <button
-            onClick={() => setActiveTab('quiz')}
-            className={cn(
-              "px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition-colors",
-              activeTab === 'quiz' ? "bg-white dark:bg-zinc-800 shadow-sm text-zinc-900 dark:text-zinc-100" : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
-            )}
-          >
-            <Library size={16} />
-            题库
-          </button>
-          <button
-            onClick={() => setActiveTab('tasks')}
-            className={cn(
-              "px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition-colors",
-              activeTab === 'tasks' ? "bg-white dark:bg-zinc-800 shadow-sm text-zinc-900 dark:text-zinc-100" : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
-            )}
-          >
-            <CheckSquare size={16} />
-            任务列表
-          </button>
+        {/* Desktop Tabs */}
+        <div className="hidden md:flex space-x-2 bg-zinc-100 dark:bg-zinc-900 p-1 rounded-lg shrink-0">
+          {tabs.map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={cn(
+                "px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition-colors",
+                activeTab === tab.key ? "bg-white dark:bg-zinc-800 shadow-sm text-zinc-900 dark:text-zinc-100" : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
+              )}
+            >
+              <tab.icon size={16} />
+              <span className="hidden sm:inline">{tab.key === 'mindmap' ? '思维导图' : tab.key === 'notes' ? '详细知识' : tab.key === 'quiz' ? '题库' : '任务列表'}</span>
+            </button>
+          ))}
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-hidden p-6 bg-zinc-50/50 dark:bg-black relative">
+      {/* Mobile Tabs - scrollable row below header */}
+      <div className="md:hidden border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black px-2 py-1.5 overflow-x-auto scrollbar-none flex gap-1 shrink-0">
+        {tabs.map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={cn(
+              "px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0",
+              activeTab === tab.key ? "bg-primary text-primary-foreground shadow-sm" : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
+            )}
+          >
+            <tab.icon size={14} />
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex-1 min-h-0 overflow-hidden p-3 md:p-6 pb-20 md:pb-6 bg-zinc-50/50 dark:bg-black relative">
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}
