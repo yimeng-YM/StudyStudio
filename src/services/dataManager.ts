@@ -108,8 +108,15 @@ export const DataManager = {
         chatMessages = [];
       }
 
-      // 5. 抽取附件数据
-      attachments = await db.attachments.toArray();
+      // 5. 抽取附件数据（仅导出被选中实体内容中实际引用的附件）
+      const entityContentStr = JSON.stringify(entities);
+      const attachmentRefMatches = [...entityContentStr.matchAll(/attachment:([a-zA-Z0-9-]+)/g)];
+      const referencedAttachmentIds = [...new Set(attachmentRefMatches.map(m => m[1]))];
+      if (referencedAttachmentIds.length > 0) {
+        attachments = await db.attachments.where('id').anyOf(referencedAttachmentIds).toArray();
+      } else {
+        attachments = [];
+      }
     } else {
       // 未指定过滤条件，执行全量数据库导出
       subjects = await db.subjects.toArray();
