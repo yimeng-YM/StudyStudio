@@ -103,26 +103,34 @@ export function AIFloatingWindow() {
      * @param e 鼠标按下事件
      * @param type 拖拽对象类型 ('button' | 'window')
      */
-    const startDrag = (e: React.MouseEvent, type: 'button' | 'window') => {
+    const getClientPos = (e: React.MouseEvent | React.TouchEvent) => {
+        if ('touches' in e) {
+            return { clientX: e.touches[0].clientX, clientY: e.touches[0].clientY };
+        }
+        return { clientX: e.clientX, clientY: e.clientY };
+    };
+
+    const startDrag = (e: React.MouseEvent | React.TouchEvent, type: 'button' | 'window') => {
         // 如果点击的是窗口内的按钮，不触发拖拽
         if (type === 'window' && e.target instanceof Element && e.target.closest('button')) return;
 
         setIsPreparingDrag(true);
         setDragType(type);
 
+        const { clientX, clientY } = getClientPos(e);
         const currentPos = type === 'button' ? floatingWindowPosition : windowPos;
 
         setDragOffset({
-            x: e.clientX - currentPos.x,
-            y: e.clientY - currentPos.y
+            x: clientX - currentPos.x,
+            y: clientY - currentPos.y
         });
-        setDragStartPos({ x: e.clientX, y: e.clientY });
+        setDragStartPos({ x: clientX, y: clientY });
     };
 
     /**
      * 初始化尺寸调整状态
      */
-    const startResize = (e: React.MouseEvent) => {
+    const startResize = (e: React.MouseEvent | React.TouchEvent) => {
         e.stopPropagation();
         setIsResizing(true);
     };
@@ -131,17 +139,17 @@ export function AIFloatingWindow() {
      * 处理全局鼠标移动和松开事件，实现平滑的拖拽和缩放体验
      */
     useEffect(() => {
-        const handleMouseMove = (e: MouseEvent) => {
+        const handleMove = (clientX: number, clientY: number) => {
             if (isPreparingDrag) {
                 // 只有移动超过 3px 才判定为拖拽，防止误触
-                const dist = Math.sqrt(Math.pow(e.clientX - dragStartPos.x, 2) + Math.pow(e.clientY - dragStartPos.y, 2));
+                const dist = Math.sqrt(Math.pow(clientX - dragStartPos.x, 2) + Math.pow(clientY - dragStartPos.y, 2));
                 if (dist > 3) {
                     setIsPreparingDrag(false);
                     setIsDragging(true);
                 }
             } else if (isDragging) {
-                const newX = e.clientX - dragOffset.x;
-                const newY = e.clientY - dragOffset.y;
+                const newX = clientX - dragOffset.x;
+                const newY = clientY - dragOffset.y;
 
                 if (dragType === 'button') {
                     setFloatingWindowPosition(newX, newY);
@@ -151,13 +159,24 @@ export function AIFloatingWindow() {
             } else if (isResizing) {
                 // 限制最小尺寸为 300x400
                 setFloatingWindowSize(
-                    Math.max(300, e.clientX - windowPos.x),
-                    Math.max(400, e.clientY - windowPos.y)
+                    Math.max(300, clientX - windowPos.x),
+                    Math.max(400, clientY - windowPos.y)
                 );
             }
         };
 
-        const handleMouseUp = () => {
+        const handleMouseMove = (e: MouseEvent) => {
+            handleMove(e.clientX, e.clientY);
+        };
+
+        const handleTouchMove = (e: TouchEvent) => {
+            if (isPreparingDrag || isDragging || isResizing) {
+                e.preventDefault(); // 拖拽时阻止页面滚动
+            }
+            handleMove(e.touches[0].clientX, e.touches[0].clientY);
+        };
+
+        const handleEnd = () => {
             setIsPreparingDrag(false);
             setIsDragging(false);
             setIsResizing(false);
@@ -166,12 +185,16 @@ export function AIFloatingWindow() {
 
         if (isPreparingDrag || isDragging || isResizing) {
             window.addEventListener('mousemove', handleMouseMove);
-            window.addEventListener('mouseup', handleMouseUp);
+            window.addEventListener('mouseup', handleEnd);
+            window.addEventListener('touchmove', handleTouchMove, { passive: false });
+            window.addEventListener('touchend', handleEnd);
         }
 
         return () => {
             window.removeEventListener('mousemove', handleMouseMove);
-            window.removeEventListener('mouseup', handleMouseUp);
+            window.removeEventListener('mouseup', handleEnd);
+            window.removeEventListener('touchmove', handleTouchMove);
+            window.removeEventListener('touchend', handleEnd);
         };
     }, [isPreparingDrag, isDragging, isResizing, dragType, dragStartPos, dragOffset, windowPos, setFloatingWindowPosition, setFloatingWindowSize, setWindowPos]);
 
@@ -179,7 +202,7 @@ export function AIFloatingWindow() {
     const overlay = (isDragging || isResizing) && (
         <div
             className="fixed inset-0 z-[100]"
-            style={{ cursor: isResizing ? 'nwse-resize' : 'move', userSelect: 'none' }}
+            style={{ cursor: isResizing ? 'nwse-resize' : 'move', userSelect: 'none', touchAction: 'none' }}
         />
     );
 
@@ -193,8 +216,10 @@ export function AIFloatingWindow() {
                 style={{
                     left: floatingWindowPosition.x,
                     top: floatingWindowPosition.y,
+                    touchAction: 'none',
                 }}
                 onMouseDown={(e) => startDrag(e, 'button')}
+                onTouchStart={(e) => startDrag(e, 'button')}
             >
                 <motion.button
                     whileHover={{ scale: 1.1 }}
@@ -232,7 +257,9 @@ export function AIFloatingWindow() {
                         {/* 标题栏 - 支持拖拽窗口位置 */}
                         <div
                             className="p-3 bg-zinc-50 dark:bg-zinc-900 border-b dark:border-zinc-800 flex items-center justify-between cursor-move select-none shrink-0"
+                            style={{ touchAction: 'none' }}
                             onMouseDown={(e) => startDrag(e, 'window')}
+                            onTouchStart={(e) => startDrag(e, 'window')}
                         >
                             <div className="flex items-center gap-2 font-medium text-zinc-800 dark:text-zinc-100">
                                 <Sparkles size={18} className="text-blue-500" />
@@ -266,7 +293,9 @@ export function AIFloatingWindow() {
                         {/* 调整大小手柄 */}
                         <div
                             className="absolute bottom-0 right-0 w-6 h-6 cursor-nwse-resize z-[70] flex items-end justify-end p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-tl transition-colors"
+                            style={{ touchAction: 'none' }}
                             onMouseDown={startResize}
+                            onTouchStart={startResize}
                             title="拖动调整大小"
                         >
                             <svg width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400">

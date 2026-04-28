@@ -33,11 +33,40 @@ dist-ssr
 ehthumbs.db
 Thumbs.db
 
+# Environment variables
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+.env.development.local
+.env.production.local
+.env.test.local
+
+# TypeScript
+*.tsbuildinfo
+
+# Test coverage
+coverage
+
+# Temp files
+*.tmp
+tmp/
+temp/
+
 # Large archives
 *.zip
 *.rar
 *.7z
+*.tar.gz
+*.tgz
+*.tar
+
+# Backup files
+*.bak
+*~
 
 # Claude agent internals
-.agent
+.agents
 .shared
+.claude
