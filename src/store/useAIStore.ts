@@ -170,7 +170,7 @@ export const useAIStore = create<AIStore>((set, get) => ({
           apiKey: '',
           baseUrl: 'https://api.kourichat.com/v1',
           model: '',
-          maxTokens: 8192,
+          maxTokens: 10240,
           temperature: 0.7
         };
         await db.settings.put(settings);

@@ -9,6 +9,8 @@ import { db } from '@/db';
 import { cn } from '@/lib/utils';
 import { useFontSize, APP_FONT_OPTIONS } from '@/hooks/useFontSize';
 import { FontSizeSlider } from '@/components/ui/FontSizeSlider';
+import { SegmentSlider } from '@/components/ui/SegmentSlider';
+import { DEFAULT_MAX_TOKENS } from '@/services/promptConfig';
 
 /**
  * 数据选择树组件
@@ -187,120 +189,6 @@ function DataSelectionTree({
           );
         })
       )}
-    </div>
-  );
-}
-
-/** 带刻度标签的温度滑块（内联组件，与 FontSizeSlider 共享设计语言） */
-function TemperatureSlider({
-  value,
-  onChange,
-}: {
-  value: number;
-  onChange: (v: number) => void;
-}) {
-  const marks = [0, 0.5, 1.0, 1.5, 2.0];
-  const selectedIndex = marks.indexOf(
-    marks.reduce((prev, curr) => Math.abs(curr - value) < Math.abs(prev - value) ? curr : prev)
-  );
-  const fillPercent = (selectedIndex / (marks.length - 1)) * 100;
-  const trackRef = useRef<HTMLDivElement>(null);
-
-  const handleTrackClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!trackRef.current) return;
-    const rect = trackRef.current.getBoundingClientRect();
-    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    const snapped = Math.round(ratio * (marks.length - 1));
-    onChange(marks[snapped]);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    let next = selectedIndex;
-    if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') { e.preventDefault(); next = Math.max(0, selectedIndex - 1); }
-    else if (e.key === 'ArrowRight' || e.key === 'ArrowUp') { e.preventDefault(); next = Math.min(marks.length - 1, selectedIndex + 1); }
-    else if (e.key === 'Home') { e.preventDefault(); next = 0; }
-    else if (e.key === 'End') { e.preventDefault(); next = marks.length - 1; }
-    if (next !== selectedIndex) onChange(marks[next]);
-  };
-
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
-          回复温度 (Temperature)
-        </label>
-        <span className="text-xs font-semibold bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 px-2 py-0.5 rounded-md tabular-nums">
-          {value.toFixed(1)}
-        </span>
-      </div>
-      <div
-        ref={trackRef}
-        className="relative h-10 select-none cursor-pointer touch-none"
-        onClick={handleTrackClick}
-        onKeyDown={handleKeyDown}
-        role="radiogroup"
-        aria-label="Temperature"
-      >
-        <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-700">
-          <div
-            className="absolute left-0 top-0 h-full rounded-full bg-amber-500/40 dark:bg-amber-400/30 transition-all duration-300 ease-out"
-            style={{ width: `${fillPercent}%` }}
-          />
-        </div>
-        {marks.map((m, idx) => {
-          const leftPercent = (idx / (marks.length - 1)) * 100;
-          const isSelected = idx === selectedIndex;
-          const isPast = idx < selectedIndex;
-          const label =
-            idx === 0 ? '精准' :
-            idx === marks.length - 1 ? '创意' :
-            undefined;
-          return (
-            <button
-              key={m}
-              type="button"
-              onClick={(e) => { e.stopPropagation(); onChange(m); }}
-              className={cn(
-                'absolute top-1/2 -translate-x-1/2 -translate-y-1/2',
-                'flex flex-col items-center group',
-                'outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 rounded-full',
-              )}
-              style={{ left: `${leftPercent}%` }}
-              role="radio"
-              aria-checked={isSelected}
-              aria-label={`${m.toFixed(1)}`}
-              tabIndex={isSelected ? 0 : -1}
-              title={`${m.toFixed(1)}`}
-            >
-              <div
-                className={cn(
-                  'w-3.5 h-3.5 rounded-full transition-all duration-200',
-                  'ring-2 ring-white dark:ring-zinc-900',
-                  isSelected
-                    ? 'bg-amber-500 dark:bg-amber-400 scale-125 shadow-sm shadow-amber-500/25'
-                    : isPast
-                      ? 'bg-amber-400/50 dark:bg-amber-400/40'
-                      : 'bg-zinc-300 dark:bg-zinc-600 hover:bg-amber-400/60',
-                )}
-              />
-              {label && (
-                <span
-                  className={cn(
-                    'absolute top-4 text-[10px] leading-none whitespace-nowrap transition-colors duration-200',
-                    'pointer-events-none select-none',
-                    isSelected
-                      ? 'text-amber-600 dark:text-amber-400 font-semibold'
-                      : 'text-zinc-400 dark:text-zinc-500',
-                  )}
-                >
-                  {label}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-      <p className="text-[10px] text-zinc-400">控制 AI 回复的随机性与创造性，0 为最精准，2 为最创意。</p>
     </div>
   );
 }
@@ -737,20 +625,58 @@ export function Settings() {
                       <label className="block text-sm font-medium mb-1.5 text-zinc-700 dark:text-zinc-300">
                         回复长度 (Max Tokens)
                       </label>
-                      <input
-                        type="number"
-                        className="w-full border rounded-lg px-3 py-2 bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-shadow"
-                        value={localSettings.maxTokens || 4096}
-                        onChange={e => setLocalSettings({ ...localSettings, maxTokens: parseInt(e.target.value) || 0 })}
-                        placeholder="4096"
-                      />
-                      <p className="text-[10px] text-zinc-400 mt-1">控制 AI 回复的最大长度，建议 1024 - 8192</p>
+                      <div className="flex gap-2">
+                        <input
+                          type="number"
+                          className="flex-1 border rounded-lg px-3 py-2 bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-shadow"
+                          value={localSettings.maxTokens || DEFAULT_MAX_TOKENS}
+                          onChange={e => setLocalSettings({ ...localSettings, maxTokens: parseInt(e.target.value) || 0 })}
+                          placeholder={String(DEFAULT_MAX_TOKENS)}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setLocalSettings({ ...localSettings, maxTokens: DEFAULT_MAX_TOKENS })}
+                          className="px-3 py-2 rounded-lg text-xs font-medium bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 border border-zinc-200 dark:border-zinc-700 transition-colors whitespace-nowrap"
+                          title="重置为默认值"
+                        >
+                          默认
+                        </button>
+                      </div>
+                      {/* 快捷预设 */}
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {[4096, 8192, DEFAULT_MAX_TOKENS, 16384, 32768].map(preset => {
+                          const active = (localSettings.maxTokens || DEFAULT_MAX_TOKENS) === preset;
+                          return (
+                            <button
+                              key={preset}
+                              type="button"
+                              onClick={() => setLocalSettings({ ...localSettings, maxTokens: preset })}
+                              className={cn(
+                                'px-2.5 py-1 rounded-full text-[11px] font-medium tabular-nums border transition-colors',
+                                active
+                                  ? 'bg-blue-600 text-white border-blue-600'
+                                  : 'bg-zinc-50 dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600'
+                              )}
+                            >
+                              {preset >= 1024 ? `${(preset / 1024).toFixed(preset % 1024 === 0 ? 0 : 1)}K` : preset}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <p className="text-[10px] text-zinc-400 mt-1.5">控制 AI 回复的最大长度，默认 {(DEFAULT_MAX_TOKENS / 1024).toFixed(0)}K，建议 4K - 32K</p>
                     </div>
 
                     {/* Temperature */}
-                    <TemperatureSlider
+                    <SegmentSlider
+                      label="回复温度 (Temperature)"
+                      description="控制 AI 回复的随机性与创造性，0 为最精准，2 为最创意。"
+                      options={[0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0]}
                       value={localSettings.temperature ?? 0.7}
                       onChange={(v) => setLocalSettings({ ...localSettings, temperature: v })}
+                      accent="amber"
+                      startLabel="精准"
+                      endLabel="创意"
+                      formatValue={(v) => Number(v.toFixed(2)).toString()}
                     />
 
                     {/* 命名模型 */}
@@ -759,26 +685,27 @@ export function Settings() {
                         对话自动命名模型
                       </label>
                       <p className="text-[10px] text-zinc-400 mb-1.5">留空则使用主模型——推荐使用更快速便宜的模型</p>
-                      <div ref={namingModelDropdownRef} className="relative">
+                      <div ref={namingModelDropdownRef}>
+                        {/* 触发器：展示当前值，点击展开/收起内联面板 */}
                         <div
                           className="flex items-center border rounded-lg px-3 py-2 bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 cursor-pointer hover:border-zinc-300 dark:hover:border-zinc-600 transition-colors"
-                          onClick={() => setShowNamingModelDropdown(!showNamingModelDropdown)}
+                          onClick={() => {
+                            setShowNamingModelDropdown(!showNamingModelDropdown);
+                            setNamingModelSearch('');
+                          }}
                         >
-                          <input
-                            className="flex-1 bg-transparent border-0 outline-none text-zinc-900 dark:text-zinc-100 text-sm cursor-pointer"
-                            value={showNamingModelDropdown ? namingModelSearch : (localSettings.namingModel || '')}
-                            onChange={e => {
-                              setNamingModelSearch(e.target.value);
-                              if (!showNamingModelDropdown) setShowNamingModelDropdown(true);
-                            }}
-                            onFocus={() => setShowNamingModelDropdown(true)}
-                            placeholder="推荐使用更快速便宜的模型"
-                          />
-                          <ChevronDown className={cn("w-4 h-4 text-zinc-400 transition-transform duration-200", showNamingModelDropdown && "rotate-180")} />
+                          <span className={cn(
+                            "flex-1 text-sm truncate",
+                            localSettings.namingModel ? "text-zinc-900 dark:text-zinc-100" : "text-zinc-400 dark:text-zinc-500"
+                          )}>
+                            {localSettings.namingModel || '推荐使用更快速便宜的模型（留空则使用主模型）'}
+                          </span>
+                          <ChevronDown className={cn("w-4 h-4 text-zinc-400 transition-transform duration-200 shrink-0", showNamingModelDropdown && "rotate-180")} />
                         </div>
 
+                        {/* 内联展开面板（文档流内，不会被父级 overflow-hidden 裁切） */}
                         {showNamingModelDropdown && (
-                          <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg max-h-60 overflow-hidden">
+                          <div className="mt-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-sm overflow-hidden">
                             <div className="p-2 border-b border-zinc-100 dark:border-zinc-800">
                               <div className="relative">
                                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
@@ -790,7 +717,7 @@ export function Settings() {
                                 />
                               </div>
                             </div>
-                            <div className="overflow-y-auto max-h-48">
+                            <div className="overflow-y-auto max-h-52">
                               <div
                                 className={cn(
                                   "px-3 py-2 cursor-pointer flex items-center justify-between text-sm hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors text-zinc-500",
