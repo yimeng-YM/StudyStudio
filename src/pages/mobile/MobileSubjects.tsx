@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/db';
 import { BookOpen, ArrowUp, ArrowDown, Plus } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { ICON_MAP, ICON_OPTIONS } from '@/lib/icons';
 import { cn, generateUUID } from '@/lib/utils';
 import { ThemeToggle } from '@/components/ThemeToggle';
@@ -36,11 +36,13 @@ export function MobileSubjects() {
 
   const { moveItem } = useManualReorder(allSubjects, db.subjects);
 
+  const navigate = useNavigate();
   const addSubject = async () => {
     if (newSubjectName.trim()) {
       const now = Date.now();
+      const id = generateUUID();
       await db.subjects.add({
-        id: generateUUID(),
+        id,
         name: newSubjectName,
         icon: selectedIcon,
         createdAt: now,
@@ -50,6 +52,7 @@ export function MobileSubjects() {
       setIsAddModalOpen(false);
       setNewSubjectName('');
       setSelectedIcon('BookOpen');
+      navigate(`/subject/${id}`);
     }
   };
 

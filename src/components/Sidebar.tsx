@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/db';
 import { cn, generateUUID } from '@/lib/utils';
@@ -78,11 +78,13 @@ export function Sidebar({ isMobileOpen, onMobileClose }: SidebarProps = {}) {
   /**
    * 添加新学科到数据库
    */
+  const navigate = useNavigate();
   const addSubject = async () => {
     if (newSubjectName.trim()) {
       const now = Date.now();
+      const id = generateUUID();
       await db.subjects.add({
-        id: generateUUID(),
+        id,
         name: newSubjectName,
         icon: selectedIcon,
         createdAt: now,
@@ -92,6 +94,7 @@ export function Sidebar({ isMobileOpen, onMobileClose }: SidebarProps = {}) {
       setIsAddModalOpen(false);
       setNewSubjectName('');
       setSelectedIcon('BookOpen');
+      navigate(`/subject/${id}`);
     }
   };
 

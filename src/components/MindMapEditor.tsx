@@ -475,6 +475,9 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
         lastAccessed: now,
         order: now
       });
+      // 标记本次创建时间为最后保存时间，避免 selectedMindMap 变更触发的同步副作用
+      // 将刚刚添加的中心主题节点重置回实体的空内容
+      lastSaveTimeRef.current = now;
       mindMapId = id;
       setSelectedMindMapId(id);
     }
@@ -883,10 +886,10 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
           </ReactFlow>
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-zinc-500 gap-4">
-            <div className="w-16 h-16 bg-zinc-100 dark:bg-zinc-800 rounded-full flex items-center justify-center">
-              <Plus size={32} />
-            </div>
-            <p>点击上方「新增中心主题」创建第一个思维导图</p>
+            <button onClick={handleAddRootNode} title="新增中心主题" className="w-16 h-16 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-full flex items-center justify-center transition-colors group">
+              <Plus size={32} className="group-hover:scale-110 transition-transform" />
+            </button>
+            <p>点击加号新增中心主题</p>
           </div>
         )}
       </div>
