@@ -23,7 +23,7 @@ export function ResizeHandle({ onMouseDown, className }: ResizeHandleProps) {
         <div
             onMouseDown={onMouseDown}
             className={cn(
-                "w-1 hover:w-1.5 active:w-1.5 cursor-col-resize bg-transparent hover:bg-blue-400 active:bg-blue-600 transition-all z-20 flex flex-col justify-center items-center group touch-none select-none",
+                "w-1 cursor-col-resize bg-transparent hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors z-20 flex flex-col justify-center items-center group touch-none select-none",
                 className
             )}
         >

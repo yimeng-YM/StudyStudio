@@ -13,6 +13,8 @@ import { cn, generateUUID } from '@/lib/utils';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { MessageRenderer } from '@/components/MessageRenderer';
 import { useUIContext } from '@/hooks/useUIContext';
+import { useResizable } from '@/hooks/useResizable';
+import { ResizeHandle } from '@/components/ui/ResizeHandle';
 
 interface QuizModuleProps {
   subjectId: string;
@@ -401,7 +403,7 @@ function QuizNavigation({
   }, [questions]);
 
   return (
-    <div className="md:w-80 md:border-r md:border-zinc-200 md:dark:border-zinc-800 md:pr-4 flex flex-col shrink-0 h-full">
+    <div className="md:border-r md:border-zinc-200 md:dark:border-zinc-800 md:pr-4 flex flex-col shrink-0 h-full w-full">
       <div className="flex items-center gap-2 mb-3 shrink-0">
         <button onClick={onBack} className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg" title="返回列表"><ArrowLeft size={20} /></button>
         <span className="font-medium text-sm text-zinc-600 dark:text-zinc-400">题目导航</span>
@@ -523,7 +525,7 @@ function scrollToQuestionInContainer(index: number, container: HTMLElement) {
   setTimeout(() => observer.disconnect(), 4000);
 }
 
-function QuizEditor({ quiz, isEditingTitle, setIsEditingTitle, editTitle, setEditTitle, onUpdateTitle, onDeleteQuiz, scrollToIndex, onScrollComplete }: any) {
+function QuizEditor({ quiz, isEditingTitle, setIsEditingTitle, editTitle, setEditTitle, onUpdateTitle, onDeleteQuiz, scrollToIndex, onScrollComplete, sidebarWidth }: any) {
   const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
   const questions = (quiz.content as QuizContent)?.questions || [];
   const { showConfirm } = useDialog();
@@ -570,7 +572,7 @@ function QuizEditor({ quiz, isEditingTitle, setIsEditingTitle, editTitle, setEdi
           <button onClick={onDeleteQuiz} className="p-2 text-zinc-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors" title="删除题库"><Trash size={18} /></button>
         </div>
       </div>
-      <div ref={questionListRef} className="flex-1 overflow-y-auto py-4 space-y-6" style={{ overscrollBehavior: 'contain' }}>
+      <div ref={questionListRef} className={cn("flex-1 overflow-y-auto py-4", sidebarWidth < 250 ? "grid grid-cols-2 gap-4 items-start" : "space-y-6")} style={{ overscrollBehavior: 'contain' }}>
         {questions.length === 0 ? <div className="text-center py-20 text-zinc-400"><div className="mb-2">开始添加题目</div><div className="text-sm">点击下方按钮添加不同类型的题目</div></div>
           : questions.map((q, index) => (
             <div key={q.id} data-question-index={index} className="relative group/item bg-white dark:bg-zinc-900/50 rounded-xl border border-zinc-200 dark:border-zinc-800/50 p-4 transition-all hover:border-zinc-300 dark:hover:border-zinc-700" style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 120px' }}>
@@ -624,6 +626,13 @@ export function QuizModule({ subjectId }: QuizModuleProps) {
   const [editTitle, setEditTitle] = useState('');
   const { showConfirm } = useDialog();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { width: sidebarWidth, startResizing } = useResizable({
+    initialWidth: 320,
+    minWidth: 180,
+    maxWidth: 500,
+    key: 'quizSidebarWidth',
+    direction: 'right'
+  });
 
   // 查询当前选中题库的作答记录（用于导航状态色）
   const quizRecords = useLiveQuery(
@@ -674,7 +683,7 @@ export function QuizModule({ subjectId }: QuizModuleProps) {
   const questions = (selectedQuiz?.content as QuizContent)?.questions || [];
 
   const quizListContent = (
-    <div className="md:w-80 md:border-r md:border-zinc-200 md:dark:border-zinc-800 md:pr-4 flex flex-col relative shrink-0 h-full">
+    <div className="md:border-r md:border-zinc-200 md:dark:border-zinc-800 md:pr-4 flex flex-col relative w-full h-full">
       <div className="flex flex-col gap-2 mb-4">
         <div className="flex gap-2">
           <button onClick={createQuiz} className="flex-1 flex items-center justify-center gap-2 bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700 transition-colors"><Plus size={16} /> 新建题库</button>
@@ -712,17 +721,20 @@ export function QuizModule({ subjectId }: QuizModuleProps) {
   const desktopLayout = (
     <div className="hidden md:flex h-full gap-4 w-full">
       {/* 左侧面板：列表 ⇄ 导航 */}
-      <AnimatePresence mode="wait">
-        {!selectedQuiz ? (
-          <motion.div key="quiz-list" initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }} transition={{ duration: 0.2 }} className="shrink-0 h-full">
-            {quizListContent}
-          </motion.div>
-        ) : (
-          <motion.div key="quiz-nav" initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }} transition={{ duration: 0.2 }} className="shrink-0 h-full">
-            <QuizNavigation questions={questions} recordMap={recordMap} onBack={handleBackToList} onSelectQuestion={handleSelectQuestion} />
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <div className="relative shrink-0 h-full" style={{ width: sidebarWidth }}>
+        <AnimatePresence mode="wait">
+          {!selectedQuiz ? (
+            <motion.div key="quiz-list" initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }} transition={{ duration: 0.2 }} className="h-full">
+              {quizListContent}
+            </motion.div>
+          ) : (
+            <motion.div key="quiz-nav" initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }} transition={{ duration: 0.2 }} className="h-full">
+              <QuizNavigation questions={questions} recordMap={recordMap} onBack={handleBackToList} onSelectQuestion={handleSelectQuestion} />
+            </motion.div>
+          )}
+        </AnimatePresence>
+        <ResizeHandle onMouseDown={startResizing} className="absolute right-0 top-0 bottom-0 translate-x-1/2" />
+      </div>
 
       {/* 右侧面板：内容 */}
       <AnimatePresence mode="wait">
@@ -735,7 +747,7 @@ export function QuizModule({ subjectId }: QuizModuleProps) {
         ) : (
           <motion.div key={selectedQuiz.id} initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 12 }} transition={{ duration: 0.25 }} className="flex-1">
             <div className="h-full flex flex-col bg-white dark:bg-zinc-900/50 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800 p-4 relative overflow-clip">
-              <QuizEditor quiz={selectedQuiz} isEditingTitle={isEditingTitle} setIsEditingTitle={setIsEditingTitle} editTitle={editTitle} setEditTitle={setEditTitle} onUpdateTitle={updateQuizTitle} onDeleteQuiz={() => deleteQuiz(selectedQuiz.id)} scrollToIndex={scrollToIndex} onScrollComplete={handleScrollComplete} />
+              <QuizEditor quiz={selectedQuiz} isEditingTitle={isEditingTitle} setIsEditingTitle={setIsEditingTitle} editTitle={editTitle} setEditTitle={setEditTitle} onUpdateTitle={updateQuizTitle} onDeleteQuiz={() => deleteQuiz(selectedQuiz.id)} scrollToIndex={scrollToIndex} onScrollComplete={handleScrollComplete} sidebarWidth={sidebarWidth} />
             </div>
           </motion.div>
         )}

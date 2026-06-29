@@ -40,6 +40,8 @@ Menu,
 X
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useResizable } from '@/hooks/useResizable';
+import { ResizeHandle } from '@/components/ui/ResizeHandle';
 
 interface DocSection {
   id: string;
@@ -888,6 +890,13 @@ export const Docs = () => {
   const [activeSection, setActiveSection] = useState('intro');
   const [showMobileNav, setShowMobileNav] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const { width: sidebarWidth, startResizing } = useResizable({
+    initialWidth: 288,
+    minWidth: 200,
+    maxWidth: 500,
+    key: 'docsSidebarWidth',
+    direction: 'right'
+  });
 
   /**
    * 滚动至指定章节
@@ -951,7 +960,7 @@ export const Docs = () => {
   return (
     <div className="flex h-full bg-white dark:bg-zinc-950 text-slate-900 dark:text-slate-100 overflow-hidden">
       {/* Desktop sidebar */}
-      <div className="hidden md:flex w-72 border-r border-slate-200 dark:border-zinc-900 flex-col bg-slate-50/50 dark:bg-zinc-900/20">
+      <div className="hidden md:flex border-r border-slate-200 dark:border-zinc-900 flex-col bg-slate-50/50 dark:bg-zinc-900/20 relative" style={{ width: sidebarWidth }}>
         <div className="p-6 border-b border-slate-200 dark:border-zinc-900">
           <div className="flex items-center gap-3 mb-2">
             <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center text-primary border border-primary/20">
@@ -962,13 +971,14 @@ export const Docs = () => {
           <p className="text-xs text-slate-500">最后更新: 2026年3月</p>
         </div>
         {sidebarNav}
+        <ResizeHandle onMouseDown={startResizing} className="absolute right-0 top-0 bottom-0 translate-x-1/2" />
       </div>
 
       {/* Mobile nav overlay */}
       {showMobileNav && (
         <div className="md:hidden fixed inset-0 z-30 flex">
           <div className="absolute inset-0 bg-black/50" onClick={() => setShowMobileNav(false)} />
-          <div className="relative w-72 bg-white dark:bg-zinc-950 border-r border-slate-200 dark:border-zinc-900 flex flex-col h-full z-10">
+          <div className="relative bg-white dark:bg-zinc-950 border-r border-slate-200 dark:border-zinc-900 flex flex-col h-full z-10" style={{ width: sidebarWidth }}>
             <div className="p-4 border-b border-slate-200 dark:border-zinc-900 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Book className="w-5 h-5 text-primary" />

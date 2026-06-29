@@ -12,6 +12,8 @@ import { MessageRenderer } from './MessageRenderer';
 import { cn, generateUUID } from '@/lib/utils';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useHistory } from '@/hooks/useHistory';
+import { useResizable } from '@/hooks/useResizable';
+import { ResizeHandle } from '@/components/ui/ResizeHandle';
 import { useAIStore } from '@/store/useAIStore';
 import { useNotesContext } from '@/hooks/useUIContext';
 
@@ -102,7 +104,7 @@ function NotesTOC({
   const headings = useMemo(() => parseHeadings(content), [content]);
 
   return (
-    <div className="md:w-80 md:border-r md:border-zinc-200 md:dark:border-zinc-800 md:pr-4 flex flex-col shrink-0 h-full">
+    <div className="md:border-r md:border-zinc-200 md:dark:border-zinc-800 md:pr-4 flex flex-col w-full h-full">
       <div className="flex items-center gap-2 mb-3 shrink-0">
         <button
           onClick={onBack}
@@ -205,6 +207,13 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
 
   const [editTitle, setEditTitle] = useState('');
   const { showConfirm } = useDialog();
+  const { width: sidebarWidth, startResizing } = useResizable({
+    initialWidth: 320,
+    minWidth: 200,
+    maxWidth: 500,
+    key: 'notesSidebarWidth',
+    direction: 'right'
+  });
 
   useEffect(() => {
     if (!initialNoteId && !initialSessionId) { /* no-op */ }
@@ -412,45 +421,48 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
   const desktopLayout = (
     <div className="hidden md:flex h-full gap-4 w-full">
       {/* 左侧面板：列表 ⇄ 目录 */}
-      <AnimatePresence mode="wait">
-        {!selectedNote ? (
-          <motion.div
-            key="notes-list"
-            initial={{ opacity: 0, x: -16 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -16 }}
-            transition={{ duration: 0.2 }}
-            className="shrink-0 h-full"
-          >
-            <NotesList
-              notes={notes}
-              selectedNote={selectedNote}
-              onSelectNote={handleSelectNote}
-              createNote={createNote}
-              moveNote={moveNote}
-              sortMode={sortMode}
-              setSortMode={setSortMode}
-              sortDirection={sortDirection}
-              setSortDirection={setSortDirection}
-            />
-          </motion.div>
-        ) : (
-          <motion.div
-            key="notes-toc"
-            initial={{ opacity: 0, x: -16 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -16 }}
-            transition={{ duration: 0.2 }}
-            className="shrink-0 h-full"
-          >
-            <NotesTOC
-              content={selectedNote.content}
-              onBack={handleBackToList}
-              onHeadingClick={handleHeadingClick}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <div className="relative shrink-0 h-full" style={{ width: sidebarWidth }}>
+        <AnimatePresence mode="wait">
+          {!selectedNote ? (
+            <motion.div
+              key="notes-list"
+              initial={{ opacity: 0, x: -16 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -16 }}
+              transition={{ duration: 0.2 }}
+              className="h-full"
+            >
+              <NotesList
+                notes={notes}
+                selectedNote={selectedNote}
+                onSelectNote={handleSelectNote}
+                createNote={createNote}
+                moveNote={moveNote}
+                sortMode={sortMode}
+                setSortMode={setSortMode}
+                sortDirection={sortDirection}
+                setSortDirection={setSortDirection}
+              />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="notes-toc"
+              initial={{ opacity: 0, x: -16 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -16 }}
+              transition={{ duration: 0.2 }}
+              className="h-full"
+            >
+              <NotesTOC
+                content={selectedNote.content}
+                onBack={handleBackToList}
+                onHeadingClick={handleHeadingClick}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+        <ResizeHandle onMouseDown={startResizing} className="absolute right-0 top-0 bottom-0 translate-x-1/2" />
+      </div>
 
       {/* 右侧面板：内容 */}
       <AnimatePresence mode="wait">
@@ -754,7 +766,7 @@ function NoteDetail({
 /** ─── 笔记列表组件 ─── */
 function NotesList({ notes, selectedNote, onSelectNote, createNote, moveNote, sortMode, setSortMode, sortDirection, setSortDirection }: any) {
   return (
-    <div className="md:w-80 md:border-r md:border-zinc-200 md:dark:border-zinc-800 md:pr-4 flex flex-col relative shrink-0 h-full">
+    <div className="md:border-r md:border-zinc-200 md:dark:border-zinc-800 md:pr-4 flex flex-col relative w-full h-full">
       <div className="flex flex-col gap-2 mb-4">
         <div className="flex gap-2">
           <button onClick={createNote} className="flex-1 flex items-center justify-center gap-2 bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700 transition-colors">
