@@ -2,11 +2,14 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, Entity } from '@/db';
 import {
-  Plus, Trash, Edit, Save, ArrowUp, ArrowDown, SortAsc, Clock, GripVertical,
+  Plus, Trash, Edit, Save, ArrowUp, ArrowDown,
   ImageIcon, Undo, Redo, ArrowLeft,
   Bold, Italic, Strikethrough, List, ListOrdered, Heading1, Heading2, Heading3,
   Quote, Code, Link as LinkIcon, BookOpen
 } from 'lucide-react';
+import { useSorting, sortItems } from '@/hooks/useSorting';
+import { useManualReorder } from '@/hooks/useManualReorder';
+import { SortControls } from '@/components/ui/SortControls';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MessageRenderer } from './MessageRenderer';
 import { cn, generateUUID } from '@/lib/utils';
@@ -145,10 +148,7 @@ function NotesTOC({
 }
 
 export function NotesModule({ subjectId, initialNoteId, initialSessionId }: NotesModuleProps) {
-  const [sortMode, setSortMode] = useState<'name' | 'lastAccessed' | 'manual'>(() =>
-    (localStorage.getItem('notesSortMode') as any) || 'lastAccessed');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>(() =>
-    (localStorage.getItem('notesSortDirection') as any) || 'desc');
+  const { sortMode, sortDirection } = useSorting();
 
   const setFloatingWindowOpen = useAIStore(s => s.setFloatingWindowOpen);
   const setGlobalSessionId = useAIStore(s => s.setGlobalSessionId);
@@ -161,33 +161,9 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
     }
   }, [initialSessionId, setFloatingWindowOpen, setGlobalSessionId]);
 
-  useEffect(() => {
-    localStorage.setItem('notesSortMode', sortMode);
-    localStorage.setItem('notesSortDirection', sortDirection);
-  }, [sortMode, sortDirection]);
-
   const notes = useLiveQuery(async () => {
     const allNotes = await db.entities.where({ subjectId, type: 'note' }).toArray();
-    return allNotes.sort((a, b) => {
-      let valA: any, valB: any;
-      if (sortMode === 'name') {
-        valA = a.title;
-        valB = b.title;
-        return sortDirection === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
-      } else if (sortMode === 'lastAccessed') {
-        valA = a.lastAccessed || 0;
-        valB = b.lastAccessed || 0;
-      } else if (sortMode === 'manual') {
-        valA = a.order || 0;
-        valB = b.order || 0;
-      } else {
-        valA = a.createdAt;
-        valB = b.createdAt;
-      }
-      if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
-      if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
-      return 0;
-    });
+    return sortItems(allNotes, sortMode, sortDirection);
   }, [subjectId, sortMode, sortDirection]);
 
   const [selectedNote, setSelectedNote] = useState<Entity | null>(null);
@@ -261,22 +237,6 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
     setEditTitle(newNote.title);
     setIsEditing(true);
     setViewMode('toc');
-  };
-
-  const moveNote = async (e: React.MouseEvent, id: string, direction: 'up' | 'down') => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!notes) return;
-    const index = notes.findIndex(n => n.id === id);
-    if (index === -1) return;
-    const targetIndex = direction === 'up' ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= notes.length) return;
-    const current = notes[index];
-    const target = notes[targetIndex];
-    await db.transaction('rw', db.entities, async () => {
-      await db.entities.update(current.id, { order: target.order });
-      await db.entities.update(target.id, { order: current.order });
-    });
   };
 
   const saveNote = async () => {
@@ -437,11 +397,6 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
                 selectedNote={selectedNote}
                 onSelectNote={handleSelectNote}
                 createNote={createNote}
-                moveNote={moveNote}
-                sortMode={sortMode}
-                setSortMode={setSortMode}
-                sortDirection={sortDirection}
-                setSortDirection={setSortDirection}
               />
             </motion.div>
           ) : (
@@ -531,11 +486,6 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
               selectedNote={selectedNote}
               onSelectNote={handleSelectNote}
               createNote={createNote}
-              moveNote={moveNote}
-              sortMode={sortMode}
-              setSortMode={setSortMode}
-              sortDirection={sortDirection}
-              setSortDirection={setSortDirection}
             />
           </motion.div>
         )}
@@ -764,7 +714,10 @@ function NoteDetail({
 }
 
 /** ─── 笔记列表组件 ─── */
-function NotesList({ notes, selectedNote, onSelectNote, createNote, moveNote, sortMode, setSortMode, sortDirection, setSortDirection }: any) {
+function NotesList({ notes, selectedNote, onSelectNote, createNote }: { notes: any[] | undefined; selectedNote: any; onSelectNote: (note: any) => void; createNote: () => void }) {
+  const { sortMode, sortDirection, setSortMode, toggleDirection } = useSorting();
+  const { moveItem } = useManualReorder(notes, db.entities);
+
   return (
     <div className="md:border-r md:border-zinc-200 md:dark:border-zinc-800 md:pr-4 flex flex-col relative w-full h-full">
       <div className="flex flex-col gap-2 mb-4">
@@ -773,15 +726,13 @@ function NotesList({ notes, selectedNote, onSelectNote, createNote, moveNote, so
             <Plus size={16} /> 新建笔记
           </button>
         </div>
-        <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800 p-1 rounded-lg">
-          <button onClick={() => setSortMode('name')} className={cn("p-1.5 rounded transition-colors flex-1 flex justify-center", sortMode === 'name' ? "bg-white dark:bg-zinc-700 shadow-sm text-blue-600" : "text-zinc-400 hover:text-zinc-600")} title="按名称"><SortAsc size={14} /></button>
-          <button onClick={() => setSortMode('lastAccessed')} className={cn("p-1.5 rounded transition-colors flex-1 flex justify-center", sortMode === 'lastAccessed' ? "bg-white dark:bg-zinc-700 shadow-sm text-blue-600" : "text-zinc-400 hover:text-zinc-600")} title="按时间"><Clock size={14} /></button>
-          <button onClick={() => setSortMode('manual')} className={cn("p-1.5 rounded transition-colors flex-1 flex justify-center", sortMode === 'manual' ? "bg-white dark:bg-zinc-700 shadow-sm text-blue-600" : "text-zinc-400 hover:text-zinc-600")} title="手动"><GripVertical size={14} /></button>
-          <div className="w-px h-4 bg-zinc-300 dark:bg-zinc-600 mx-1" />
-          <button onClick={() => setSortDirection((prev: any) => prev === 'asc' ? 'desc' : 'asc')} className="p-1.5 rounded text-zinc-400 hover:text-zinc-600 transition-colors">
-            {sortDirection === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
-          </button>
-        </div>
+        <SortControls
+          sortMode={sortMode}
+          sortDirection={sortDirection}
+          onModeChange={setSortMode}
+          onDirectionToggle={toggleDirection}
+          variant="filled"
+        />
       </div>
       <div className="space-y-2 overflow-y-auto flex-1">
         {notes?.map((note: any, idx: number) => (
@@ -801,8 +752,8 @@ function NotesList({ notes, selectedNote, onSelectNote, createNote, moveNote, so
               </div>
               {sortMode === 'manual' && (
                 <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
-                  <button onClick={(e) => moveNote(e, note.id, 'up')} disabled={idx === 0} className="p-0.5 hover:bg-slate-300 dark:hover:bg-slate-700 rounded text-slate-400 hover:text-slate-600 disabled:opacity-0"><ArrowUp size={12} /></button>
-                  <button onClick={(e) => moveNote(e, note.id, 'down')} disabled={idx === (notes?.length || 0) - 1} className="p-0.5 hover:bg-slate-300 dark:hover:bg-slate-700 rounded text-slate-400 hover:text-slate-600 disabled:opacity-0"><ArrowDown size={12} /></button>
+                  <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); moveItem(note.id, 'up'); }} disabled={idx === 0} className="p-0.5 hover:bg-slate-300 dark:hover:bg-slate-700 rounded text-slate-400 hover:text-slate-600 disabled:opacity-0"><ArrowUp size={12} /></button>
+                  <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); moveItem(note.id, 'down'); }} disabled={idx === (notes?.length || 0) - 1} className="p-0.5 hover:bg-slate-300 dark:hover:bg-slate-700 rounded text-slate-400 hover:text-slate-600 disabled:opacity-0"><ArrowDown size={12} /></button>
                 </div>
               )}
             </div>

@@ -1,9 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/db';
 import { cn, generateUUID } from '@/lib/utils';
-import { LayoutDashboard, BookOpen, Settings, Plus, Sparkles, ArrowUp, ArrowDown, SortAsc, Clock, GripVertical, HelpCircle, X } from 'lucide-react';
+import { LayoutDashboard, BookOpen, Settings, Plus, Sparkles, ArrowUp, ArrowDown, GripVertical, HelpCircle, X } from 'lucide-react';
+import { useSorting } from '@/hooks/useSorting';
+import { useManualReorder } from '@/hooks/useManualReorder';
+import { SortControls } from '@/components/ui/SortControls';
 import { Modal } from '@/components/ui/Modal';
 import { ThemeToggle } from '@/components/ThemeToggle';
 
@@ -35,44 +38,27 @@ export function Sidebar({ isMobileOpen, onMobileClose }: SidebarProps = {}) {
     direction: 'right'
   });
 
-  // 排序状态管理
-  const [sortMode, setSortMode] = useState<'name' | 'lastAccessed' | 'manual'>(() =>
-    (localStorage.getItem('sidebarSortMode') as any) || 'lastAccessed');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>(() =>
-    (localStorage.getItem('sidebarSortDirection') as any) || 'desc');
-
-  // 持久化排序设置
-  useEffect(() => {
-    localStorage.setItem('sidebarSortMode', sortMode);
-    localStorage.setItem('sidebarSortDirection', sortDirection);
-  }, [sortMode, sortDirection]);
+  const { sortMode, sortDirection, setSortMode, toggleDirection } = useSorting();
 
   /**
    * 实时查询并排序学科列表
-   * 使用 dexie-react-hooks 实现数据库响应式更新
+   * 使用 Dexie orderBy 索引排序，与 Dashboard 保持一致
    */
   const subjects = useLiveQuery(async () => {
-    const all = await db.subjects.toArray();
-    return all.sort((a, b) => {
-      let valA: any, valB: any;
-      if (sortMode === 'name') {
-        valA = a.name;
-        valB = b.name;
-        return sortDirection === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
-      } else if (sortMode === 'lastAccessed') {
-        valA = a.lastAccessed || 0;
-        valB = b.lastAccessed || 0;
-      } else if (sortMode === 'manual') {
-        valA = a.order || 0;
-        valB = b.order || 0;
-      } else {
-        valA = a.createdAt;
-        valB = b.createdAt;
-      }
-      if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
-      if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
-      return 0;
-    });
+    let collection = db.subjects.toCollection();
+    if (sortMode === 'name') {
+      collection = db.subjects.orderBy('name');
+    } else if (sortMode === 'lastAccessed') {
+      collection = db.subjects.orderBy('lastAccessed');
+    } else if (sortMode === 'manual') {
+      collection = db.subjects.orderBy('order');
+    } else {
+      collection = db.subjects.orderBy('createdAt');
+    }
+    if (sortDirection === 'desc') {
+      collection = collection.reverse();
+    }
+    return await collection.toArray();
   }, [sortMode, sortDirection]);
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -80,24 +66,7 @@ export function Sidebar({ isMobileOpen, onMobileClose }: SidebarProps = {}) {
   const [selectedIcon, setSelectedIcon] = useState('BookOpen');
   const [logoError, setLogoError] = useState(false);
 
-  /**
-   * 手动调整学科顺序
-   */
-  const moveSubject = async (e: React.MouseEvent, id: string, direction: 'up' | 'down') => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!subjects) return;
-    const index = subjects.findIndex(s => s.id === id);
-    if (index === -1) return;
-    const targetIndex = direction === 'up' ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= subjects.length) return;
-    const current = subjects[index];
-    const target = subjects[targetIndex];
-    await db.transaction('rw', db.subjects, async () => {
-      await db.subjects.update(current.id, { order: target.order });
-      await db.subjects.update(target.id, { order: current.order });
-    });
-  };
+  const { moveItem } = useManualReorder(subjects, db.subjects);
 
   /**
    * 点击学科时更新最后访问时间，用于“最近使用”排序
@@ -218,12 +187,14 @@ export function Sidebar({ isMobileOpen, onMobileClose }: SidebarProps = {}) {
           <div className="pt-4 pb-2 px-3 text-xs font-semibold text-muted-foreground/70 uppercase tracking-wider flex justify-between items-center whitespace-nowrap overflow-hidden">
             <span>学科列表</span>
             <div className="flex items-center gap-0.5">
-              <button onClick={() => setSortMode('name')} className={cn("p-0.5 rounded", sortMode === 'name' ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground")} title="名称排序"><SortAsc size={12} /></button>
-              <button onClick={() => setSortMode('lastAccessed')} className={cn("p-0.5 rounded", sortMode === 'lastAccessed' ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground")} title="最近访问排序"><Clock size={12} /></button>
-              <button onClick={() => setSortMode('manual')} className={cn("p-0.5 rounded", sortMode === 'manual' ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground")} title="手动排序"><GripVertical size={12} /></button>
-              <button onClick={() => setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')} className="p-0.5 rounded text-muted-foreground hover:text-foreground" title="切换升/降序">
-                {sortDirection === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />}
-              </button>
+              <SortControls
+                sortMode={sortMode}
+                sortDirection={sortDirection}
+                onModeChange={setSortMode}
+                onDirectionToggle={toggleDirection}
+                size="sm"
+                variant="minimal"
+              />
             </div>
           </div>
         )}
@@ -254,8 +225,8 @@ export function Sidebar({ isMobileOpen, onMobileClose }: SidebarProps = {}) {
               <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                 {sortMode === 'manual' && (
                   <div className="flex flex-col gap-0.5" onClick={e => e.preventDefault()}>
-                    <button onClick={(e) => moveSubject(e, subject.id, 'up')} disabled={idx === 0} className="text-muted-foreground hover:text-foreground disabled:opacity-0"><ArrowUp size={10} /></button>
-                    <button onClick={(e) => moveSubject(e, subject.id, 'down')} disabled={idx === (subjects?.length || 0) - 1} className="text-muted-foreground hover:text-foreground disabled:opacity-0"><ArrowDown size={10} /></button>
+                    <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); moveItem(subject.id, 'up'); }} disabled={idx === 0} className="text-muted-foreground hover:text-foreground disabled:opacity-0"><ArrowUp size={10} /></button>
+                    <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); moveItem(subject.id, 'down'); }} disabled={idx === (subjects?.length || 0) - 1} className="text-muted-foreground hover:text-foreground disabled:opacity-0"><ArrowDown size={10} /></button>
                   </div>
                 )}
               </div>

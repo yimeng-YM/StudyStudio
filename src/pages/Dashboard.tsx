@@ -1,8 +1,12 @@
 import { useMemo, useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/db';
-import { BookOpen, CheckSquare, FileText, ArrowUp, ArrowDown, Clock, GripVertical, SortAsc, CalendarDays } from 'lucide-react';
+import { BookOpen, CheckSquare, FileText, Clock, CalendarDays, ArrowUp, ArrowDown } from 'lucide-react';
+import { useSorting } from '@/hooks/useSorting';
+import { useManualReorder } from '@/hooks/useManualReorder';
+import { SortControls } from '@/components/ui/SortControls';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { DailyQuote } from '@/components/DailyQuote';
 import { Link, useLocation } from 'react-router-dom';
 import { ICON_MAP } from '@/lib/icons';
 import { useAIStore } from '@/store/useAIStore';
@@ -89,22 +93,7 @@ export function Dashboard() {
     const timeString = currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     const dateString = currentTime.toLocaleDateString([], { month: 'long', day: 'numeric', weekday: 'long' });
 
-    /**
-     * 学科列表排序模式
-     * 支持：按名称、按最后访问、手动排序
-     */
-    const [sortMode, setSortMode] = useState<'name' | 'lastAccessed' | 'manual'>(() =>
-        (localStorage.getItem('dashboardSortMode') as any) || 'lastAccessed');
-    
-    /** 排序方向：升序/降序 */
-    const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>(() =>
-        (localStorage.getItem('dashboardSortDirection') as any) || 'desc');
-
-    /** 当排序配置变更时，持久化至本地存储 */
-    useEffect(() => {
-        localStorage.setItem('dashboardSortMode', sortMode);
-        localStorage.setItem('dashboardSortDirection', sortDirection);
-    }, [sortMode, sortDirection]);
+    const { sortMode, sortDirection, setSortMode, toggleDirection } = useSorting();
 
     /**
      * 根据排序配置动态加载学科列表
@@ -203,32 +192,7 @@ export function Dashboard() {
         return count;
     }, [taskBoards, legacyTasks]);
 
-    /**
-     * 手动调整学科顺序
-     * 通过交换两个学科的 order 字段实现位置互换，并在事务中执行以保证原子性
-     * @param {React.MouseEvent} e - 事件对象
-     * @param {string} id - 学科 ID
-     * @param {'up' | 'down'} direction - 移动方向
-     */
-    const moveSubject = async (e: React.MouseEvent, id: string, direction: 'up' | 'down') => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (!allSubjects) return;
-
-        const index = allSubjects.findIndex(s => s.id === id);
-        if (index === -1) return;
-
-        const targetIndex = direction === 'up' ? index - 1 : index + 1;
-        if (targetIndex < 0 || targetIndex >= allSubjects.length) return;
-
-        const current = allSubjects[index];
-        const target = allSubjects[targetIndex];
-
-        await db.transaction('rw', db.subjects, async () => {
-            await db.subjects.update(current.id, { order: target.order });
-            await db.subjects.update(target.id, { order: current.order });
-        });
-    };
+    const { moveItem } = useManualReorder(allSubjects, db.subjects);
 
     /**
      * 处理学科卡片点击
@@ -254,6 +218,9 @@ export function Dashboard() {
                     <h1 className="text-2xl md:text-3xl font-bold text-zinc-900 dark:text-zinc-100 mb-1 md:mb-2">欢迎回来</h1>
                     <p className="text-sm md:text-base text-zinc-600 dark:text-zinc-400">这里是你的学习概览。</p>
                 </div>
+
+                {/* 每日一言 */}
+                <DailyQuote />
 
                 {/* Time & Study Duration Row */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
@@ -395,31 +362,13 @@ export function Dashboard() {
                         <div className="flex justify-between items-center flex-wrap gap-4">
                             <h2 className="text-xl font-bold text-zinc-800 dark:text-zinc-200">我的学科</h2>
 
-                            <div className="flex items-center gap-1 bg-white dark:bg-zinc-900 p-1 rounded-lg border border-zinc-200 dark:border-zinc-800 shadow-sm">
-                                <button
-                                    onClick={() => setSortMode('name')}
-                                    className={cn("p-1.5 rounded transition-colors", sortMode === 'name' ? "bg-zinc-100 dark:bg-zinc-800 text-blue-600" : "text-zinc-400 hover:text-zinc-600 hover:bg-zinc-50 dark:hover:bg-zinc-800")}
-                                    title="按名称排序"
-                                ><SortAsc size={16} /></button>
-                                <button
-                                    onClick={() => setSortMode('lastAccessed')}
-                                    className={cn("p-1.5 rounded transition-colors", sortMode === 'lastAccessed' ? "bg-zinc-100 dark:bg-zinc-800 text-blue-600" : "text-zinc-400 hover:text-zinc-600 hover:bg-zinc-50 dark:hover:bg-zinc-800")}
-                                    title="按最近打开排序"
-                                ><Clock size={16} /></button>
-                                <button
-                                    onClick={() => setSortMode('manual')}
-                                    className={cn("p-1.5 rounded transition-colors", sortMode === 'manual' ? "bg-zinc-100 dark:bg-zinc-800 text-blue-600" : "text-zinc-400 hover:text-zinc-600 hover:bg-zinc-50 dark:hover:bg-zinc-800")}
-                                    title="手动排序"
-                                ><GripVertical size={16} /></button>
-                                <div className="w-px h-4 bg-zinc-200 dark:bg-zinc-700 mx-1" />
-                                <button
-                                    onClick={() => setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')}
-                                    className="p-1.5 rounded text-zinc-400 hover:text-zinc-600 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
-                                    title={sortDirection === 'asc' ? "升序" : "降序"}
-                                >
-                                    {sortDirection === 'asc' ? <ArrowUp size={16} /> : <ArrowDown size={16} />}
-                                </button>
-                            </div>
+                            <SortControls
+                                sortMode={sortMode}
+                                sortDirection={sortDirection}
+                                onModeChange={setSortMode}
+                                onDirectionToggle={toggleDirection}
+                                variant="bordered"
+                            />
                         </div>
                         <div className="grid gap-3 md:gap-4 sm:grid-cols-2 lg:grid-cols-3">
                             {allSubjects?.map((subject, idx) => (
@@ -441,12 +390,12 @@ export function Dashboard() {
                                             {sortMode === 'manual' && (
                                                 <div className="flex flex-col gap-0.5 mr-2" onClick={(e) => e.preventDefault()}>
                                                     <button
-                                                        onClick={(e) => moveSubject(e, subject.id, 'up')}
+                                                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); moveItem(subject.id, 'up'); }}
                                                         disabled={idx === 0}
                                                         className="p-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded text-zinc-400 hover:text-zinc-600 disabled:opacity-30"
                                                     ><ArrowUp size={14} /></button>
                                                     <button
-                                                        onClick={(e) => moveSubject(e, subject.id, 'down')}
+                                                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); moveItem(subject.id, 'down'); }}
                                                         disabled={idx === (allSubjects?.length || 0) - 1}
                                                         className="p-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded text-zinc-400 hover:text-zinc-600 disabled:opacity-30"
                                                     ><ArrowDown size={14} /></button>

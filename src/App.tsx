@@ -8,6 +8,7 @@ import { AIChat } from '@/pages/AIChat';
 import { Docs } from '@/pages/Docs';
 import { MobileSubjects } from '@/pages/mobile/MobileSubjects';
 import { DialogProvider } from '@/components/ui/DialogProvider';
+import { SortProvider } from '@/hooks/useSorting';
 import { useStudyLogger } from '@/hooks/useStudyLogger';
 import { initFontSize } from '@/hooks/useFontSize';
 
@@ -29,20 +30,22 @@ function App() {
   useEffect(() => { initFontSize(); }, []); // 初始化全局字体 CSS 变量
 
   return (
-    <DialogProvider>
-      <HashRouter>
-        <Routes>
-          <Route path="/" element={<Layout />}>
-            <Route index element={<Dashboard />} />
-            <Route path="subjects" element={<MobileSubjects />} />
-            <Route path="subject/:id" element={<SubjectView />} />
-            <Route path="settings" element={<Settings />} />
-            <Route path="ai-chat" element={<AIChat />} />
-            <Route path="docs" element={<Docs />} />
-          </Route>
-        </Routes>
-      </HashRouter>
-    </DialogProvider>
+    <SortProvider>
+      <DialogProvider>
+        <HashRouter>
+          <Routes>
+            <Route path="/" element={<Layout />}>
+              <Route index element={<Dashboard />} />
+              <Route path="subjects" element={<MobileSubjects />} />
+              <Route path="subject/:id" element={<SubjectView />} />
+              <Route path="settings" element={<Settings />} />
+              <Route path="ai-chat" element={<AIChat />} />
+              <Route path="docs" element={<Docs />} />
+            </Route>
+          </Routes>
+        </HashRouter>
+      </DialogProvider>
+    </SortProvider>
   );
 }
 

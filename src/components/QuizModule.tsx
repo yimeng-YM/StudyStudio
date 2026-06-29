@@ -2,11 +2,14 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, Entity, QuizRecord } from '@/db';
 import {
-  Plus, Trash, Edit, ArrowUp, ArrowDown, SortAsc, Clock, GripVertical,
+  Plus, Trash, Edit, ArrowUp, ArrowDown,
   CheckCircle2, FileText, ListChecks, Type, AlignLeft, X, Check, XCircle, RefreshCw,
   Image as ImageIcon, Bold, Italic, Strikethrough, List, ListOrdered, Heading1, Heading2, Heading3,
   Quote, Code, Link as LinkIcon, Upload, ArrowLeft
 } from 'lucide-react';
+import { useSorting, sortItems } from '@/hooks/useSorting';
+import { useManualReorder } from '@/hooks/useManualReorder';
+import { SortControls } from '@/components/ui/SortControls';
 import { motion, AnimatePresence } from 'framer-motion';
 import { DataManager } from '@/services/dataManager';
 import { cn, generateUUID } from '@/lib/utils';
@@ -598,24 +601,14 @@ function QuizEditor({ quiz, isEditingTitle, setIsEditingTitle, editTitle, setEdi
 // ══════════════════════════════════════════════════════════════════════
 
 export function QuizModule({ subjectId }: QuizModuleProps) {
-  const [sortMode, setSortMode] = useState<'name' | 'lastAccessed' | 'manual'>(() => (localStorage.getItem('quizSortMode') as any) || 'lastAccessed');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>(() => (localStorage.getItem('quizSortDirection') as any) || 'desc');
+  const { sortMode, sortDirection, setSortMode, toggleDirection } = useSorting();
   const subject = useLiveQuery(() => db.subjects.get(subjectId), [subjectId]);
   const getCustomContext = useMemo(() => () => `用户正在查看题库模块。可以使用工具来管理题目。`, []);
   useUIContext({ location: 'quiz_module', subjectId, subjectName: subject?.name, contextId: `quiz-module-${subjectId}`, getCustomContext });
 
-  useEffect(() => { localStorage.setItem('quizSortMode', sortMode); localStorage.setItem('quizSortDirection', sortDirection); }, [sortMode, sortDirection]);
-
   const quizzes = useLiveQuery(async () => {
     const all = await db.entities.where({ subjectId, type: 'quiz_bank' }).toArray();
-    return all.sort((a, b) => {
-      let vA: any, vB: any;
-      if (sortMode === 'name') { vA = a.title; vB = b.title; return sortDirection === 'asc' ? vA.localeCompare(vB) : vB.localeCompare(vA); }
-      if (sortMode === 'lastAccessed') { vA = a.lastAccessed || 0; vB = b.lastAccessed || 0; }
-      else if (sortMode === 'manual') { vA = a.order || 0; vB = b.order || 0; }
-      else { vA = a.createdAt; vB = b.createdAt; }
-      if (vA < vB) return sortDirection === 'asc' ? -1 : 1; if (vA > vB) return sortDirection === 'asc' ? 1 : -1; return 0;
-    });
+    return sortItems(all, sortMode, sortDirection);
   }, [subjectId, sortMode, sortDirection]);
 
   const [selectedQuizId, setSelectedQuizId] = useState<string | null>(null);
@@ -661,6 +654,8 @@ export function QuizModule({ subjectId }: QuizModuleProps) {
     setIsEditingTitle(false);
   };
 
+  const { moveItem } = useManualReorder(quizzes, db.entities);
+
   const handleSelectQuiz = async (quiz: Entity) => {
     setSelectedQuizId(quiz.id); setEditTitle(quiz.title); setIsEditingTitle(false); setViewMode('nav'); setScrollToIndex(null);
     await db.entities.update(quiz.id, { lastAccessed: Date.now() });
@@ -681,13 +676,13 @@ export function QuizModule({ subjectId }: QuizModuleProps) {
         <div className="flex gap-2">
           <button onClick={createQuiz} className="flex-1 flex items-center justify-center gap-2 bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700 transition-colors"><Plus size={16} /> 新建题库</button>
         </div>
-        <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800 p-1 rounded-lg">
-          <button onClick={() => setSortMode('name')} className={cn("p-1.5 rounded transition-colors flex-1 flex justify-center", sortMode === 'name' ? "bg-white dark:bg-zinc-700 shadow-sm text-blue-600" : "text-zinc-400 hover:text-zinc-600")} title="按名称"><SortAsc size={14} /></button>
-          <button onClick={() => setSortMode('lastAccessed')} className={cn("p-1.5 rounded transition-colors flex-1 flex justify-center", sortMode === 'lastAccessed' ? "bg-white dark:bg-zinc-700 shadow-sm text-blue-600" : "text-zinc-400 hover:text-zinc-600")} title="按时间"><Clock size={14} /></button>
-          <button onClick={() => setSortMode('manual')} className={cn("p-1.5 rounded transition-colors flex-1 flex justify-center", sortMode === 'manual' ? "bg-white dark:bg-zinc-700 shadow-sm text-blue-600" : "text-zinc-400 hover:text-zinc-600")} title="手动"><GripVertical size={14} /></button>
-          <div className="w-px h-4 bg-zinc-300 dark:bg-zinc-600 mx-1" />
-          <button onClick={() => setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')} className="p-1.5 rounded text-zinc-400 hover:text-zinc-600 transition-colors">{sortDirection === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />}</button>
-        </div>
+        <SortControls
+          sortMode={sortMode}
+          sortDirection={sortDirection}
+          onModeChange={setSortMode}
+          onDirectionToggle={toggleDirection}
+          variant="filled"
+        />
       </div>
       <div className="space-y-2 overflow-y-auto flex-1">
         {quizzes?.map((quiz, idx) => (
@@ -697,8 +692,8 @@ export function QuizModule({ subjectId }: QuizModuleProps) {
               <div className="min-w-0 flex-1"><div className="font-medium truncate text-slate-800 dark:text-slate-200">{quiz.title}</div><div className="text-xs text-slate-500">{new Date(quiz.updatedAt).toLocaleDateString()} · {(quiz.content as QuizContent)?.questions?.length || 0} 题</div></div>
               {sortMode === 'manual' && quizzes && quizzes.length > 1 && (
                 <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                  <button onClick={async (e) => { e.stopPropagation(); if (idx > 0 && quizzes) { const p = quizzes[idx - 1].order || 0, c = quiz.order || 0; await db.entities.update(quizzes[idx - 1].id, { order: c }); await db.entities.update(quiz.id, { order: p }); } }} disabled={idx === 0} className="p-0.5 text-zinc-400 hover:text-zinc-600 disabled:opacity-20 disabled:cursor-not-allowed"><ArrowUp size={12} /></button>
-                  <button onClick={async (e) => { e.stopPropagation(); if (idx < quizzes.length - 1 && quizzes) { const n = quizzes[idx + 1].order || 0, c = quiz.order || 0; await db.entities.update(quizzes[idx + 1].id, { order: c }); await db.entities.update(quiz.id, { order: n }); } }} disabled={idx === quizzes.length - 1} className="p-0.5 text-zinc-400 hover:text-zinc-600 disabled:opacity-20 disabled:cursor-not-allowed"><ArrowDown size={12} /></button>
+                  <button onClick={(e) => { e.stopPropagation(); moveItem(quiz.id, 'up'); }} disabled={idx === 0} className="p-0.5 text-zinc-400 hover:text-zinc-600 disabled:opacity-20 disabled:cursor-not-allowed"><ArrowUp size={12} /></button>
+                  <button onClick={(e) => { e.stopPropagation(); moveItem(quiz.id, 'down'); }} disabled={idx === quizzes.length - 1} className="p-0.5 text-zinc-400 hover:text-zinc-600 disabled:opacity-20 disabled:cursor-not-allowed"><ArrowDown size={12} /></button>
                 </div>
               )}
             </div>

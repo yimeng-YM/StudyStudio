@@ -1,29 +1,24 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/db';
-import { BookOpen, ArrowUp, ArrowDown, Clock, GripVertical, SortAsc, Plus } from 'lucide-react';
+import { BookOpen, ArrowUp, ArrowDown, Plus } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { ICON_MAP, ICON_OPTIONS } from '@/lib/icons';
 import { cn, generateUUID } from '@/lib/utils';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { Modal } from '@/components/ui/Modal';
+import { useSorting } from '@/hooks/useSorting';
+import { useManualReorder } from '@/hooks/useManualReorder';
+import { SortControls } from '@/components/ui/SortControls';
 
 export function MobileSubjects() {
-  const [sortMode, setSortMode] = useState<'name' | 'lastAccessed' | 'manual'>(() =>
-    (localStorage.getItem('dashboardSortMode') as any) || 'lastAccessed');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>(() =>
-    (localStorage.getItem('dashboardSortDirection') as any) || 'desc');
+  const { sortMode, sortDirection, setSortMode, toggleDirection } = useSorting();
   const [logoError, setLogoError] = useState(false);
 
   // Add subject modal
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newSubjectName, setNewSubjectName] = useState('');
   const [selectedIcon, setSelectedIcon] = useState('BookOpen');
-
-  useEffect(() => {
-    localStorage.setItem('dashboardSortMode', sortMode);
-    localStorage.setItem('dashboardSortDirection', sortDirection);
-  }, [sortMode, sortDirection]);
 
   const allSubjects = useLiveQuery(async () => {
     let collection = db.subjects.toCollection();
@@ -39,21 +34,7 @@ export function MobileSubjects() {
     await db.subjects.update(id, { lastAccessed: Date.now() });
   };
 
-  const moveSubject = async (e: React.MouseEvent, id: string, direction: 'up' | 'down') => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!allSubjects) return;
-    const index = allSubjects.findIndex(s => s.id === id);
-    if (index === -1) return;
-    const targetIndex = direction === 'up' ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= allSubjects.length) return;
-    const current = allSubjects[index];
-    const target = allSubjects[targetIndex];
-    await db.transaction('rw', db.subjects, async () => {
-      await db.subjects.update(current.id, { order: target.order });
-      await db.subjects.update(target.id, { order: current.order });
-    });
-  };
+  const { moveItem } = useManualReorder(allSubjects, db.subjects);
 
   const addSubject = async () => {
     if (newSubjectName.trim()) {
@@ -98,15 +79,13 @@ export function MobileSubjects() {
         </div>
 
         {/* Sort controls */}
-        <div className="flex items-center gap-1 bg-white dark:bg-zinc-900 p-1 rounded-lg border border-zinc-200 dark:border-zinc-800 shadow-sm">
-          <button onClick={() => setSortMode('name')} className={cn("p-1.5 rounded transition-colors", sortMode === 'name' ? "bg-zinc-100 dark:bg-zinc-800 text-blue-600" : "text-zinc-400 hover:text-zinc-600 hover:bg-zinc-50 dark:hover:bg-zinc-800")} title="按名称排序"><SortAsc size={16} /></button>
-          <button onClick={() => setSortMode('lastAccessed')} className={cn("p-1.5 rounded transition-colors", sortMode === 'lastAccessed' ? "bg-zinc-100 dark:bg-zinc-800 text-blue-600" : "text-zinc-400 hover:text-zinc-600 hover:bg-zinc-50 dark:hover:bg-zinc-800")} title="按最近打开排序"><Clock size={16} /></button>
-          <button onClick={() => setSortMode('manual')} className={cn("p-1.5 rounded transition-colors", sortMode === 'manual' ? "bg-zinc-100 dark:bg-zinc-800 text-blue-600" : "text-zinc-400 hover:text-zinc-600 hover:bg-zinc-50 dark:hover:bg-zinc-800")} title="手动排序"><GripVertical size={16} /></button>
-          <div className="w-px h-4 bg-zinc-200 dark:bg-zinc-700 mx-1" />
-          <button onClick={() => setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')} className="p-1.5 rounded text-zinc-400 hover:text-zinc-600 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors" title={sortDirection === 'asc' ? "升序" : "降序"}>
-            {sortDirection === 'asc' ? <ArrowUp size={16} /> : <ArrowDown size={16} />}
-          </button>
-        </div>
+        <SortControls
+          sortMode={sortMode}
+          sortDirection={sortDirection}
+          onModeChange={setSortMode}
+          onDirectionToggle={toggleDirection}
+          variant="bordered"
+        />
 
         {/* Subjects Grid */}
         <div className="grid gap-3">
@@ -130,9 +109,9 @@ export function MobileSubjects() {
               </div>
               {sortMode === 'manual' && (
                 <div className="flex flex-col gap-0.5 shrink-0" onClick={e => e.preventDefault()}>
-                  <button onClick={(e) => moveSubject(e, subject.id, 'up')} disabled={idx === 0}
+                  <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); moveItem(subject.id, 'up'); }} disabled={idx === 0}
                     className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded text-zinc-400 hover:text-zinc-600 disabled:opacity-30"><ArrowUp size={16} /></button>
-                  <button onClick={(e) => moveSubject(e, subject.id, 'down')} disabled={idx === (allSubjects?.length || 0) - 1}
+                  <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); moveItem(subject.id, 'down'); }} disabled={idx === (allSubjects?.length || 0) - 1}
                     className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded text-zinc-400 hover:text-zinc-600 disabled:opacity-30"><ArrowDown size={16} /></button>
                 </div>
               )}
