@@ -140,7 +140,7 @@ function statusTileClassMobile(status: QuestionStatus): string {
 
 function AddButton({ onClick, icon, label }: any) {
   return (
-    <button onClick={onClick} className="flex flex-col items-center justify-center gap-1 p-2 bg-zinc-50 dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 border border-zinc-200 dark:border-zinc-700 rounded-lg transition-colors text-xs font-medium text-zinc-600 dark:text-zinc-300">
+    <button onClick={onClick} className="flex items-center justify-center gap-1.5 p-1.5 sm:p-2 sm:flex-col sm:gap-1 bg-zinc-50 dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 border border-zinc-200 dark:border-zinc-700 rounded-lg transition-colors text-xs font-medium text-zinc-600 dark:text-zinc-300">
       {icon}{label}
     </button>
   );
@@ -561,7 +561,7 @@ function QuizEditor({ quiz, isEditingTitle, setIsEditingTitle, editTitle, setEdi
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between gap-4 pb-4 border-b border-zinc-200 dark:border-zinc-800 shrink-0">
+      <div className="hidden md:flex items-center justify-between gap-4 pb-4 border-b border-zinc-200 dark:border-zinc-800 shrink-0">
         <div className="flex-1">
           {isEditingTitle ? <input value={editTitle} onChange={e => setEditTitle(e.target.value)} onBlur={onUpdateTitle} onKeyDown={e => e.key === 'Enter' && onUpdateTitle()} className="text-xl font-bold bg-transparent border-b-2 border-blue-500 focus:outline-none w-full text-zinc-800 dark:text-zinc-200" autoFocus />
             : <h2 onClick={() => { setEditTitle(quiz.title); setIsEditingTitle(true); }} className="text-xl font-bold text-zinc-800 dark:text-zinc-200 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded px-2 -ml-2 py-1 transition-colors">{quiz.title}</h2>}
@@ -575,7 +575,7 @@ function QuizEditor({ quiz, isEditingTitle, setIsEditingTitle, editTitle, setEdi
           <button onClick={onDeleteQuiz} className="p-2 text-zinc-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors" title="删除题库"><Trash size={18} /></button>
         </div>
       </div>
-      <div ref={questionListRef} className={cn("flex-1 overflow-y-auto py-4", sidebarWidth < 250 ? "grid grid-cols-2 gap-4 items-start" : "space-y-6")} style={{ overscrollBehavior: 'contain' }}>
+      <div ref={questionListRef} className={cn("flex-1 overflow-y-auto py-2 md:py-4", sidebarWidth < 250 ? "grid grid-cols-2 gap-4 items-start" : "space-y-6")} style={{ overscrollBehavior: 'contain' }}>
         {questions.length === 0 ? <div className="text-center py-20 text-zinc-400"><div className="mb-2">开始添加题目</div><div className="text-sm">点击下方按钮添加不同类型的题目</div></div>
           : questions.map((q, index) => (
             <div key={q.id} data-question-index={index} className="relative group/item bg-white/70 dark:bg-zinc-900/50 rounded-xl border border-zinc-200 dark:border-zinc-800/50 p-4 transition-all hover:border-zinc-300 dark:hover:border-zinc-700" style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 120px' }}>
@@ -584,7 +584,7 @@ function QuizEditor({ quiz, isEditingTitle, setIsEditingTitle, editTitle, setEdi
             </div>
           ))}
       </div>
-      <div className="pt-4 border-t border-zinc-200 dark:border-zinc-800 grid grid-cols-3 sm:grid-cols-6 gap-2 shrink-0">
+      <div className="pt-3 md:pt-4 border-t border-zinc-200 dark:border-zinc-800 grid grid-cols-3 sm:grid-cols-6 gap-2 shrink-0">
         <AddButton onClick={() => addQuestion('single_choice')} icon={<CheckCircle2 size={18} />} label="单选题" />
         <AddButton onClick={() => addQuestion('multiple_choice')} icon={<ListChecks size={18} />} label="多选题" />
         <AddButton onClick={() => addQuestion('true_false')} icon={<Check size={18} />} label="判断题" />
@@ -646,6 +646,11 @@ export function QuizModule({ subjectId }: QuizModuleProps) {
   const deleteQuiz = async (id: string) => {
     const c = await showConfirm("确认删除此题库？", { title: "删除题库" });
     if (c) { await db.entities.delete(id); if (selectedQuizId === id) { setSelectedQuizId(null); setIsEditingTitle(false); setViewMode('list'); } }
+  };
+
+  const handleMobileExport = async () => {
+    if (!selectedQuiz) return;
+    try { await DataManager.downloadBackup({ entityIds: [selectedQuiz.id] }); } catch { alert('导出失败'); }
   };
 
   const updateQuizTitle = async () => {
@@ -752,7 +757,7 @@ export function QuizModule({ subjectId }: QuizModuleProps) {
         )}
         {viewMode === 'nav' && (
           <motion.div key="m-nav" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 30 }} transition={{ duration: 0.2 }} className="flex flex-col h-full">
-            <div className="flex items-center gap-2 px-3 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 shrink-0">
+            <div className="flex items-center gap-2 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 shrink-0">
               <button onClick={handleBackToList} className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg"><ArrowLeft size={20} /></button>
               <span className="font-medium text-sm truncate">{selectedQuiz?.title}</span>
               <span className="text-xs text-zinc-400 ml-auto">{questions.length} 题</span>
@@ -765,11 +770,17 @@ export function QuizModule({ subjectId }: QuizModuleProps) {
         )}
         {viewMode === 'detail' && (
           <motion.div key="m-detail" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 30 }} transition={{ duration: 0.2 }} className="flex flex-col h-full">
-            <div className="flex items-center gap-2 px-3 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 shrink-0">
-              <button onClick={handleDetailBack} className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg"><ArrowLeft size={20} /></button>
-              <span className="font-medium text-sm truncate">{selectedQuiz?.title}</span>
+            <div className="flex items-center gap-1 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 shrink-0">
+              <button onClick={handleDetailBack} className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg shrink-0"><ArrowLeft size={20} /></button>
+              {isEditingTitle ? (
+                <input value={editTitle} onChange={e => setEditTitle(e.target.value)} onBlur={updateQuizTitle} onKeyDown={e => e.key === 'Enter' && updateQuizTitle()} className="flex-1 font-medium text-sm bg-transparent border-b border-blue-500 focus:outline-none text-zinc-800 dark:text-zinc-200 min-w-0 px-1" autoFocus />
+              ) : (
+                <span onClick={() => { setEditTitle(selectedQuiz?.title || ''); setIsEditingTitle(true); }} className="flex-1 font-medium text-sm truncate cursor-text text-zinc-800 dark:text-zinc-200 px-1">{selectedQuiz?.title}</span>
+              )}
+              <button onClick={handleMobileExport} className="p-1.5 text-zinc-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors shrink-0" title="导出题库"><Upload size={18} /></button>
+              <button onClick={() => deleteQuiz(selectedQuiz!.id)} className="p-1.5 text-zinc-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors shrink-0" title="删除题库"><Trash size={18} /></button>
             </div>
-            <div className="flex-1 overflow-clip p-3">
+            <div className="flex-1 min-h-0 flex flex-col overflow-clip px-3 pt-3">
               <QuizEditor quiz={selectedQuiz} isEditingTitle={isEditingTitle} setIsEditingTitle={setIsEditingTitle} editTitle={editTitle} setEditTitle={setEditTitle} onUpdateTitle={updateQuizTitle} onDeleteQuiz={() => deleteQuiz(selectedQuiz!.id)} scrollToIndex={scrollToIndex} onScrollComplete={handleScrollComplete} />
             </div>
           </motion.div>
@@ -779,7 +790,7 @@ export function QuizModule({ subjectId }: QuizModuleProps) {
   );
 
   return (
-    <div className="flex h-full gap-4 relative pb-14 md:pb-0">
+    <div className="flex h-full gap-4 relative">
       {desktopLayout}
       {mobileLayout}
     </div>

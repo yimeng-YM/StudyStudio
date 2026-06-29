@@ -499,7 +499,7 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
             transition={{ duration: 0.2 }}
             className="flex flex-col h-full"
           >
-            <div className="flex items-center gap-2 px-3 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 shrink-0">
+            <div className="flex items-center gap-2 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 shrink-0">
               <button onClick={handleBackToList} className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg">
                 <ArrowLeft size={20} />
               </button>
@@ -523,11 +523,21 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
             transition={{ duration: 0.2 }}
             className="flex flex-col h-full"
           >
-            <div className="flex items-center gap-2 px-3 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 shrink-0">
-              <button onClick={handleDetailBack} className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg">
+            <div className="flex items-center gap-1 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 shrink-0">
+              <button onClick={handleDetailBack} className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg shrink-0">
                 <ArrowLeft size={20} />
               </button>
-              <span className="font-medium text-sm truncate">{selectedNote?.title}</span>
+              {isEditing ? (
+                <input value={editTitle} onChange={e => setEditTitle(e.target.value)} className="flex-1 font-medium text-sm bg-transparent border-b border-blue-500 focus:outline-none text-zinc-800 dark:text-zinc-200 min-w-0 px-1" />
+              ) : (
+                <span className="flex-1 font-medium text-sm truncate text-zinc-800 dark:text-zinc-200 px-1">{selectedNote?.title}</span>
+              )}
+              {isEditing ? (
+                <button onClick={saveNote} className="p-1.5 text-green-600 hover:text-green-700 bg-green-50 dark:bg-green-900/20 rounded-lg shrink-0" title="保存"><Save size={18} /></button>
+              ) : (
+                <button onClick={() => setIsEditing(true)} className="p-1.5 text-blue-600 hover:text-blue-700 bg-blue-50 dark:bg-blue-900/20 rounded-lg shrink-0" title="编辑"><Edit size={18} /></button>
+              )}
+              <button onClick={() => { if (selectedNote) deleteNote(selectedNote.id); }} className="p-1.5 text-red-600 hover:text-red-700 bg-red-50 dark:bg-red-900/20 rounded-lg shrink-0" title="删除"><Trash size={18} /></button>
             </div>
             <div className="flex-1 min-h-0">
               <NoteDetail
@@ -559,7 +569,7 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
   );
 
   return (
-    <div className="flex h-full gap-4 relative pb-14 md:pb-0">
+    <div className="flex h-full gap-4 relative">
       {desktopLayout}
       {mobileLayout}
     </div>
@@ -644,8 +654,8 @@ function NoteDetail({
   }
 
   return (
-    <div className="h-full flex flex-col bg-white/70 dark:bg-zinc-900/50 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800 p-4 min-h-0">
-      <div className="flex justify-between items-center mb-4 border-b dark:border-slate-800 pb-2 shrink-0">
+    <div className="h-full flex flex-col bg-white/70 dark:bg-zinc-900/50 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800 p-3 md:p-4 min-h-0">
+      <div className="hidden md:flex justify-between items-center mb-4 border-b dark:border-slate-800 pb-2 shrink-0">
         {isEditing ? (
           <input
             value={editTitle}
@@ -675,6 +685,10 @@ function NoteDetail({
         {isEditing ? (
           <div className="flex-1 min-h-0 flex flex-col border border-zinc-200 dark:border-zinc-700 rounded">
             <div className="flex flex-wrap items-center gap-0.5 p-1.5 bg-zinc-50 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 overflow-x-auto">
+              <button onClick={undoEdit} disabled={!canUndo} className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400 shrink-0 md:hidden disabled:opacity-30" title="撤销"><Undo size={14} /></button>
+              <button onClick={redoEdit} disabled={!canRedo} className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400 shrink-0 md:hidden disabled:opacity-30" title="重做"><Redo size={14} /></button>
+              <button onClick={() => fileInputRef.current?.click()} className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400 shrink-0 md:hidden" title="插入图片"><ImageIcon size={14} /></button>
+              <div className="w-px h-4 bg-zinc-300 dark:bg-zinc-600 mx-0.5 shrink-0 md:hidden" />
               <button onClick={() => insertMarkdown('**', '**')} className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400 shrink-0" title="加粗"><Bold size={14} /></button>
               <button onClick={() => insertMarkdown('*', '*')} className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400 shrink-0" title="斜体"><Italic size={14} /></button>
               <button onClick={() => insertMarkdown('~~', '~~')} className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400 shrink-0" title="删除线"><Strikethrough size={14} /></button>
