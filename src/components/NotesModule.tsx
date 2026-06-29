@@ -567,7 +567,7 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
               </button>
               <span className="font-medium text-sm truncate">{selectedNote?.title}</span>
             </div>
-            <div className="flex-1 overflow-clip">
+            <div className="flex-1 min-h-0">
               <NoteDetail
                 selectedNote={selectedNote}
                 isEditing={isEditing}
@@ -682,8 +682,8 @@ function NoteDetail({
   }
 
   return (
-    <div className="h-full flex flex-col bg-white dark:bg-zinc-900/50 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800 p-4 overflow-clip">
-      <div className="flex justify-between items-center mb-4 border-b dark:border-slate-800 pb-2">
+    <div className="h-full flex flex-col bg-white dark:bg-zinc-900/50 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800 p-4 min-h-0">
+      <div className="flex justify-between items-center mb-4 border-b dark:border-slate-800 pb-2 shrink-0">
         {isEditing ? (
           <input
             value={editTitle}
@@ -709,7 +709,7 @@ function NoteDetail({
         </div>
       </div>
 
-      <div className="flex-1 overflow-clip">
+      <div className="flex-1 min-h-0">
         {isEditing ? (
           <div className="h-full flex flex-col border border-zinc-200 dark:border-zinc-700 rounded">
             <div className="flex flex-wrap items-center gap-0.5 p-1.5 bg-zinc-50 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 overflow-x-auto">
@@ -730,7 +730,8 @@ function NoteDetail({
             </div>
             <textarea
               ref={textAreaRef}
-              className="w-full flex-1 resize-none focus:outline-none bg-transparent text-zinc-800 dark:text-zinc-200 font-mono p-3 text-sm"
+              className="w-full flex-1 resize-none focus:outline-none bg-transparent text-zinc-800 dark:text-zinc-200 font-mono p-3"
+              style={{ fontSize: 'var(--app-font-size, 14px)' }}
               value={editContent}
               onChange={e => setEditContent(e.target.value)}
               placeholder="开始写作..."
@@ -739,8 +740,8 @@ function NoteDetail({
         ) : (
           <div
             ref={readingRef}
-            className="prose dark:prose-invert max-w-none text-zinc-800 dark:text-zinc-200 overflow-y-auto h-full text-sm"
-            style={{ overscrollBehavior: 'contain' }}
+            className="prose dark:prose-invert max-w-none text-zinc-800 dark:text-zinc-200 overflow-y-auto h-full"
+            style={{ fontSize: 'var(--app-font-size, 14px)', overscrollBehavior: 'contain' }}
           >
             <MessageRenderer content={selectedNote.content} />
           </div>

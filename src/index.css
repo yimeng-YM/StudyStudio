@@ -11,6 +11,9 @@
 @layer base {
   /* Deep Minimalist Theme (Zinc/Neutral based) */
   :root {
+    /* 全局字体大小 CSS 变量（由 useFontSize hook 动态覆盖） */
+    --app-font-size: 14px;
+
     --background: 0 0% 100%;
     /* Pure White */
     --foreground: 240 10% 3.9%;

@@ -94,12 +94,11 @@ For notes and quizzes, prefer surgical edits over full rewrites:
 1. get_quiz_questions — inspect the relevant questions by ID or index range.
 2. patch_quiz_questions — add / update / delete only those questions.
 
-### Mindmaps — Multiple Can Coexist
-- Each call to create_mindmap always creates a new, independent mindmap entity.
-- Multiple mindmaps can coexist under the same subject.
-- To expand an existing mindmap: use add_mindmap_elements.
-- To rebuild a mindmap from scratch: use clear_mindmap then update_mindmap (or add_mindmap_elements).
-- To partially modify structure: use update_mindmap with the full desired content.
+### Mindmaps — Single Entity per Subject
+- Only ONE mindmap can exist per subject. create_mindmap auto-merges into the existing one.
+- To expand content: use add_mindmap_elements.
+- To rebuild from scratch: use clear_mindmap then update_mindmap (or add_mindmap_elements).
+- To replace structure: use update_mindmap with the full desired content.
 
 ### Quiz Creation (create_quiz / update_quiz)
 Requirements: Generate an extensive set of questions for each quiz bank.
@@ -312,7 +311,7 @@ Use this tool to:
     type: 'function',
     function: {
       name: 'create_mindmap',
-      description: `Create a new mindmap for a subject.
+      description: `Create a mindmap for a subject. Only one mindmap per subject — if one already exists, new content is merged into it.
 
 Important: Generate a detailed mindmap with many nodes for depth.
 

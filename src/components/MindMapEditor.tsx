@@ -110,26 +110,12 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
   );
 
   /**
-   * 自动选择或初始化第一个思维导图数据
-   * 若当前学科下没有思维导图记录，则自动生成一条默认记录并选中
+   * 自动选择第一个思维导图数据（不自动创建，由用户首次操作时懒加载创建）
+   * 若当前学科下已有思维导图记录，自动选中第一条
    */
   useEffect(() => {
     if (mindMaps && mindMaps.length > 0 && !selectedMindMapId) {
       setSelectedMindMapId(mindMaps[0].id);
-    } else if (mindMaps && mindMaps.length === 0) {
-      const id = generateUUID();
-      const now = Date.now();
-      db.entities.add({
-        id,
-        subjectId,
-        type: 'mindmap',
-        title: '我的思维导图',
-        content: { nodes: initialNodes, edges: [] },
-        createdAt: now,
-        updatedAt: now,
-        lastAccessed: now,
-        order: now
-      }).then(() => setSelectedMindMapId(id));
     }
   }, [mindMaps, selectedMindMapId, subjectId]);
 
@@ -467,28 +453,49 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
 
   /**
    * 添加一个新的中心主题节点（根节点）
+   * 若当前学科下尚无思维导图实体，则先懒加载创建，确保每学科仅保持一份导图数据
    */
   const handleAddRootNode = useCallback(async () => {
     const label = await showPrompt("输入新中心主题名称:", "中心主题");
     if (!label) return;
 
+    // 懒加载：若当前无选中的思维导图，先创建实体
+    let mindMapId = selectedMindMapId;
+    if (!mindMapId) {
+      const id = generateUUID();
+      const now = Date.now();
+      await db.entities.add({
+        id,
+        subjectId,
+        type: 'mindmap',
+        title: subject?.name ? `${subject.name} - 思维导图` : '我的思维导图',
+        content: { nodes: initialNodes, edges: [] },
+        createdAt: now,
+        updatedAt: now,
+        lastAccessed: now,
+        order: now
+      });
+      mindMapId = id;
+      setSelectedMindMapId(id);
+    }
+
     const id = generateUUID();
     const newNode: Node = {
       id,
       type: 'custom',
-      position: { 
-        x: nodes.length > 0 ? Math.max(...nodes.map(n => n.position.x)) + 400 : 250, 
-        y: 250 
+      position: {
+        x: nodes.length > 0 ? Math.max(...nodes.map(n => n.position.x)) + 400 : 250,
+        y: 250
       },
       data: { label },
     };
     const newNodes = nodes.concat(newNode);
     takeSnapshot(newNodes, edges);
     setNodes(newNodes);
-    
+
     // Jump to the new node after a short delay
     setTimeout(() => jumpToNode(id), 100);
-  }, [nodes, edges, setNodes, takeSnapshot, showPrompt, jumpToNode]);
+  }, [nodes, edges, setNodes, takeSnapshot, showPrompt, jumpToNode, selectedMindMapId, subjectId, subject?.name]);
 
   const handleEditNode = useCallback(async (nodeId: string) => {
     const node = nodes.find(n => n.id === nodeId);
@@ -879,7 +886,7 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
             <div className="w-16 h-16 bg-zinc-100 dark:bg-zinc-800 rounded-full flex items-center justify-center">
               <Plus size={32} />
             </div>
-            <p>正在加载或创建思维导图...</p>
+            <p>点击上方「新增中心主题」创建第一个思维导图</p>
           </div>
         )}
       </div>

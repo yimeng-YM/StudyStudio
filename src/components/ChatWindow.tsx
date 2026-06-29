@@ -379,7 +379,8 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
             onChange={handleFileSelect}
           />
           <textarea
-            className="flex-1 bg-transparent px-2 py-3.5 text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none placeholder:text-zinc-400 disabled:opacity-50 disabled:cursor-not-allowed resize-none max-h-[150px] min-h-[48px]"
+            style={{ fontSize: 'var(--app-font-size, 14px)' }}
+            className="flex-1 bg-transparent px-2 py-3.5 text-zinc-900 dark:text-zinc-100 focus:outline-none placeholder:text-zinc-400 disabled:opacity-50 disabled:cursor-not-allowed resize-none max-h-[150px] min-h-[48px]"
             value={input}
             placeholder={placeholder || "告诉 Agent 你想做什么..."}
             onChange={e => {

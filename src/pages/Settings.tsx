@@ -3,25 +3,27 @@ import { useAIStore } from '@/store/useAIStore';
 import { getModels } from '@/services/ai';
 import { DataManager, StudyStudioData } from '@/services/dataManager';
 import { useDialog } from '@/components/ui/DialogProvider';
-import { Upload, Download, ChevronRight, ChevronDown, Folder, FileText, Database, GitBranch, RefreshCw, Check, Search } from 'lucide-react';
+import { Upload, Download, ChevronRight, ChevronDown, Folder, FileText, Database, GitBranch, RefreshCw, Check, Search, Type, Settings2, HardDrive } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { db } from '@/db';
 import { cn } from '@/lib/utils';
+import { useFontSize, APP_FONT_OPTIONS } from '@/hooks/useFontSize';
+import { FontSizeSlider } from '@/components/ui/FontSizeSlider';
 
 /**
  * 数据选择树组件
  * 用于在导入/导出时以树状结构展示并选择学科及其关联的实体数据（思维导图、题库、笔记等）。
  */
-function DataSelectionTree({ 
-  data, 
-  selectedSubjectIds, 
-  selectedEntityIds, 
-  onToggleSubject, 
-  onToggleEntity 
-}: { 
-  data: { subjects: any[], entities: any[] }, 
-  selectedSubjectIds: Set<string>, 
-  selectedEntityIds: Set<string>, 
+function DataSelectionTree({
+  data,
+  selectedSubjectIds,
+  selectedEntityIds,
+  onToggleSubject,
+  onToggleEntity
+}: {
+  data: { subjects: any[], entities: any[] },
+  selectedSubjectIds: Set<string>,
+  selectedEntityIds: Set<string>,
   onToggleSubject: (id: string, entityIds: string[], checked: boolean) => void,
   onToggleEntity: (id: string, subjectId: string, checked: boolean) => void
 }) {
@@ -61,7 +63,6 @@ function DataSelectionTree({
     entities.forEach(e => {
       if (groups[e.type]) groups[e.type].push(e);
       else {
-        // Fallback for unknown types or group 'other'
         if (!groups['other']) groups['other'] = [];
         groups['other'].push(e);
       }
@@ -103,13 +104,13 @@ function DataSelectionTree({
           return (
             <div key={subject.id} className="select-none">
               <div className="flex items-center gap-1 p-1 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 rounded">
-                <button 
+                <button
                   onClick={() => hasEntities && toggleExpand(subject.id)}
                   className={cn("p-1 text-zinc-400 hover:text-zinc-600 transition-colors", !hasEntities && "invisible")}
                 >
                   {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                 </button>
-                
+
                 <label className="flex items-center gap-2 flex-1 cursor-pointer">
                   <input
                     type="checkbox"
@@ -129,15 +130,14 @@ function DataSelectionTree({
                     if (items.length === 0) return null;
                     const groupKey = `${subject.id}-${type}`;
                     const isTypeExpanded = expandedTypes.has(groupKey);
-                    
-                    // Check if all items in group are selected
+
                     const allSelected = items.every(i => selectedEntityIds.has(i.id));
                     const someSelected = items.some(i => selectedEntityIds.has(i.id));
 
                     return (
                       <div key={type}>
                         <div className="flex items-center gap-1 p-1 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 rounded">
-                           <button 
+                           <button
                             onClick={() => toggleTypeExpand(groupKey)}
                             className="p-1 text-zinc-400 hover:text-zinc-600 transition-colors"
                           >
@@ -159,7 +159,7 @@ function DataSelectionTree({
                             <span className="text-[10px] text-zinc-400">({items.length})</span>
                           </label>
                         </div>
-                        
+
                         {isTypeExpanded && (
                           <div className="ml-6 space-y-0.5 border-l border-zinc-200 dark:border-zinc-800 pl-2 py-1">
                             {items.map(entity => (
@@ -191,15 +191,129 @@ function DataSelectionTree({
   );
 }
 
+/** 带刻度标签的温度滑块（内联组件，与 FontSizeSlider 共享设计语言） */
+function TemperatureSlider({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  const marks = [0, 0.5, 1.0, 1.5, 2.0];
+  const selectedIndex = marks.indexOf(
+    marks.reduce((prev, curr) => Math.abs(curr - value) < Math.abs(prev - value) ? curr : prev)
+  );
+  const fillPercent = (selectedIndex / (marks.length - 1)) * 100;
+  const trackRef = useRef<HTMLDivElement>(null);
+
+  const handleTrackClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!trackRef.current) return;
+    const rect = trackRef.current.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const snapped = Math.round(ratio * (marks.length - 1));
+    onChange(marks[snapped]);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    let next = selectedIndex;
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') { e.preventDefault(); next = Math.max(0, selectedIndex - 1); }
+    else if (e.key === 'ArrowRight' || e.key === 'ArrowUp') { e.preventDefault(); next = Math.min(marks.length - 1, selectedIndex + 1); }
+    else if (e.key === 'Home') { e.preventDefault(); next = 0; }
+    else if (e.key === 'End') { e.preventDefault(); next = marks.length - 1; }
+    if (next !== selectedIndex) onChange(marks[next]);
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+          回复温度 (Temperature)
+        </label>
+        <span className="text-xs font-semibold bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 px-2 py-0.5 rounded-md tabular-nums">
+          {value.toFixed(1)}
+        </span>
+      </div>
+      <div
+        ref={trackRef}
+        className="relative h-10 select-none cursor-pointer touch-none"
+        onClick={handleTrackClick}
+        onKeyDown={handleKeyDown}
+        role="radiogroup"
+        aria-label="Temperature"
+      >
+        <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-700">
+          <div
+            className="absolute left-0 top-0 h-full rounded-full bg-amber-500/40 dark:bg-amber-400/30 transition-all duration-300 ease-out"
+            style={{ width: `${fillPercent}%` }}
+          />
+        </div>
+        {marks.map((m, idx) => {
+          const leftPercent = (idx / (marks.length - 1)) * 100;
+          const isSelected = idx === selectedIndex;
+          const isPast = idx < selectedIndex;
+          const label =
+            idx === 0 ? '精准' :
+            idx === marks.length - 1 ? '创意' :
+            undefined;
+          return (
+            <button
+              key={m}
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onChange(m); }}
+              className={cn(
+                'absolute top-1/2 -translate-x-1/2 -translate-y-1/2',
+                'flex flex-col items-center group',
+                'outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 rounded-full',
+              )}
+              style={{ left: `${leftPercent}%` }}
+              role="radio"
+              aria-checked={isSelected}
+              aria-label={`${m.toFixed(1)}`}
+              tabIndex={isSelected ? 0 : -1}
+              title={`${m.toFixed(1)}`}
+            >
+              <div
+                className={cn(
+                  'w-3.5 h-3.5 rounded-full transition-all duration-200',
+                  'ring-2 ring-white dark:ring-zinc-900',
+                  isSelected
+                    ? 'bg-amber-500 dark:bg-amber-400 scale-125 shadow-sm shadow-amber-500/25'
+                    : isPast
+                      ? 'bg-amber-400/50 dark:bg-amber-400/40'
+                      : 'bg-zinc-300 dark:bg-zinc-600 hover:bg-amber-400/60',
+                )}
+              />
+              {label && (
+                <span
+                  className={cn(
+                    'absolute top-4 text-[10px] leading-none whitespace-nowrap transition-colors duration-200',
+                    'pointer-events-none select-none',
+                    isSelected
+                      ? 'text-amber-600 dark:text-amber-400 font-semibold'
+                      : 'text-zinc-400 dark:text-zinc-500',
+                  )}
+                >
+                  {label}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      <p className="text-[10px] text-zinc-400">控制 AI 回复的随机性与创造性，0 为最精准，2 为最创意。</p>
+    </div>
+  );
+}
+
 /**
  * 用户设置页面组件
- * 
+ *
  * 核心逻辑：
  * 1. 用户偏好设置：管理 AI 服务提供商、接口地址 (Base URL)、API Key 以及模型选择。支持高级参数（Max Tokens, Temperature）配置。
  * 2. 数据导出与备份：集成 DataManager，支持按学科和实体粒度选择数据并导出为 JSON 备份文件。
  * 3. 数据导入与恢复：支持解析备份文件并覆盖或合并至本地数据库，包含导入前的预览与选择逻辑。
  * 4. 环境变量覆盖机制：应用配置优先从本地数据库读取，若数据库为空则使用系统默认预设值。
- * 
+ *
  * @returns {JSX.Element} Settings 页面组件
  */
 export function Settings() {
@@ -238,6 +352,9 @@ export function Settings() {
   // Advanced Settings State
   const [showAdvanced, setShowAdvanced] = useState(false);
 
+  // Font Size State
+  const { fontSize, setFontSize } = useFontSize();
+
   useEffect(() => {
     loadSettings();
   }, []);
@@ -245,7 +362,6 @@ export function Settings() {
   useEffect(() => {
     if (settings) {
       setLocalSettings(settings);
-      // 从设置中加载缓存的模型列表
       if (settings.modelList && settings.modelList.length > 0) {
         setModels(settings.modelList);
       }
@@ -268,7 +384,6 @@ export function Settings() {
 
   const handleSave = async () => {
     if (localSettings) {
-      // 保存时同时保存模型列表
       const settingsToSave = {
         ...localSettings,
         modelList: models,
@@ -285,11 +400,8 @@ export function Settings() {
     const subjects = await db.subjects.toArray();
     const entities = await db.entities.toArray();
     setExportData({ subjects, entities });
-    
-    // Default select all
     setSelectedExportSubjects(new Set(subjects.map(s => s.id)));
     setSelectedExportEntities(new Set(entities.map(e => e.id)));
-    
     setShowExportModal(true);
   };
 
@@ -317,19 +429,16 @@ export function Settings() {
     try {
       const data = await DataManager.parseImportFile(file);
       setImportData(data);
-
-      // Default select all
       setSelectedImportSubjects(new Set(data.subjects.map(s => s.id)));
       setSelectedImportEntities(new Set(data.entities.map(e => e.id)));
       setImportChatHistory(data.chatSessions?.length > 0);
       setImportConfig(false);
       setOverwriteConfig(false);
-
       setShowImportModal(true);
     } catch (e) {
       showAlert('文件解析失败: ' + e, { title: '错误' });
     }
-    e.target.value = ''; // Reset
+    e.target.value = '';
   };
 
   const handleConfirmImport = async () => {
@@ -355,7 +464,6 @@ export function Settings() {
     const setSubjects = mode === 'export' ? setSelectedExportSubjects : setSelectedImportSubjects;
     const setEntities = mode === 'export' ? setSelectedExportEntities : setSelectedImportEntities;
 
-    // Toggle Subject
     setSubjects(prev => {
       const next = new Set(prev);
       if (checked) next.add(id);
@@ -363,7 +471,6 @@ export function Settings() {
       return next;
     });
 
-    // Toggle All Children Entities
     setEntities(prev => {
       const next = new Set(prev);
       entityIds.forEach(eid => {
@@ -378,7 +485,6 @@ export function Settings() {
     const setSubjects = mode === 'export' ? setSelectedExportSubjects : setSelectedImportSubjects;
     const setEntities = mode === 'export' ? setSelectedExportEntities : setSelectedImportEntities;
 
-    // Toggle Entity
     setEntities(prev => {
       const next = new Set(prev);
       if (checked) next.add(id);
@@ -386,7 +492,6 @@ export function Settings() {
       return next;
     });
 
-    // If Entity Checked -> Ensure Subject Checked
     if (checked) {
       setSubjects(prev => {
         const next = new Set(prev);
@@ -394,7 +499,6 @@ export function Settings() {
         return next;
       });
     }
-    // If Entity Unchecked -> We keep subject checked (optional choice)
   };
 
   const fetchModels = async () => {
@@ -404,7 +508,6 @@ export function Settings() {
       const modelList = await getModels(localSettings);
       const modelIds = modelList.map((m: any) => m.id);
       setModels(modelIds);
-      // 立即保存到设置中
       const settingsToSave = {
         ...localSettings,
         modelList: modelIds,
@@ -431,7 +534,6 @@ export function Settings() {
     return models.filter(m => m.toLowerCase().includes(namingModelSearch.toLowerCase()));
   }, [models, namingModelSearch]);
 
-  // 选择模型
   const selectModel = (model: string) => {
     if (localSettings) {
       setLocalSettings({ ...localSettings, model });
@@ -455,262 +557,387 @@ export function Settings() {
     return `缓存于 ${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
   };
 
-  if (isLoading || !localSettings) return <div className="p-8">加载中...</div>;
+  if (isLoading || !localSettings) return (
+    <div className="flex items-center justify-center h-full">
+      <div className="flex items-center gap-2 text-zinc-400">
+        <div className="w-4 h-4 border-2 border-zinc-300 border-t-blue-500 rounded-full animate-spin" />
+        加载中...
+      </div>
+    </div>
+  );
 
   return (
-    <div className="h-full w-full overflow-y-auto p-4 md:p-8 pb-20 md:pb-8">
-      <div className="max-w-2xl">
-        <h1 className="text-2xl md:text-3xl font-bold mb-4 md:mb-6 text-zinc-900 dark:text-zinc-100">设置</h1>
-        <div className="space-y-6 border p-6 rounded-lg bg-zinc-50 dark:bg-zinc-900 dark:border-zinc-800">
-          <h2 className="text-xl font-semibold text-zinc-800 dark:text-zinc-200">AI 配置</h2>
-
-          <div>
-            <label className="block text-sm font-medium mb-1 text-zinc-700 dark:text-zinc-300">提供商</label>
-            <select
-              className="w-full border rounded px-3 py-2 bg-white dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
-              value={localSettings.provider}
-              onChange={e => setLocalSettings({ ...localSettings, provider: e.target.value as any })}
-            >
-              <option value="openai">OpenAI</option>
-              <option value="custom">Custom (OpenAI 兼容)</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1 text-zinc-700 dark:text-zinc-300">接口地址 (Base URL)</label>
-            <input
-              className="w-full border rounded px-3 py-2 bg-white dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
-              value={localSettings.baseUrl}
-              onChange={e => setLocalSettings({ ...localSettings, baseUrl: e.target.value })}
-              placeholder="https://api.openai.com/v1"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1 text-zinc-700 dark:text-zinc-300">API Key</label>
-            <input
-              type="password"
-              className="w-full border rounded px-3 py-2 bg-white dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
-              value={localSettings.apiKey}
-              onChange={e => setLocalSettings({ ...localSettings, apiKey: e.target.value })}
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1 text-zinc-700 dark:text-zinc-300">模型</label>
-            <div className="flex gap-2">
-              <div ref={modelDropdownRef} className="flex-1 relative">
-                <div 
-                  className="flex items-center border rounded px-3 py-2 bg-white dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700 cursor-pointer"
-                  onClick={() => setShowModelDropdown(!showModelDropdown)}
-                >
-                  <input
-                    className="flex-1 bg-transparent border-0 outline-none text-zinc-900 dark:text-zinc-100 cursor-pointer"
-                    value={showModelDropdown ? modelSearch : localSettings.model}
-                    onChange={e => {
-                      setModelSearch(e.target.value);
-                      if (!showModelDropdown) setShowModelDropdown(true);
-                    }}
-                    onFocus={() => setShowModelDropdown(true)}
-                    placeholder="选择或输入模型名称..."
-                  />
-                  <ChevronDown className={cn("w-4 h-4 text-zinc-400 transition-transform", showModelDropdown && "rotate-180")} />
-                </div>
-                
-                {showModelDropdown && (
-                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg max-h-60 overflow-hidden">
-                    <div className="p-2 border-b border-zinc-200 dark:border-zinc-700">
-                      <div className="relative">
-                        <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
-                        <input
-                          className="w-full pl-8 pr-3 py-1.5 text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                          placeholder="搜索模型..."
-                          value={modelSearch}
-                          onChange={e => setModelSearch(e.target.value)}
-                        />
-                      </div>
-                    </div>
-                    <div className="overflow-y-auto max-h-48">
-                      {filteredModels.length === 0 ? (
-                        <div className="p-3 text-center text-zinc-400 text-sm">
-                          {models.length === 0 ? '点击右侧按钮获取模型列表' : '未找到匹配的模型'}
-                        </div>
-                      ) : (
-                        filteredModels.map(m => (
-                          <div
-                            key={m}
-                            className={cn(
-                              "px-3 py-2 cursor-pointer flex items-center justify-between text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors",
-                              localSettings.model === m && "bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
-                            )}
-                            onClick={() => selectModel(m)}
-                          >
-                            <span className="truncate">{m}</span>
-                            {localSettings.model === m && <Check className="w-4 h-4 shrink-0" />}
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-              <button
-                onClick={fetchModels}
-                disabled={loadingModels}
-                className="flex items-center gap-1.5 bg-zinc-200 dark:bg-zinc-700 px-3 py-2 rounded text-sm hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors text-zinc-800 dark:text-zinc-200 disabled:opacity-50"
-                title="刷新模型列表"
-              >
-                <RefreshCw className={cn("w-4 h-4", loadingModels && "animate-spin")} />
-                {loadingModels ? '获取中' : '刷新'}
-              </button>
-            </div>
-            {localSettings.modelListUpdatedAt && models.length > 0 && (
-              <p className="text-xs text-zinc-400 mt-1">{formatCacheTime(localSettings.modelListUpdatedAt)} · 共 {models.length} 个模型</p>
-            )}
-          </div>
-
-          {/* Advanced Settings Toggle */}
-          <div className="border-t dark:border-zinc-800 pt-4 mt-4">
-            <button
-              onClick={() => setShowAdvanced(!showAdvanced)}
-              className="flex items-center gap-2 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-blue-600 transition-colors"
-            >
-              {showAdvanced ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-              高级设置 (Advanced Settings)
-            </button>
-
-            {showAdvanced && (
-              <div className="mt-4 space-y-4 pl-4 border-l-2 border-zinc-200 dark:border-zinc-800 animate-in fade-in slide-in-from-top-2 duration-200">
-                <div>
-                  <label className="block text-xs text-zinc-500 mb-1">回复长度 (Max Tokens)</label>
-                  <input
-                    type="number"
-                    className="w-full border rounded px-3 py-2 bg-white dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
-                    value={localSettings.maxTokens || 4096}
-                    onChange={e => setLocalSettings({ ...localSettings, maxTokens: parseInt(e.target.value) || 0 })}
-                    placeholder="4096"
-                  />
-                  <p className="text-[10px] text-zinc-400 mt-1">控制 AI 回复的最大长度，建议 1024 - 8192</p>
-                </div>
-
-                <div>
-                  <label className="block text-xs text-zinc-500 mb-1">回复温度 (Temperature: {localSettings.temperature ?? 0.7})</label>
-                  <input
-                    type="range"
-                    min="0"
-                    max="2"
-                    step="0.1"
-                    className="w-full h-2 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                    value={localSettings.temperature ?? 0.7}
-                    onChange={e => setLocalSettings({ ...localSettings, temperature: parseFloat(e.target.value) })}
-                  />
-                  <div className="flex justify-between text-[10px] text-zinc-400 mt-1">
-                    <span>精准 (0.0)</span>
-                    <span>创意 (1.0)</span>
-                    <span>极致创意 (2.0)</span>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs text-zinc-500 mb-1">对话自动命名模型 (留空则使用主模型)</label>
-                  <div ref={namingModelDropdownRef} className="relative">
-                    <div 
-                      className="flex items-center border rounded px-3 py-2 bg-white dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700 cursor-pointer"
-                      onClick={() => setShowNamingModelDropdown(!showNamingModelDropdown)}
-                    >
-                      <input
-                        className="flex-1 bg-transparent border-0 outline-none text-zinc-900 dark:text-zinc-100 cursor-pointer"
-                        value={showNamingModelDropdown ? namingModelSearch : (localSettings.namingModel || '')}
-                        onChange={e => {
-                          setNamingModelSearch(e.target.value);
-                          if (!showNamingModelDropdown) setShowNamingModelDropdown(true);
-                        }}
-                        onFocus={() => setShowNamingModelDropdown(true)}
-                        placeholder="推荐使用更快速便宜的模型"
-                      />
-                      <ChevronDown className={cn("w-4 h-4 text-zinc-400 transition-transform", showNamingModelDropdown && "rotate-180")} />
-                    </div>
-                    
-                    {showNamingModelDropdown && (
-                      <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg max-h-60 overflow-hidden">
-                        <div className="p-2 border-b border-zinc-200 dark:border-zinc-700">
-                          <div className="relative">
-                            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
-                            <input
-                              className="w-full pl-8 pr-3 py-1.5 text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                              placeholder="搜索模型..."
-                              value={namingModelSearch}
-                              onChange={e => setNamingModelSearch(e.target.value)}
-                            />
-                          </div>
-                        </div>
-                        <div className="overflow-y-auto max-h-48">
-                          {/* 清空选项 */}
-                          <div
-                            className={cn(
-                              "px-3 py-2 cursor-pointer flex items-center justify-between text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors text-zinc-500",
-                              !localSettings.namingModel && "bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
-                            )}
-                            onClick={() => selectNamingModel('')}
-                          >
-                            <span>使用主模型（留空）</span>
-                            {!localSettings.namingModel && <Check className="w-4 h-4 shrink-0" />}
-                          </div>
-                          {filteredNamingModels.length === 0 ? (
-                            <div className="p-3 text-center text-zinc-400 text-sm">
-                              {models.length === 0 ? '请先获取模型列表' : '未找到匹配的模型'}
-                            </div>
-                          ) : (
-                            filteredNamingModels.map(m => (
-                              <div
-                                key={m}
-                                className={cn(
-                                  "px-3 py-2 cursor-pointer flex items-center justify-between text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors",
-                                  localSettings.namingModel === m && "bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
-                                )}
-                                onClick={() => selectNamingModel(m)}
-                              >
-                                <span className="truncate">{m}</span>
-                                {localSettings.namingModel === m && <Check className="w-4 h-4 shrink-0" />}
-                              </div>
-                            ))
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <button
-            onClick={handleSave}
-            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors"
-          >
-            保存设置
-          </button>
+    <div className="h-full w-full overflow-y-auto">
+      <div className="max-w-2xl mx-auto px-4 py-6 md:px-8 md:py-10 pb-24 md:pb-10 space-y-8">
+        {/* ===== 页头 ===== */}
+        <div className="space-y-1">
+          <h1 className="text-2xl md:text-3xl font-bold text-zinc-900 dark:text-zinc-100 tracking-tight">
+            设置
+          </h1>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            管理 AI 连接、显示偏好与数据备份
+          </p>
         </div>
 
-        <div className="mt-8 space-y-6 border p-6 rounded-lg bg-zinc-50 dark:bg-zinc-900 dark:border-zinc-800">
-          <h2 className="text-xl font-semibold text-zinc-800 dark:text-zinc-200">数据管理</h2>
-          <p className="text-sm text-zinc-500">您可以将所有学科、笔记和设置导出为本地文件进行备份，或从备份文件中恢复数据。</p>
-
-          <div className="flex gap-4">
-            <button
-              onClick={openExportModal}
-              className="flex items-center gap-2 px-4 py-2 bg-zinc-200 dark:bg-zinc-700 text-zinc-800 dark:text-zinc-200 rounded hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors"
-            >
-              <Upload size={18} />
-              导出数据
-            </button>
-
-            <label className="flex items-center gap-2 px-4 py-2 bg-zinc-200 dark:bg-zinc-700 text-zinc-800 dark:text-zinc-200 rounded hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors cursor-pointer">
-              <Download size={18} />
-              导入数据
-              <input type="file" accept=".json" onChange={handleImportFile} className="hidden" />
-            </label>
+        {/* ===== AI 配置 ===== */}
+        <section className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 overflow-hidden">
+          {/* 节头 */}
+          <div className="flex items-center gap-3 px-5 py-4 border-b border-zinc-100 dark:border-zinc-800/50 bg-zinc-50/50 dark:bg-zinc-900/50">
+            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-900/30">
+              <Settings2 size={16} className="text-blue-600 dark:text-blue-400" />
+            </div>
+            <div>
+              <h2 className="text-base font-semibold text-zinc-800 dark:text-zinc-200">AI 配置</h2>
+              <p className="text-xs text-zinc-400 dark:text-zinc-500">配置 API 连接与模型参数</p>
+            </div>
           </div>
+
+          <div className="p-5 space-y-5">
+            {/* 提供商 */}
+            <div>
+              <label className="block text-sm font-medium mb-1.5 text-zinc-700 dark:text-zinc-300">
+                提供商
+              </label>
+              <select
+                className="w-full border rounded-lg px-3 py-2 bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-shadow"
+                value={localSettings.provider}
+                onChange={e => setLocalSettings({ ...localSettings, provider: e.target.value as any })}
+              >
+                <option value="openai">OpenAI</option>
+                <option value="custom">Custom (OpenAI 兼容)</option>
+              </select>
+            </div>
+
+            {/* Base URL */}
+            <div>
+              <label className="block text-sm font-medium mb-1.5 text-zinc-700 dark:text-zinc-300">
+                接口地址 (Base URL)
+              </label>
+              <input
+                className="w-full border rounded-lg px-3 py-2 bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-shadow font-mono"
+                value={localSettings.baseUrl}
+                onChange={e => setLocalSettings({ ...localSettings, baseUrl: e.target.value })}
+                placeholder="https://api.openai.com/v1"
+              />
+            </div>
+
+            {/* API Key */}
+            <div>
+              <label className="block text-sm font-medium mb-1.5 text-zinc-700 dark:text-zinc-300">
+                API Key
+              </label>
+              <input
+                type="password"
+                className="w-full border rounded-lg px-3 py-2 bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-shadow font-mono"
+                value={localSettings.apiKey}
+                onChange={e => setLocalSettings({ ...localSettings, apiKey: e.target.value })}
+              />
+            </div>
+
+            {/* 模型选择 */}
+            <div>
+              <label className="block text-sm font-medium mb-1.5 text-zinc-700 dark:text-zinc-300">
+                模型
+              </label>
+              <div className="flex gap-2">
+                <div ref={modelDropdownRef} className="flex-1 relative">
+                  <div
+                    className="flex items-center border rounded-lg px-3 py-2 bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 cursor-pointer hover:border-zinc-300 dark:hover:border-zinc-600 transition-colors"
+                    onClick={() => setShowModelDropdown(!showModelDropdown)}
+                  >
+                    <input
+                      className="flex-1 bg-transparent border-0 outline-none text-zinc-900 dark:text-zinc-100 text-sm cursor-pointer"
+                      value={showModelDropdown ? modelSearch : localSettings.model}
+                      onChange={e => {
+                        setModelSearch(e.target.value);
+                        if (!showModelDropdown) setShowModelDropdown(true);
+                      }}
+                      onFocus={() => setShowModelDropdown(true)}
+                      placeholder="选择或输入模型名称..."
+                    />
+                    <ChevronDown className={cn("w-4 h-4 text-zinc-400 transition-transform duration-200", showModelDropdown && "rotate-180")} />
+                  </div>
+
+                  {showModelDropdown && (
+                    <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg max-h-60 overflow-hidden">
+                      <div className="p-2 border-b border-zinc-100 dark:border-zinc-800">
+                        <div className="relative">
+                          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+                          <input
+                            className="w-full pl-8 pr-3 py-1.5 text-sm bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 text-zinc-900 dark:text-zinc-100"
+                            placeholder="搜索模型..."
+                            value={modelSearch}
+                            onChange={e => setModelSearch(e.target.value)}
+                          />
+                        </div>
+                      </div>
+                      <div className="overflow-y-auto max-h-48">
+                        {filteredModels.length === 0 ? (
+                          <div className="p-3 text-center text-zinc-400 text-sm">
+                            {models.length === 0 ? '点击右侧按钮获取模型列表' : '未找到匹配的模型'}
+                          </div>
+                        ) : (
+                          filteredModels.map(m => (
+                            <div
+                              key={m}
+                              className={cn(
+                                "px-3 py-2 cursor-pointer flex items-center justify-between text-sm hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors",
+                                localSettings.model === m && "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400"
+                              )}
+                              onClick={() => selectModel(m)}
+                            >
+                              <span className="truncate">{m}</span>
+                              {localSettings.model === m && <Check className="w-4 h-4 shrink-0" />}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={fetchModels}
+                  disabled={loadingModels}
+                  className="flex items-center gap-1.5 bg-zinc-100 dark:bg-zinc-800 px-3 py-2 rounded-lg text-sm hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors text-zinc-700 dark:text-zinc-300 disabled:opacity-50 border border-zinc-200 dark:border-zinc-700"
+                  title="刷新模型列表"
+                >
+                  <RefreshCw className={cn("w-4 h-4", loadingModels && "animate-spin")} />
+                  <span className="hidden sm:inline">{loadingModels ? '获取中' : '刷新'}</span>
+                </button>
+              </div>
+              {localSettings.modelListUpdatedAt && models.length > 0 && (
+                <p className="text-xs text-zinc-400 mt-1.5">{formatCacheTime(localSettings.modelListUpdatedAt)} · 共 {models.length} 个模型</p>
+              )}
+            </div>
+
+            {/* 高级设置 */}
+            <div className="border-t border-zinc-100 dark:border-zinc-800 pt-5">
+              <button
+                onClick={() => setShowAdvanced(!showAdvanced)}
+                className="flex items-center gap-2 text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors group"
+              >
+                <span className={cn(
+                  "transition-transform duration-200",
+                  showAdvanced && "rotate-90"
+                )}>
+                  <ChevronRight size={14} />
+                </span>
+                高级设置
+                <span className="text-xs text-zinc-400 font-normal">(Max Tokens · Temperature · 命名模型)</span>
+              </button>
+
+              <div className={cn(
+                "grid transition-all duration-300 ease-out",
+                showAdvanced ? "grid-rows-[1fr] opacity-100 mt-4" : "grid-rows-[0fr] opacity-0 mt-0"
+              )}>
+                <div className="overflow-hidden">
+                  <div className="space-y-5 pl-6 border-l-2 border-zinc-100 dark:border-zinc-800">
+                    {/* Max Tokens */}
+                    <div>
+                      <label className="block text-sm font-medium mb-1.5 text-zinc-700 dark:text-zinc-300">
+                        回复长度 (Max Tokens)
+                      </label>
+                      <input
+                        type="number"
+                        className="w-full border rounded-lg px-3 py-2 bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-shadow"
+                        value={localSettings.maxTokens || 4096}
+                        onChange={e => setLocalSettings({ ...localSettings, maxTokens: parseInt(e.target.value) || 0 })}
+                        placeholder="4096"
+                      />
+                      <p className="text-[10px] text-zinc-400 mt-1">控制 AI 回复的最大长度，建议 1024 - 8192</p>
+                    </div>
+
+                    {/* Temperature */}
+                    <TemperatureSlider
+                      value={localSettings.temperature ?? 0.7}
+                      onChange={(v) => setLocalSettings({ ...localSettings, temperature: v })}
+                    />
+
+                    {/* 命名模型 */}
+                    <div>
+                      <label className="block text-sm font-medium mb-1.5 text-zinc-700 dark:text-zinc-300">
+                        对话自动命名模型
+                      </label>
+                      <p className="text-[10px] text-zinc-400 mb-1.5">留空则使用主模型——推荐使用更快速便宜的模型</p>
+                      <div ref={namingModelDropdownRef} className="relative">
+                        <div
+                          className="flex items-center border rounded-lg px-3 py-2 bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 cursor-pointer hover:border-zinc-300 dark:hover:border-zinc-600 transition-colors"
+                          onClick={() => setShowNamingModelDropdown(!showNamingModelDropdown)}
+                        >
+                          <input
+                            className="flex-1 bg-transparent border-0 outline-none text-zinc-900 dark:text-zinc-100 text-sm cursor-pointer"
+                            value={showNamingModelDropdown ? namingModelSearch : (localSettings.namingModel || '')}
+                            onChange={e => {
+                              setNamingModelSearch(e.target.value);
+                              if (!showNamingModelDropdown) setShowNamingModelDropdown(true);
+                            }}
+                            onFocus={() => setShowNamingModelDropdown(true)}
+                            placeholder="推荐使用更快速便宜的模型"
+                          />
+                          <ChevronDown className={cn("w-4 h-4 text-zinc-400 transition-transform duration-200", showNamingModelDropdown && "rotate-180")} />
+                        </div>
+
+                        {showNamingModelDropdown && (
+                          <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg max-h-60 overflow-hidden">
+                            <div className="p-2 border-b border-zinc-100 dark:border-zinc-800">
+                              <div className="relative">
+                                <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+                                <input
+                                  className="w-full pl-8 pr-3 py-1.5 text-sm bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 text-zinc-900 dark:text-zinc-100"
+                                  placeholder="搜索模型..."
+                                  value={namingModelSearch}
+                                  onChange={e => setNamingModelSearch(e.target.value)}
+                                />
+                              </div>
+                            </div>
+                            <div className="overflow-y-auto max-h-48">
+                              <div
+                                className={cn(
+                                  "px-3 py-2 cursor-pointer flex items-center justify-between text-sm hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors text-zinc-500",
+                                  !localSettings.namingModel && "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400"
+                                )}
+                                onClick={() => selectNamingModel('')}
+                              >
+                                <span>使用主模型（留空）</span>
+                                {!localSettings.namingModel && <Check className="w-4 h-4 shrink-0" />}
+                              </div>
+                              {filteredNamingModels.length === 0 ? (
+                                <div className="p-3 text-center text-zinc-400 text-sm">
+                                  {models.length === 0 ? '请先获取模型列表' : '未找到匹配的模型'}
+                                </div>
+                              ) : (
+                                filteredNamingModels.map(m => (
+                                  <div
+                                    key={m}
+                                    className={cn(
+                                      "px-3 py-2 cursor-pointer flex items-center justify-between text-sm hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors",
+                                      localSettings.namingModel === m && "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400"
+                                    )}
+                                    onClick={() => selectNamingModel(m)}
+                                  >
+                                    <span className="truncate">{m}</span>
+                                    {localSettings.namingModel === m && <Check className="w-4 h-4 shrink-0" />}
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ===== 显示设置 ===== */}
+        <section className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 overflow-hidden">
+          <div className="flex items-center gap-3 px-5 py-4 border-b border-zinc-100 dark:border-zinc-800/50 bg-zinc-50/50 dark:bg-zinc-900/50">
+            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-purple-100 dark:bg-purple-900/30">
+              <Type size={16} className="text-purple-600 dark:text-purple-400" />
+            </div>
+            <div>
+              <h2 className="text-base font-semibold text-zinc-800 dark:text-zinc-200">显示设置</h2>
+              <p className="text-xs text-zinc-400 dark:text-zinc-500">调整全局字体大小，内容与对话即刻生效</p>
+            </div>
+          </div>
+
+          <div className="p-5 space-y-6">
+            <FontSizeSlider
+              label="全局字体大小"
+              description="笔记、文档、题库及 AI 对话窗口的文字大小"
+              options={APP_FONT_OPTIONS}
+              value={fontSize}
+              onChange={setFontSize}
+            />
+
+            {/* 内容字体实时预览 */}
+            <div
+              className="rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-900/50 p-4 space-y-2"
+              style={{ fontSize: `${fontSize}px` }}
+            >
+              <p className="text-[10px] text-zinc-400 uppercase tracking-wide">内容字体预览</p>
+              <h3 className="text-[1.5em] font-bold text-zinc-800 dark:text-zinc-200">
+                这是标题文本 Heading
+              </h3>
+              <p className="leading-relaxed text-zinc-700 dark:text-zinc-300">
+                这是正文段落。The quick brown fox jumps over the lazy dog.
+                窗前明月光，疑是地上霜。举头望明月，低头思故乡。
+              </p>
+              <p className="text-[0.875em] text-zinc-500 dark:text-zinc-400">
+                这是小字注释：调整上方滑块可实时预览字体大小变化。
+              </p>
+            </div>
+
+            <div className="border-t border-zinc-100 dark:border-zinc-800 pt-5">
+              {/* 对话框字体实时预览 */}
+              <div
+                className="rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-900/50 p-4 space-y-2"
+                style={{ fontSize: `${fontSize}px` }}
+              >
+                <p className="text-[10px] text-zinc-400 uppercase tracking-wide">对话框字体预览</p>
+                <div className="flex gap-3">
+                  <div className="w-6 h-6 rounded-full bg-blue-500 shrink-0 mt-0.5" />
+                  <div className="space-y-1.5">
+                    <p className="text-zinc-800 dark:text-zinc-200 leading-relaxed">
+                      AI 助手回复消息示例：已为您生成学习笔记，涵盖核心知识点与重点难点解析。
+                    </p>
+                    <p className="text-[0.85em] text-zinc-400 dark:text-zinc-500">
+                      工具调用 · 搜索了 3 个来源 · 耗时 1.2s
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ===== 数据管理 ===== */}
+        <section className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 overflow-hidden">
+          <div className="flex items-center gap-3 px-5 py-4 border-b border-zinc-100 dark:border-zinc-800/50 bg-zinc-50/50 dark:bg-zinc-900/50">
+            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-900/30">
+              <HardDrive size={16} className="text-amber-600 dark:text-amber-400" />
+            </div>
+            <div>
+              <h2 className="text-base font-semibold text-zinc-800 dark:text-zinc-200">数据管理</h2>
+              <p className="text-xs text-zinc-400 dark:text-zinc-500">备份与恢复学习数据</p>
+            </div>
+          </div>
+
+          <div className="p-5 space-y-4">
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+              您可以将所有学科、笔记和设置导出为本地文件进行备份，或从备份文件中恢复数据。
+            </p>
+
+            <div className="flex flex-wrap gap-3">
+              <button
+                onClick={openExportModal}
+                className="flex items-center gap-2 px-4 py-2.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors text-sm font-medium border border-zinc-200 dark:border-zinc-700"
+              >
+                <Upload size={16} />
+                导出数据
+              </button>
+
+              <label className="flex items-center gap-2 px-4 py-2.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors cursor-pointer text-sm font-medium border border-zinc-200 dark:border-zinc-700">
+                <Download size={16} />
+                导入数据
+                <input type="file" accept=".json" onChange={handleImportFile} className="hidden" />
+              </label>
+            </div>
+          </div>
+        </section>
+
+        {/* ===== 保存按钮 ===== */}
+        <div className="flex justify-end">
+          <button
+            onClick={handleSave}
+            className="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-2.5 rounded-lg hover:bg-blue-700 active:bg-blue-800 transition-colors text-sm font-medium shadow-sm shadow-blue-500/20"
+          >
+            <Check size={16} />
+            保存设置
+          </button>
         </div>
       </div>
 
@@ -723,13 +950,13 @@ export function Settings() {
           <div className="flex gap-2">
             <button
               onClick={() => setShowExportModal(false)}
-              className="px-4 py-2 text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800 rounded transition-colors"
+              className="px-4 py-2 text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800 rounded-lg transition-colors text-sm"
             >
               取消
             </button>
             <button
               onClick={handleConfirmExport}
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
             >
               确认导出 ({selectedExportEntities.size} 项)
             </button>
@@ -779,13 +1006,13 @@ export function Settings() {
           <div className="flex gap-2">
             <button
               onClick={() => setShowImportModal(false)}
-              className="px-4 py-2 text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800 rounded transition-colors"
+              className="px-4 py-2 text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800 rounded-lg transition-colors text-sm"
             >
               取消
             </button>
             <button
               onClick={handleConfirmImport}
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
             >
               确认导入 ({selectedImportEntities.size} 项)
             </button>

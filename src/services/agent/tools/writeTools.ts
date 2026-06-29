@@ -78,16 +78,61 @@ export const update_subject = async ({ subjectId, name, description }: { subject
 };
 
 /**
- * 为指定学科创建一个全新的独立思维导图实体。
- * 每次调用均创建新实体，多个导图可在同一学科下共存，互不干扰。
- * 如需向已有导图追加内容，请使用 add_mindmap_elements；如需修改现有导图，请使用 update_mindmap。
+ * 为指定学科创建全新的思维导图实体。
+ * 若该学科下已存在思维导图，则自动将新节点和连线合并入已有导图（避免产生多份数据），
+ * 新增节点会向右偏移以避免与现有内容重叠。
+ * 如需向已有导图追加内容，也可直接使用 add_mindmap_elements；如需整体替换，请使用 update_mindmap。
  *
  * @param args.subjectId - 归属学科 ID
  * @param args.title - 导图标题
  * @param args.content - 包含 React Flow nodes 和 edges 的序列化数据
- * @returns 新创建的导图实体 ID 与标题
+ * @returns 导图实体 ID 与标题，merged 字段标识是否合并到已有导图
  */
 export const create_mindmap = async ({ subjectId, title, content }: { subjectId: string; title: string; content: any }) => {
+  const existing = await db.entities.where({ subjectId, type: 'mindmap' }).first();
+
+  if (existing) {
+    const currentContent = existing.content || { nodes: [], edges: [] };
+    const newNodes = [...(currentContent.nodes || [])];
+    const newEdges = [...(currentContent.edges || [])];
+
+    const maxX = newNodes.length > 0 ? Math.max(...newNodes.map((n: any) => n.position?.x || 0)) : 0;
+    const offsetX = maxX + 400;
+
+    const robustContent = robustParseContent(content);
+    (robustContent.nodes || []).forEach((n: any) => {
+      const idx = newNodes.findIndex((old: any) => old.id === n.id);
+      if (idx >= 0) {
+        newNodes[idx] = {
+          ...n,
+          position: {
+            x: offsetX,
+            y: n.position?.y || 0
+          }
+        };
+      } else {
+        newNodes.push({
+          ...n,
+          position: {
+            x: offsetX,
+            y: n.position?.y || 0
+          }
+        });
+      }
+    });
+
+    (robustContent.edges || []).forEach((e: any) => {
+      const idx = newEdges.findIndex((old: any) => old.id === e.id);
+      if (idx >= 0) newEdges[idx] = e;
+      else newEdges.push(e);
+    });
+
+    existing.content = { nodes: newNodes, edges: newEdges };
+    existing.updatedAt = Date.now();
+    await db.entities.put(existing);
+    return { id: existing.id, title: existing.title, merged: true };
+  }
+
   const id = generateUUID();
   const now = Date.now();
   await db.entities.add({
