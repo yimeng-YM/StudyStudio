@@ -4,12 +4,13 @@ import remarkMath from 'remark-math';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
 import rehypeKatex from 'rehype-katex';
+import rehypeRaw from 'rehype-raw';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus, prism } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 import 'katex/dist/katex.min.css';
 import { MessageContentPart, ToolCall } from '@/services/ai';
-import { FileText, FileSpreadsheet, FileCode, ChevronDown, ChevronRight, CheckCircle2, Loader2, GitCompare } from 'lucide-react';
+import { FileText, FileSpreadsheet, FileCode, ChevronDown, ChevronRight, CheckCircle2, Loader2, GitCompare, Eye, Code2 } from 'lucide-react';
 import { db } from '@/db';
 import mermaid from 'mermaid';
 import { useTheme } from '@/hooks/useTheme';
@@ -578,12 +579,178 @@ interface MessageRendererProps {
 }
 
 /**
+ * 宽松检测：内容是否包含任何 HTML 标签（用于决定是否显示 View/Code 切换按钮）
+ */
+export function hasHtmlContent(content: string): boolean {
+  if (!content || !content.trim()) return false;
+  return /<[a-zA-Z][^>]*>/.test(content);
+}
+
+/**
+ * 严格检测：内容是否为纯 HTML 文档（用于决定是否用 iframe 预览）
+ */
+export function isHtmlContent(content: string): boolean {
+  if (!content || !content.trim()) return false;
+  const trimmed = content.trim();
+  // 以 DOCTYPE、html 标签、或 div/table/style/script 等结构标签开头
+  if (/^\s*<(!DOCTYPE|html|head|body|div|table|style|script|meta|link|iframe)[\s>]/i.test(trimmed)) return true;
+  // 或内容中 HTML 标签占比显著（>30% 的行含 HTML 标签）
+  const lines = trimmed.split('\n');
+  if (lines.length > 2) {
+    const htmlLines = lines.filter(l => /<[a-zA-Z][^>]*>/.test(l));
+    return htmlLines.length / lines.length > 0.3;
+  }
+  return false;
+}
+
+/**
+ * View/Code 切换按钮组件（紧凑版，用于代码块内嵌）
+ */
+function MiniViewToggle({ mode, onChange }: { mode: 'view' | 'code'; onChange: (m: 'view' | 'code') => void }) {
+  return (
+    <div className="inline-flex items-center rounded overflow-hidden border border-zinc-300 dark:border-zinc-600">
+      <button
+        onClick={() => onChange('view')}
+        className={`flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium transition-colors ${
+          mode === 'view' ? 'bg-blue-600 text-white' : 'bg-transparent text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+        }`}
+      >
+        <Eye size={10} /> 预览
+      </button>
+      <button
+        onClick={() => onChange('code')}
+        className={`flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium transition-colors ${
+          mode === 'code' ? 'bg-blue-600 text-white' : 'bg-transparent text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+        }`}
+      >
+        <Code2 size={10} /> 源码
+      </button>
+    </div>
+  );
+}
+
+/** View/Code 切换按钮（标准大小，用于工具栏） */
+export function ViewCodeToggle({ mode, onChange, className = '' }: { mode: 'view' | 'code'; onChange: (m: 'view' | 'code') => void; className?: string }) {
+  return (
+    <div className={`inline-flex items-center rounded-lg border border-zinc-200 dark:border-zinc-700 overflow-hidden ${className}`}>
+      <button onClick={() => onChange('view')}
+        className={`flex items-center gap-1 px-2 py-1 text-xs font-medium transition-colors ${
+          mode === 'view' ? 'bg-blue-600 text-white' : 'bg-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+        }`} title="预览视图">
+        <Eye size={12} /> 预览
+      </button>
+      <button onClick={() => onChange('code')}
+        className={`flex items-center gap-1 px-2 py-1 text-xs font-medium transition-colors ${
+          mode === 'code' ? 'bg-blue-600 text-white' : 'bg-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+        }`} title="源代码视图">
+        <Code2 size={12} /> 源码
+      </button>
+    </div>
+  );
+}
+
+/**
+ * HTML 预览组件：view 模式用 iframe 渲染可交互 HTML，code 模式用 SyntaxHighlighter 展示源码
+ */
+/** 将用户 HTML 包装为安全的 iframe srcdoc：注入防溢出样式，防止错误文本撑开布局 */
+function wrapHtmlForIframe(html: string): string {
+  const overflowCSS = `<style>
+*,*::before,*::after{max-width:100%!important;overflow-wrap:break-word!important;word-break:break-word!important;box-sizing:border-box!important}
+pre,code{white-space:pre-wrap!important;overflow-wrap:break-word!important;word-break:break-all!important;max-width:100%!important;display:block!important}
+img,svg,canvas,video,iframe,object{max-width:100%!important;height:auto!important}
+table{max-width:100%!important;display:block!important;overflow-x:auto!important}
+body{margin:0;padding:8px;font-family:system-ui,sans-serif;font-size:14px;max-width:100%!important;overflow-x:hidden!important}
+</style>`;
+  const trimmed = html.trim();
+  // 已有完整 HTML 结构：注入到 head 中
+  if (/^\s*<(!DOCTYPE|html)/i.test(trimmed)) {
+    if (/<head[^>]*>/i.test(trimmed)) {
+      return trimmed.replace(/<head[^>]*>/i, (match) => match + overflowCSS);
+    }
+    if (/<html[^>]*>/i.test(trimmed)) {
+      return trimmed.replace(/<html[^>]*>/i, (match) => match + '<head>' + overflowCSS + '</head>');
+    }
+    return overflowCSS + trimmed;
+  }
+  // 片段 HTML：直接拼接
+  return '<!DOCTYPE html><html><head><meta charset="UTF-8">' + overflowCSS + '</head><body>' + trimmed + '</body></html>';
+}
+
+export function HtmlPreview({ content, mode, className = '' }: { content: string; mode: 'view' | 'code'; className?: string }) {
+  const isDark = useIsDark();
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [iframeHeight, setIframeHeight] = useState(400);
+
+  const srcdoc = useMemo(() => (mode === 'view' ? wrapHtmlForIframe(content) : ''), [mode, content]);
+
+  // 监听 iframe 内容高度变化
+  useEffect(() => {
+    if (mode !== 'view' || !iframeRef.current) return;
+    const iframe = iframeRef.current;
+    const tryUpdateHeight = () => {
+      try {
+        const doc = iframe.contentDocument || iframe.contentWindow?.document;
+        if (doc) {
+          const h = Math.max(
+            doc.documentElement.scrollHeight,
+            doc.body.scrollHeight,
+            doc.documentElement.offsetHeight,
+            200
+          );
+          setIframeHeight(h + 16);
+        }
+      } catch { /* cross-origin */ }
+    };
+    const onLoad = () => { setTimeout(tryUpdateHeight, 100); };
+    iframe.addEventListener('load', onLoad);
+    const timer = setInterval(tryUpdateHeight, 500);
+    const safetyStop = setTimeout(() => clearInterval(timer), 10000);
+    return () => {
+      iframe.removeEventListener('load', onLoad);
+      clearInterval(timer);
+      clearTimeout(safetyStop);
+    };
+  }, [mode, srcdoc]);
+
+  if (mode === 'code') {
+    return (
+      <div className={`rounded-lg overflow-x-auto border border-zinc-200 dark:border-zinc-700 max-w-full ${className}`}>
+        <SyntaxHighlighter
+          style={isDark ? vscDarkPlus : prism}
+          language="html"
+          PreTag="div"
+          className="!m-0 text-xs max-w-none"
+          wrapLongLines={false}
+          showLineNumbers={true}
+        >
+          {content}
+        </SyntaxHighlighter>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-700 bg-white max-w-full ${className}`}>
+      <iframe
+        ref={iframeRef}
+        srcDoc={srcdoc}
+        sandbox="allow-scripts allow-same-origin"
+        className="w-full border-0 max-w-full"
+        style={{ height: iframeHeight, minHeight: 200 }}
+        title="HTML Preview"
+      />
+    </div>
+  );
+}
+
+/**
  * 消息渲染主组件
- * 
+ *
  * 核心功能：
  * 1. 结构化处理：支持纯文本字符串或多模态内容数组。
- * 2. Markdown 解析：集成 ReactMarkdown 实现基础格式渲染。
+ * 2. Markdown 解析：集成 ReactMarkdown 实现基础格式渲染，支持内嵌 HTML。
  * 3. 复杂逻辑分发：根据内容类型（文字、图片等）调用对应的子组件。
+ * 4. 支持 view/code 双模式切换。
  */
 export function MessageRenderer({ content, isUser }: MessageRendererProps) {
   if (!content) return null;
@@ -754,6 +921,45 @@ function Mermaid({ chart }: { chart: string }) {
  * 3. 代码高亮：使用 SyntaxHighlighter 对标准代码块进行着色，对 mermaid 代码块调用 Mermaid 组件。
  * 4. 样式控制：根据发送者（用户/助手）和当前主题动态切换排版样式。
  */
+/** HTML 代码块渲染组件：支持预览 / 源码切换 */
+function HtmlCodeBlock({ code }: { code: string }) {
+  const [mode, setMode] = useState<'view' | 'code'>('view');
+  const isDark = useIsDark();
+
+  if (mode === 'code') {
+    return (
+      <div className="my-3">
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-[10px] text-zinc-400 font-mono">html</span>
+          <MiniViewToggle mode={mode} onChange={setMode} />
+        </div>
+        <div className="rounded-lg overflow-x-auto border border-zinc-200 dark:border-zinc-700 max-w-full">
+          <SyntaxHighlighter
+            style={isDark ? vscDarkPlus : prism}
+            language="html"
+            PreTag="div"
+            className="!m-0 text-xs max-w-none"
+            wrapLongLines={false}
+            showLineNumbers={true}
+          >
+            {code}
+          </SyntaxHighlighter>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="my-3">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-[10px] text-zinc-400 font-mono">html</span>
+        <MiniViewToggle mode={mode} onChange={setMode} />
+      </div>
+      <HtmlPreview content={code} mode="view" />
+    </div>
+  );
+}
+
 function MarkdownText({ content, isUser }: { content: string; isUser?: boolean }) {
   const [metadata, contentToRender] = extractMetadata(content);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -768,6 +974,11 @@ function MarkdownText({ content, isUser }: { content: string; isUser?: boolean }
       // Mermaid 流程图特殊处理
       if (!inline && (language === 'mermaid' || language === 'sequenceDiagram')) {
         return <Mermaid chart={String(children).replace(/\n$/, '')} />;
+      }
+
+      // HTML 代码块：支持预览 / 源码切换
+      if (!inline && language === 'html') {
+        return <HtmlCodeBlock code={String(children).replace(/\n$/, '')} />;
       }
 
       // 标准代码块高亮
@@ -796,6 +1007,9 @@ function MarkdownText({ content, isUser }: { content: string; isUser?: boolean }
     td: ({ node, ...props }: any) => <td {...props} className="px-3 py-2 text-inherit border border-slate-200 dark:border-slate-700" style={{ fontSize: 'inherit' }} />,
   };
 
+  // 始终包含 rehypeRaw，用于渲染内嵌 HTML（callout boxes、colored text 等）
+  const rehypePlugins = [rehypeRaw, [rehypeKatex, { strict: false }]] as any;
+
   // 如果包含文件元数据，渲染为可展开的文件预览卡片
   if (metadata) {
     let Icon = FileText;
@@ -823,7 +1037,7 @@ function MarkdownText({ content, isUser }: { content: string; isUser?: boolean }
             <div className="prose dark:prose-invert max-w-none break-words">
               <ReactMarkdown
                 remarkPlugins={[remarkMath, remarkGfm, remarkBreaks]}
-                rehypePlugins={[[rehypeKatex, { strict: false }]]}
+                rehypePlugins={rehypePlugins}
                 components={markdownComponents}
                 urlTransform={(url) => {
                   if (url.startsWith('attachment:')) return url;
@@ -852,7 +1066,7 @@ function MarkdownText({ content, isUser }: { content: string; isUser?: boolean }
     <div className={proseClass} style={{ fontSize: 'var(--app-font-size, 14px)' }}>
       <ReactMarkdown
         remarkPlugins={[remarkMath, remarkGfm, remarkBreaks]}
-        rehypePlugins={[[rehypeKatex, { strict: false }]]}
+        rehypePlugins={rehypePlugins}
         components={markdownComponents}
         urlTransform={(url) => {
           if (url.startsWith('attachment:')) return url;

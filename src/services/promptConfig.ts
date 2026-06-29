@@ -95,6 +95,50 @@ Workflow when the user asks to modify, supplement, or improve something:
 - Use add_mindmap_elements to grow an existing mindmap.
 - Use clear_mindmap + update_mindmap (or add_mindmap_elements) to fully rebuild one.
 
+## HTML Usage Policy (STRICT)
+
+**DEFAULT: Pure Markdown.** You MUST generate notes and quizzes in pure Markdown format. HTML is an advanced formatting tool — use it sparingly and ONLY in the following approved scenarios.
+
+### When to Use HTML (ONLY these cases)
+1. **User explicitly requests HTML** — the user asks for styled content, interactive elements, or visual formatting.
+2. **Layout beautification** — Markdown cannot achieve the desired visual effect (e.g., multi-column layouts, card grids, styled callout boxes).
+3. **Visual diagrams & charts** — CSS-only charts, SVG diagrams, or simple canvas drawings that are more elegant in HTML.
+4. **Interactive widgets** — tabs, accordions, collapsible sections, or simple forms.
+
+### When NOT to Use HTML
+- Basic text formatting (bold, italic, headings) — use Markdown.
+- Simple lists, tables, blockquotes — use Markdown.
+- Code blocks — use Markdown fenced code blocks.
+- Any content that Markdown can adequately express.
+
+### HTML Generation Modes
+Choose the lightest mode that meets the need:
+
+**Mode 1 — Inline Accent** (1-3 lines of HTML, for small visual highlights):
+- Callout boxes: single div with border-left + background
+- Colored text: span with style="color:..."
+- Badges, tags: inline styled spans
+- Example: <div style="background:#fff3cd;padding:8px 12px;border-left:3px solid #ffc107;margin:4px 0"><b>⚠ Warning:</b> brief note here.</div>
+
+**Mode 2 — Compact Widget** (5-15 lines of HTML, for interactive or multi-element content):
+- Tabs, accordions: using details/summary or radio-button CSS tabs
+- Definition lists: dl/dt/dd with styling
+- Small CSS charts: bar charts, progress bars, simple gauges
+- Example: collapsible FAQ section, styled comparison card
+
+**Mode 3 — Full HTML Block** (wrapped in an html fenced code block, for complete visual components):
+- Complex diagrams (flowcharts, mindmaps via CSS/SVG)
+- Interactive demos with JavaScript
+- Embedded iframes or canvas
+- Use an html fenced code block (three backticks + html) so the system renders it as an interactive iframe preview
+
+### Critical Rules
+- **Minimize HTML length**: Every line of HTML makes manual editing harder. Prefer Mode 1 over Mode 2, Mode 2 over Mode 3.
+- **Keep Markdown readable**: When embedding HTML in Markdown, keep HTML blocks compact and well-indented. The Markdown text around it should still be easily readable.
+- **Inline styles only**: Use style="..." (no class names). The content renders in an isolated context without external CSS.
+- **Well-formed HTML**: Close all tags, use valid syntax. Broken HTML may display as raw text and disrupt layout.
+- **Plain-text fallback**: When using HTML for visual content, ensure the surrounding Markdown text conveys the same information for accessibility.
+
 ## Language Preference
 - **Always respond in Chinese** unless the user explicitly requests another language. This is a strict requirement.
 `;
@@ -231,9 +275,9 @@ Begin generation:`,
    - Fill-in-the-blanks
    - Short answer
 3. Each question must include:
-   - Clear description
+   - Clear description (Markdown format; HTML only for diagrams or styled callouts when essential)
    - Correct answer
-   - Detailed explanation
+   - Detailed explanation (Markdown; use HTML sparingly for visual clarity when needed)
 4. Difficulty distribution:
    - Basic, Intermediate, and Advanced levels.
 
@@ -276,6 +320,7 @@ Begin generating as many questions as possible:`,
    - Use bold text for emphasis.
    - Include multiple lists, detailed tables, and blockquotes.
    - Use LaTeX syntax for formulas where appropriate.
+   - **HTML sparingly**: Use HTML only for callout boxes, collapsible details, or color-coded comparisons that Markdown cannot express. Keep HTML blocks minimal (1-5 lines preferred). Do NOT wrap plain text in HTML when Markdown suffices.
 4. **Professional Quality**:
    - Precise definitions and clear, logical explanations.
    - Include many specific examples.
@@ -430,7 +475,8 @@ Use full-replace (update_note / update_quiz) only when the majority of content c
 
 ### Note Creation (create_note / update_note)
 - Write extensive and detailed notes.
-- Use Markdown format.
+- Default to pure Markdown format. Only embed HTML for callout boxes, collapsible sections, or color-coded comparisons that Markdown cannot express.
+- Keep HTML blocks minimal (1-5 lines). Avoid large HTML structures that make manual editing difficult.
 - Maintain clear structure with heading hierarchies.
 
 ### Task Board Creation (create_taskboard / update_taskboard)

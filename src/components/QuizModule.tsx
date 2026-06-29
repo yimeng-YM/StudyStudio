@@ -288,7 +288,7 @@ function QuestionViewer({ question, index, quizId, existingRecord, onEdit, onDel
     <div className="relative group">
       <div className="flex justify-between items-start gap-4">
         <div className="flex-1 space-y-3 min-w-0">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 text-xs px-2 py-0.5 rounded font-medium shrink-0">{getQuestionTypeLabel(question.type)}</span>
             <span className="text-zinc-400 text-xs shrink-0">#{index + 1}</span>
             {isSubmitted && isObj && (isCorrect ? <span className="text-green-600 text-xs font-bold flex items-center gap-1 shrink-0"><CheckCircle2 size={14}/> 回答正确</span> : <span className="text-red-600 text-xs font-bold flex items-center gap-1 shrink-0"><XCircle size={14}/> 回答错误</span>)}
@@ -725,13 +725,13 @@ export function QuizModule({ subjectId }: QuizModuleProps) {
       {/* 右侧面板：内容 */}
       <AnimatePresence mode="wait">
         {!selectedQuiz ? (
-          <motion.div key="quiz-empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }} className="flex-1">
+          <motion.div key="quiz-empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }} className="flex-1 min-w-0">
             <div className="h-full flex items-center justify-center text-zinc-400 bg-white dark:bg-zinc-900/50 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800 text-sm">
               选择一个题库以查看或编辑，或者创建新题库。
             </div>
           </motion.div>
         ) : (
-          <motion.div key={selectedQuiz.id} initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 12 }} transition={{ duration: 0.25 }} className="flex-1">
+          <motion.div key={selectedQuiz.id} initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 12 }} transition={{ duration: 0.25 }} className="flex-1 min-w-0">
             <div className="h-full flex flex-col bg-white dark:bg-zinc-900/50 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800 p-4 relative overflow-clip">
               <QuizEditor quiz={selectedQuiz} isEditingTitle={isEditingTitle} setIsEditingTitle={setIsEditingTitle} editTitle={editTitle} setEditTitle={setEditTitle} onUpdateTitle={updateQuizTitle} onDeleteQuiz={() => deleteQuiz(selectedQuiz.id)} scrollToIndex={scrollToIndex} onScrollComplete={handleScrollComplete} sidebarWidth={sidebarWidth} />
             </div>

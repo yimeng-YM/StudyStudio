@@ -11,7 +11,7 @@ import { useSorting, sortItems } from '@/hooks/useSorting';
 import { useManualReorder } from '@/hooks/useManualReorder';
 import { SortControls } from '@/components/ui/SortControls';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageRenderer } from './MessageRenderer';
+import { MessageRenderer, isHtmlContent, HtmlPreview } from './MessageRenderer';
 import { cn, generateUUID } from '@/lib/utils';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useHistory } from '@/hooks/useHistory';
@@ -428,7 +428,7 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.25 }}
-            className="flex-1"
+            className="flex-1 min-w-0"
           >
             <NoteDetailPlaceholder />
           </motion.div>
@@ -439,7 +439,7 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 12 }}
             transition={{ duration: 0.25 }}
-            className="flex-1"
+            className="flex-1 min-w-0"
           >
             <NoteDetail
               selectedNote={selectedNote}
@@ -671,7 +671,7 @@ function NoteDetail({
         </div>
       </div>
 
-      <div className="flex-1 min-h-0">
+      <div className="flex-1 min-h-0 min-w-0">
         {isEditing ? (
           <div className="h-full flex flex-col border border-zinc-200 dark:border-zinc-700 rounded">
             <div className="flex flex-wrap items-center gap-0.5 p-1.5 bg-zinc-50 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 overflow-x-auto">
@@ -700,13 +700,19 @@ function NoteDetail({
             />
           </div>
         ) : (
-          <div
-            ref={readingRef}
-            className="prose dark:prose-invert max-w-none text-zinc-800 dark:text-zinc-200 overflow-y-auto h-full"
-            style={{ fontSize: 'var(--app-font-size, 14px)', overscrollBehavior: 'contain' }}
-          >
-            <MessageRenderer content={selectedNote.content} />
-          </div>
+          isHtmlContent(selectedNote.content) ? (
+            <div className="flex-1 min-h-0 min-w-0 overflow-y-auto">
+              <HtmlPreview content={selectedNote.content} mode="view" />
+            </div>
+          ) : (
+            <div
+              ref={readingRef}
+              className="prose dark:prose-invert max-w-none text-zinc-800 dark:text-zinc-200 overflow-auto h-full min-w-0"
+              style={{ fontSize: 'var(--app-font-size, 14px)', overscrollBehavior: 'contain', wordBreak: 'break-word' }}
+            >
+              <MessageRenderer content={selectedNote.content} />
+            </div>
+          )
         )}
       </div>
     </div>
