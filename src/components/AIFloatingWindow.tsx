@@ -231,7 +231,7 @@ export function AIFloatingWindow() {
                     onClick={() => {
                         setFloatingWindowOpen(!isFloatingWindowOpen);
                     }}
-                    className="p-4 bg-blue-600 text-white rounded-full shadow-lg hover:bg-blue-700 active:scale-95 group relative flex items-center justify-center"
+                    className="p-4 bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 rounded-full shadow-lg shadow-blue-500/15 hover:bg-blue-200 dark:hover:bg-blue-900/60 active:scale-95 group relative flex items-center justify-center border border-blue-200 dark:border-blue-800/50"
                     title={isFloatingWindowOpen ? "关闭 AI 助手" : "打开 AI 助手"}
                 >
                     {isFloatingWindowOpen ? <X size={24} /> : <Sparkles size={24} className="group-hover:animate-pulse" />}
