@@ -686,13 +686,18 @@ export function HtmlPreview({ content, mode, autoHeight = true, className = '' }
     if (mode !== 'view' || !autoHeight || !iframeRef.current) return;
     const iframe = iframeRef.current;
     let mounted = true;
+    let lastHeight = 0;
     const measure = () => {
       if (!mounted) return;
       try {
         const doc = iframe.contentDocument || iframe.contentWindow?.document;
-        if (doc) {
+        if (doc && doc.body) {
           const h = Math.max(doc.documentElement.scrollHeight, doc.body.scrollHeight, 200);
-          if (mounted) setMeasuredHeight(h + 8);
+          // 仅在实际高度变化超过阈值时才更新，避免 +padding 导致正反馈无限增长
+          if (mounted && Math.abs(h - lastHeight) > 3) {
+            lastHeight = h;
+            setMeasuredHeight(h);
+          }
         }
       } catch { /* cross-origin */ }
     };
@@ -732,7 +737,7 @@ export function HtmlPreview({ content, mode, autoHeight = true, className = '' }
     : { flex: 1, minHeight: 200 };
 
   return (
-    <div className={`rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white max-w-full flex flex-col ${className}`}>
+    <div className={`rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white max-w-full flex flex-col ${className}`} style={autoHeight ? { paddingBottom: 4 } : undefined}>
       <iframe
         ref={iframeRef}
         srcDoc={srcdoc}
