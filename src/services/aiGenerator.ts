@@ -3,7 +3,7 @@ import { getAICompletion, AIRequestOptions } from './ai';
 import * as dagre from 'dagre';
 import { Node, Edge } from 'reactflow';
 import { parseAIJson } from '@/lib/utils';
-import { DEFAULT_MAX_TOKENS, CONTENT_GENERATION_PROMPTS } from './promptConfig';
+import { DEFAULT_MAX_TOKENS, TEMPERATURE, CONTENT_GENERATION_PROMPTS, TITLE_GENERATION_PROMPT } from './promptConfig';
 
 /**
  * 思维导图生成的高级配置选项。
@@ -273,10 +273,51 @@ export async function generateNoteContent(
 
   // 直接返回生成的长文本字符串，不需要经过 JSON 反序列化
   const response = await getAICompletion(
-    [{ role: 'user', content: prompt }], 
+    [{ role: 'user', content: prompt }],
     settings,
     apiOptions
   );
-  
+
   return response;
+}
+
+/**
+ * 根据对话首轮交互，智能生成简短的会话标题。
+ *
+ * 使用 settings.namingModel（留空则回退主模型），低温度保证稳定、低 token 控制成本与速度。
+ * 用于取代"用户消息前 50 字"的粗糙占位标题。
+ * 调用方应在后台静默触发，失败时不影响主对话流程。
+ *
+ * @param firstUserMessage - 用户的首条提问文本
+ * @param firstAssistantReply - 助手的首条回复文本（首轮尚未回复时可传空串）
+ * @param settings - AI 基础配置（读取 namingModel，留空则回退主模型）
+ * @returns 清洗后的标题文本（已去引号、合并空白、截断到合理长度）
+ */
+export async function generateSessionTitle(
+  firstUserMessage: string,
+  firstAssistantReply: string,
+  settings: AISettings
+): Promise<string> {
+  const prompt = TITLE_GENERATION_PROMPT(firstUserMessage, firstAssistantReply);
+
+  // namingModel 为空则回退主模型；标题任务用低温度保证稳定、低 token 节省成本
+  const apiOptions: AIRequestOptions = {
+    model: settings.namingModel || settings.model,
+    temperature: TEMPERATURE.precise,
+    maxTokens: 48,
+  };
+
+  const response = await getAICompletion(
+    [{ role: 'user', content: prompt }],
+    settings,
+    apiOptions
+  );
+
+  // 清洗：去除首尾引号（含中英文引号）、合并内部空白、截断到合理长度
+  const title = response
+    .trim()
+    .replace(/^["'“”‘’「『]+|["'””’’」』]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return title.slice(0, 30) || '新对话';
 }

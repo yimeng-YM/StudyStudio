@@ -73,6 +73,11 @@ export interface AIRequestOptions {
   maxTokens?: number;
   /** 采样温度，控制生成结果的随机性与创造力（范围 0.0 ~ 2.0） */
   temperature?: number;
+  /**
+   * 本次请求使用的模型标识；缺省时回退到 settings.model（主模型）。
+   * 用于会话命名等轻量任务切换到更便宜/更快的 namingModel。
+   */
+  model?: string;
 }
 
 /**
@@ -139,6 +144,8 @@ export async function getAICompletion(
 
    const maxTokens = options?.maxTokens ?? settings.maxTokens ?? DEFAULT_MAX_TOKENS;
    const temperature = options?.temperature ?? settings.temperature ?? TEMPERATURE.balanced;
+   // 允许调用方覆盖模型（如会话命名使用 namingModel），缺省回退主模型
+   const model = options?.model ?? settings.model;
 
    // 过滤掉空的 tool_calls 数组，避免 API 报错
    const sanitizedMessages = messages.map(m => {
@@ -156,7 +163,7 @@ export async function getAICompletion(
        'Authorization': `Bearer ${settings.apiKey}`
      },
      body: JSON.stringify({
-       model: settings.model,
+       model: model,
        messages: sanitizedMessages,
        temperature: temperature,
        max_tokens: maxTokens

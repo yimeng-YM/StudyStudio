@@ -9,6 +9,7 @@ import {
   getSystemPromptWithContext,
   DEFAULT_MAX_TOKENS
 } from '@/services/promptConfig';
+import { generateSessionTitle } from '@/services/aiGenerator';
 
 /**
  * 任务执行计划状态
@@ -118,6 +119,34 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act') {
     await db.chatSessions.update(sId, { updatedAt: Date.now() });
   };
 
+  /**
+   * 后台异步为新会话生成智能标题。
+   * 仅在首轮对话完成后触发，使用 namingModel（留空则回退主模型）。
+   * 通过 dexie 的 LiveQuery 自动刷新会话列表 UI；失败静默，不影响主对话。
+   *
+   * @param sessionId - 待命名的会话 ID
+   * @param firstUserContent - 用户的首条提问文本（作为命名主要依据）
+   */
+  const autoRenameSession = async (sessionId: string, firstUserContent: string) => {
+    if (!settings) return;
+    try {
+      // 从数据库取第一条含实际文本的助手回复作为命名参考
+      const assistantMsgs = await db.chatMessages
+        .where('sessionId')
+        .equals(sessionId)
+        .filter(m => m.role === 'assistant' && typeof m.content === 'string' && m.content.trim().length > 0)
+        .sortBy('createdAt');
+      const firstReply = assistantMsgs[0];
+      const replyText = typeof firstReply?.content === 'string' ? firstReply.content : '';
+
+      const title = await generateSessionTitle(firstUserContent, replyText, settings);
+      await db.chatSessions.update(sessionId, { title, updatedAt: Date.now() });
+    } catch (e) {
+      // 命名失败不影响主对话，静默忽略
+      console.warn('自动命名会话失败:', e);
+    }
+  };
+
 
 
   /**
@@ -134,6 +163,7 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act') {
     }
     
     let activeSessionId = currentSessionId;
+    const wasNewSession = !activeSessionId;
     if (!activeSessionId) {
       activeSessionId = await createSession(content.slice(0, 50) || 'New Task');
     }
@@ -207,6 +237,10 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act') {
 
     try {
       await processAgentLoop(newMessages, activeSessionId, false);
+      // 首轮对话完成后，后台静默生成智能标题（不阻塞主流程，失败静默）
+      if (wasNewSession) {
+        void autoRenameSession(activeSessionId, content);
+      }
     } catch (error: any) {
       console.error("Agent Loop Error:", error);
       let errorMsg = error.message;
