@@ -5,7 +5,7 @@ import {
   Plus, Trash, Edit, ArrowUp, ArrowDown, SortAsc, Clock, GripVertical,
   CheckCircle2, FileText, ListChecks, Type, AlignLeft, X, Check, XCircle, RefreshCw,
   Image as ImageIcon, Bold, Italic, Strikethrough, List, ListOrdered, Heading1, Heading2, Heading3,
-  Quote, Code, Link as LinkIcon, Download, Upload, ArrowLeft
+  Quote, Code, Link as LinkIcon, Upload, ArrowLeft
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { DataManager } from '@/services/dataManager';
@@ -625,7 +625,6 @@ export function QuizModule({ subjectId }: QuizModuleProps) {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitle, setEditTitle] = useState('');
   const { showConfirm } = useDialog();
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const { width: sidebarWidth, startResizing } = useResizable({
     initialWidth: 320,
     minWidth: 180,
@@ -644,12 +643,6 @@ export function QuizModule({ subjectId }: QuizModuleProps) {
     if (quizRecords) quizRecords.forEach(r => map.set(r.questionId, r));
     return map;
   }, [quizRecords]);
-
-  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]; if (!file) return;
-    try { await DataManager.importData(file); alert('导入成功'); } catch (error) { alert('导入失败: ' + (error as any).message); }
-    e.target.value = '';
-  };
 
   const createQuiz = async () => {
     const id = generateUUID(); const now = Date.now();
@@ -687,8 +680,6 @@ export function QuizModule({ subjectId }: QuizModuleProps) {
       <div className="flex flex-col gap-2 mb-4">
         <div className="flex gap-2">
           <button onClick={createQuiz} className="flex-1 flex items-center justify-center gap-2 bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700 transition-colors"><Plus size={16} /> 新建题库</button>
-          <button onClick={() => fileInputRef.current?.click()} className="px-3 py-2 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors" title="导入题库"><Download size={16} /></button>
-          <input type="file" ref={fileInputRef} className="hidden" accept=".json" onChange={handleImport} />
         </div>
         <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800 p-1 rounded-lg">
           <button onClick={() => setSortMode('name')} className={cn("p-1.5 rounded transition-colors flex-1 flex justify-center", sortMode === 'name' ? "bg-white dark:bg-zinc-700 shadow-sm text-blue-600" : "text-zinc-400 hover:text-zinc-600")} title="按名称"><SortAsc size={14} /></button>
