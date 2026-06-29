@@ -388,7 +388,9 @@ export function ToolCallRenderer({ toolCalls, results = {} }: { toolCalls: ToolC
         return (
           <div
             key={tc.id || idx}
-            className="flex items-center gap-1.5 text-[11px] group animate-in fade-in slide-in-from-left-1 duration-200"
+            onClick={canExpand ? () => setSelectedToolCall(tc) : undefined}
+            className={`flex items-center gap-1.5 text-[11px] animate-in fade-in slide-in-from-left-1 duration-200 ${canExpand ? 'cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800/50 rounded px-0.5 -mx-0.5 py-0.5 -my-0.5 transition-colors' : 'group'}`}
+            title={canExpand ? '点击查看详情' : undefined}
           >
             {isComplete
               ? <CheckCircle2 size={12} className="text-green-500 dark:text-green-400 shrink-0" />
@@ -405,13 +407,9 @@ export function ToolCallRenderer({ toolCalls, results = {} }: { toolCalls: ToolC
               )}
             </span>
             {canExpand && (
-              <button
-                onClick={(e) => { e.stopPropagation(); setSelectedToolCall(tc); }}
-                className="text-zinc-400 hover:text-primary dark:hover:text-primary transition-colors shrink-0 ml-0.5 opacity-60 hover:opacity-100"
-                title="查看详情"
-              >
+              <span className="text-zinc-400 transition-colors shrink-0 ml-0.5 opacity-60">
                 <ChevronRight size={13} />
-              </button>
+              </span>
             )}
           </div>
         );
