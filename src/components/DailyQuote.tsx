@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Quote, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { getDailyQuote } from '@/data/dailyQuotes';
+import { getDailyQuote, getRandomQuote } from '@/data/dailyQuotes';
 
 interface QuoteData {
   quote: string;
@@ -38,21 +38,29 @@ function writeCache(dateStr: string, data: QuoteData) {
 export function DailyQuote() {
   const [quoteData, setQuoteData] = useState<QuoteData | null>(null);
   const [loading, setLoading] = useState(true);
+  /** 手动刷新中的状态，独立于首次加载，刷新时保留旧内容不清空 */
+  const [refreshing, setRefreshing] = useState(false);
   const [dateStr, setDateStr] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   });
 
-  const fetchQuote = useCallback(async (today: string) => {
-    // 1) 尝试读取今日缓存
-    const cached = readCache(today);
-    if (cached) {
-      setQuoteData(cached);
-      setLoading(false);
-      return;
+  const fetchQuote = useCallback(async (today: string, forceRefresh = false, excludeQuote?: string) => {
+    // 1) 非强制刷新时先尝试读取今日缓存
+    if (!forceRefresh) {
+      const cached = readCache(today);
+      if (cached) {
+        setQuoteData(cached);
+        setLoading(false);
+        return;
+      }
     }
 
-    setLoading(true);
+    if (forceRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
     try {
       const res = await fetch(API_URL);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -64,12 +72,26 @@ export function DailyQuote() {
       writeCache(today, data);
       setQuoteData(data);
     } catch {
-      // 2) API 失败，回退到本地名言库
-      setQuoteData(getDailyQuote());
+      // 2) API 失败，回退到本地名言库（刷新时随机换一条，避免重复）
+      setQuoteData(forceRefresh ? getRandomQuote(excludeQuote) : getDailyQuote());
     } finally {
+      setRefreshing(false);
       setLoading(false);
     }
   }, []);
+
+  /** 手动刷新：跳过缓存强制拉取新的一条 */
+  const handleRefresh = useCallback(() => {
+    if (refreshing || loading) return;
+    fetchQuote(dateStr, true, quoteData?.quote);
+  }, [dateStr, fetchQuote, refreshing, loading, quoteData?.quote]);
+
+  /** 卡片点击刷新；若用户正在拖选文本则不触发，方便复制名言 */
+  const handleCardClick = useCallback(() => {
+    const sel = window.getSelection();
+    if (sel && sel.toString().trim().length > 0) return;
+    handleRefresh();
+  }, [handleRefresh]);
 
   /** 首次挂载时获取，以及跨天时重新获取 */
   useEffect(() => {
@@ -91,7 +113,18 @@ export function DailyQuote() {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.15 }}
-      className="relative overflow-hidden bg-white/70 dark:bg-zinc-900/50 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 p-5 md:p-6 min-h-[80px]"
+      onClick={handleCardClick}
+      role="button"
+      tabIndex={0}
+      aria-label="点击刷新一言"
+      title="点击换一条"
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          handleCardClick();
+        }
+      }}
+      className="relative overflow-hidden bg-white/70 dark:bg-zinc-900/50 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 p-5 md:p-6 min-h-[80px] cursor-pointer transition-colors hover:border-blue-400 dark:hover:border-blue-500/70"
     >
       {/* 背景装饰 */}
       <div className="absolute -right-4 -top-4 text-zinc-100 dark:text-zinc-800">
@@ -101,7 +134,11 @@ export function DailyQuote() {
       <div className="relative z-10">
         {/* 标题行 */}
         <div className="flex items-center gap-2 mb-3">
-          <Quote size={16} className="text-blue-500" />
+          {refreshing ? (
+            <Loader2 size={16} className="text-blue-500 animate-spin" />
+          ) : (
+            <Quote size={16} className="text-blue-500" />
+          )}
           <span className="text-xs font-medium text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">
             一言
           </span>

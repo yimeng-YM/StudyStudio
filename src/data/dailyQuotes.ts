@@ -64,3 +64,17 @@ export function getDailyQuote(date: Date = new Date()): DailyQuote {
   const index = dayOfYear % DAILY_QUOTES.length;
   return DAILY_QUOTES[index];
 }
+
+/**
+ * 随机获取一条本地名言
+ * 用于手动刷新时 API 不可用的回退场景
+ * @param excludeQuote - 需要排除的名言内容（避免刷新后与当前重复），可选
+ * @returns 随机的 DailyQuote 对象
+ */
+export function getRandomQuote(excludeQuote?: string): DailyQuote {
+  const pool = excludeQuote
+    ? DAILY_QUOTES.filter(q => q.quote !== excludeQuote)
+    : DAILY_QUOTES;
+  const list = pool.length > 0 ? pool : DAILY_QUOTES;
+  return list[Math.floor(Math.random() * list.length)];
+}
