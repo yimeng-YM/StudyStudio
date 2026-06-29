@@ -676,41 +676,41 @@ body{margin:0;padding:8px;font-family:system-ui,sans-serif;font-size:14px;max-wi
   return '<!DOCTYPE html><html><head><meta charset="UTF-8">' + overflowCSS + '</head><body>' + trimmed + '</body></html>';
 }
 
-export function HtmlPreview({ content, mode, className = '' }: { content: string; mode: 'view' | 'code'; className?: string }) {
+export function HtmlPreview({ content, mode, autoHeight = true, className = '' }: { content: string; mode: 'view' | 'code'; autoHeight?: boolean; className?: string }) {
   const isDark = useIsDark();
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const [iframeHeight, setIframeHeight] = useState(400);
+  const [measuredHeight, setMeasuredHeight] = useState(300);
 
   const srcdoc = useMemo(() => (mode === 'view' ? wrapHtmlForIframe(content) : ''), [mode, content]);
 
-  // 监听 iframe 内容高度变化
+  // autoHeight 模式：持续测量 iframe 内容高度（用于内联代码块）
   useEffect(() => {
-    if (mode !== 'view' || !iframeRef.current) return;
+    if (mode !== 'view' || !autoHeight || !iframeRef.current) return;
     const iframe = iframeRef.current;
-    const tryUpdateHeight = () => {
+    let mounted = true;
+    const measure = () => {
+      if (!mounted) return;
       try {
         const doc = iframe.contentDocument || iframe.contentWindow?.document;
         if (doc) {
-          const h = Math.max(
-            doc.documentElement.scrollHeight,
-            doc.body.scrollHeight,
-            doc.documentElement.offsetHeight,
-            200
-          );
-          setIframeHeight(h + 16);
+          const h = Math.max(doc.documentElement.scrollHeight, doc.body.scrollHeight, 200);
+          if (mounted) setMeasuredHeight(h + 8);
         }
       } catch { /* cross-origin */ }
     };
-    const onLoad = () => { setTimeout(tryUpdateHeight, 100); };
+    const onLoad = () => setTimeout(measure, 100);
     iframe.addEventListener('load', onLoad);
-    const timer = setInterval(tryUpdateHeight, 500);
-    const safetyStop = setTimeout(() => clearInterval(timer), 10000);
+    const fast = setInterval(measure, 200);
+    const slowDown = setTimeout(() => { clearInterval(fast); }, 5000);
+    const slow = setInterval(measure, 1000);
     return () => {
+      mounted = false;
       iframe.removeEventListener('load', onLoad);
-      clearInterval(timer);
-      clearTimeout(safetyStop);
+      clearInterval(fast);
+      clearTimeout(slowDown);
+      clearInterval(slow);
     };
-  }, [mode, srcdoc]);
+  }, [mode, srcdoc, autoHeight]);
 
   if (mode === 'code') {
     return (
@@ -729,14 +729,18 @@ export function HtmlPreview({ content, mode, className = '' }: { content: string
     );
   }
 
+  const iframeStyle: React.CSSProperties = autoHeight
+    ? { height: measuredHeight, minHeight: 200 }
+    : { flex: 1, minHeight: 200 };
+
   return (
-    <div className={`rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-700 bg-white max-w-full ${className}`}>
+    <div className={`rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white max-w-full flex flex-col ${className}`}>
       <iframe
         ref={iframeRef}
         srcDoc={srcdoc}
         sandbox="allow-scripts allow-same-origin"
-        className="w-full border-0 max-w-full"
-        style={{ height: iframeHeight, minHeight: 200 }}
+        className="w-full border-0"
+        style={iframeStyle}
         title="HTML Preview"
       />
     </div>

@@ -37,7 +37,9 @@ ArrowRight,
 Puzzle,
 GitBranch,
 Menu,
-X
+X,
+Code2,
+Eye
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useResizable } from '@/hooks/useResizable';
@@ -748,6 +750,181 @@ export const Docs = () => {
                     <span className="text-sm text-slate-500">10%</span>
                   </div>
                 </div>
+              </div>
+            </div>
+          )
+        },
+        {
+          id: 'html-preview',
+          title: 'HTML 内容展示',
+          icon: <Code2 className="w-4 h-4" />,
+          content: (
+            <div className="space-y-6">
+              <p className="text-lg leading-relaxed text-slate-700 dark:text-slate-300">
+                StudyStudio 支持在笔记和题库中直接渲染 <strong>HTML 内容</strong>，让您的学习材料更加生动、美观、可交互。
+              </p>
+
+              {/* 三种使用方式 */}
+              <div className="p-5 bg-slate-50 dark:bg-zinc-900/50 rounded-2xl border border-slate-200 dark:border-zinc-800">
+                <h4 className="font-bold flex items-center gap-2 mb-4 text-lg">
+                  <Layers className="w-5 h-5 text-primary" />
+                  三种使用方式
+                </h4>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-200 dark:border-zinc-700">
+                        <th className="text-left py-3 px-2 font-bold">方式</th>
+                        <th className="text-left py-3 px-2 font-bold">写法</th>
+                        <th className="text-center py-3 px-2 font-bold">交互性</th>
+                        <th className="text-left py-3 px-2 font-bold">适用场景</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 dark:divide-zinc-700">
+                      <tr>
+                        <td className="py-3 px-2"><span className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded text-xs font-medium">内嵌 HTML</span></td>
+                        <td className="py-3 px-2 font-mono text-xs">直接写标签</td>
+                        <td className="py-3 px-2 text-center text-xs text-slate-400">静态</td>
+                        <td className="py-3 px-2 text-xs">callout box、彩色文字、折叠面板</td>
+                      </tr>
+                      <tr>
+                        <td className="py-3 px-2"><span className="px-2 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded text-xs font-medium">html 代码块</span></td>
+                        <td className="py-3 px-2 font-mono text-xs">```html ... ```</td>
+                        <td className="py-3 px-2 text-center"><span className="text-emerald-500 font-bold">✓</span></td>
+                        <td className="py-3 px-2 text-xs">交互式图表、CSS 动画、demo</td>
+                      </tr>
+                      <tr>
+                        <td className="py-3 px-2"><span className="px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 rounded text-xs font-medium">纯 HTML 笔记</span></td>
+                        <td className="py-3 px-2 font-mono text-xs">整篇内容为 HTML</td>
+                        <td className="py-3 px-2 text-center"><span className="text-emerald-500 font-bold">✓</span></td>
+                        <td className="py-3 px-2 text-xs">完整网页、表单、复杂可视化</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* 预览/源码切换 */}
+              <div className="p-5 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-2xl border border-blue-200 dark:border-blue-800">
+                <h4 className="font-bold flex items-center gap-2 mb-4 text-lg">
+                  <Eye className="w-5 h-5 text-blue-500" />
+                  预览 / 源码 切换
+                </h4>
+                <p className="text-slate-600 dark:text-slate-400 mb-4">
+                  使用 <code className="bg-slate-200 dark:bg-zinc-700 px-1.5 py-0.5 rounded text-xs font-mono">```html</code> 围栏代码块包裹 HTML 内容时，代码块上方会自动出现<strong>预览/源码</strong>切换按钮：
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="p-4 bg-white/80 dark:bg-zinc-800/80 rounded-xl">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="px-2 py-0.5 bg-blue-500 text-white rounded text-xs font-medium">预览</span>
+                      <span className="text-sm font-medium">可视化渲染</span>
+                    </div>
+                    <p className="text-xs text-slate-500">HTML 在 iframe 中完整渲染，支持脚本执行、样式展示和用户交互</p>
+                  </div>
+                  <div className="p-4 bg-white/80 dark:bg-zinc-800/80 rounded-xl">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="px-2 py-0.5 bg-blue-500 text-white rounded text-xs font-medium">源码</span>
+                      <span className="text-sm font-medium">代码查看</span>
+                    </div>
+                    <p className="text-xs text-slate-500">带行号的 HTML 语法高亮显示，方便阅读和复制源代码</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* 内嵌 HTML 示例 */}
+              <div className="p-5 bg-slate-50 dark:bg-zinc-900/50 rounded-2xl border border-slate-200 dark:border-zinc-800">
+                <h4 className="font-bold flex items-center gap-2 mb-4 text-lg">
+                  <FileText className="w-5 h-5 text-amber-500" />
+                  内嵌 HTML 常用模式
+                </h4>
+                <p className="text-slate-600 dark:text-slate-400 mb-4">
+                  在 Markdown 中直接写 HTML 标签，实现 Markdown 无法表达的排版效果：
+                </p>
+                <div className="space-y-4">
+                  <div className="p-4 bg-white dark:bg-zinc-800/50 rounded-xl">
+                    <h5 className="font-medium text-sm mb-2">Callout Box（提示框）</h5>
+                    <div className="bg-zinc-100 dark:bg-zinc-900 p-3 rounded font-mono text-xs overflow-x-auto">
+                      <span className="text-slate-500">&lt;</span><span className="text-red-500">div</span> <span className="text-amber-500">style</span>=<span className="text-emerald-500">"background:#e8f5e9;padding:12px;border-left:4px solid #4caf50"</span><span className="text-slate-500">&gt;</span><br/>
+                      <span className="text-slate-500">  &lt;</span><span className="text-red-500">b</span><span className="text-slate-500">&gt;</span>💡 提示<span className="text-slate-500">&lt;/</span><span className="text-red-500">b</span><span className="text-slate-500">&gt;</span>：这是一条重要信息<br/>
+                      <span className="text-slate-500">&lt;/</span><span className="text-red-500">div</span><span className="text-slate-500">&gt;</span>
+                    </div>
+                  </div>
+                  <div className="p-4 bg-white dark:bg-zinc-800/50 rounded-xl">
+                    <h5 className="font-medium text-sm mb-2">折叠面板</h5>
+                    <div className="bg-zinc-100 dark:bg-zinc-900 p-3 rounded font-mono text-xs overflow-x-auto">
+                      <span className="text-slate-500">&lt;</span><span className="text-red-500">details</span><span className="text-slate-500">&gt;</span><br/>
+                      <span className="text-slate-500">  &lt;</span><span className="text-red-500">summary</span><span className="text-slate-500">&gt;</span>点击展开详解<span className="text-slate-500">&lt;/</span><span className="text-red-500">summary</span><span className="text-slate-500">&gt;</span><br/>
+                      <span className="text-slate-500">  &lt;</span><span className="text-red-500">p</span><span className="text-slate-500">&gt;</span>这里是折叠的内容...<span className="text-slate-500">&lt;/</span><span className="text-red-500">p</span><span className="text-slate-500">&gt;</span><br/>
+                      <span className="text-slate-500">&lt;/</span><span className="text-red-500">details</span><span className="text-slate-500">&gt;</span>
+                    </div>
+                  </div>
+                  <div className="p-4 bg-white dark:bg-zinc-800/50 rounded-xl">
+                    <h5 className="font-medium text-sm mb-2">彩色标注</h5>
+                    <div className="bg-zinc-100 dark:bg-zinc-900 p-3 rounded font-mono text-xs overflow-x-auto">
+                      <span className="text-slate-500">&lt;</span><span className="text-red-500">span</span> <span className="text-amber-500">style</span>=<span className="text-emerald-500">"color:#e53935;font-weight:bold"</span><span className="text-slate-500">&gt;</span>重要<span className="text-slate-500">&lt;/</span><span className="text-red-500">span</span><span className="text-slate-500">&gt;</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* AI HTML 生成模式 */}
+              <div className="p-5 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 rounded-2xl border border-purple-200 dark:border-purple-800">
+                <h4 className="font-bold flex items-center gap-2 mb-4 text-lg">
+                  <Sparkles className="w-5 h-5 text-purple-500" />
+                  AI 生成 HTML 的三种模式
+                </h4>
+                <p className="text-slate-600 dark:text-slate-400 mb-4">
+                  AI 会根据场景需求自动选择合适的方式生成 HTML，优先使用最轻量的模式：
+                </p>
+                <div className="space-y-3">
+                  <div className="flex items-start gap-3 p-3 bg-white/80 dark:bg-zinc-800/80 rounded-xl">
+                    <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg shrink-0">
+                      <span className="text-xs font-bold text-blue-600 dark:text-blue-400">Mode 1</span>
+                    </div>
+                    <div>
+                      <p className="font-medium text-sm">内嵌点缀 <span className="text-xs text-slate-400">1-3 行 HTML</span></p>
+                      <p className="text-xs text-slate-500">用于 callout box、彩色文字、小徽章等装饰性元素</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 bg-white/80 dark:bg-zinc-800/80 rounded-xl">
+                    <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg shrink-0">
+                      <span className="text-xs font-bold text-purple-600 dark:text-purple-400">Mode 2</span>
+                    </div>
+                    <div>
+                      <p className="font-medium text-sm">紧凑组件 <span className="text-xs text-slate-400">5-15 行 HTML</span></p>
+                      <p className="text-xs text-slate-500">折叠面板、选项卡、CSS 进度条、简单图表</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 bg-white/80 dark:bg-zinc-800/80 rounded-xl">
+                    <div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg shrink-0">
+                      <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">Mode 3</span>
+                    </div>
+                    <div>
+                      <p className="font-medium text-sm">完整 HTML 块 <span className="text-xs text-slate-400">围栏代码块</span></p>
+                      <p className="text-xs text-slate-500">复杂图表（CSS/SVG）、交互式 demo、完整 UI 组件</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-100 dark:border-amber-800">
+                  <p className="text-xs text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
+                    <Lightbulb className="w-3.5 h-3.5 shrink-0" />
+                    <span><strong>提示：</strong>AI 默认使用纯 Markdown，仅在排版美化、可视化图表、或您明确要求时才会使用 HTML。这样可以保证笔记内容简洁、易于手动编辑。</span>
+                  </p>
+                </div>
+              </div>
+
+              {/* 注意事项 */}
+              <div className="p-5 bg-rose-50 dark:bg-rose-900/10 rounded-2xl border border-rose-200 dark:border-rose-800">
+                <h4 className="font-bold flex items-center gap-2 mb-3 text-rose-800 dark:text-rose-300">
+                  <ShieldCheck className="w-5 h-5" />
+                  注意事项
+                </h4>
+                <ul className="space-y-2 text-sm text-rose-700/80 dark:text-rose-300/80 list-disc list-inside">
+                  <li>HTML 代码过长会增加手动编辑笔记的难度，建议优先使用 Markdown</li>
+                  <li>内嵌 HTML 使用 <strong>inline style</strong>，不支持 class 选择器（渲染环境无外部 CSS）</li>
+                  <li>iframe 渲染的 HTML 在 <strong>沙盒模式</strong> 下运行，部分功能可能受限</li>
+                  <li>HTML 代码错误可能导致显示异常，切换到"源码"模式可查看和修复</li>
+                </ul>
               </div>
             </div>
           )

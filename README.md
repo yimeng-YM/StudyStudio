@@ -26,6 +26,10 @@ StudyStudio 是一个功能丰富的智能学习助手 Web 应用，集成了 AI
 - 支持 GFM（GitHub Flavored Markdown）
 - 数学公式渲染（KaTeX）
 - 代码高亮显示
+- **HTML 内容预览**：
+  - 内嵌 HTML 自动渲染（callout boxes、彩色文字、折叠面板等）
+  - ` ```html ` 代码块自带**预览/源码切换**，预览模式使用 iframe 可交互
+  - 纯 HTML 文档自动以 iframe 渲染，支持脚本交互
 - 撤销/重做功能
 - AI 辅助内容生成
 
@@ -45,6 +49,8 @@ StudyStudio 是一个功能丰富的智能学习助手 Web 应用，集成了 AI
   - 判断题
   - 简答题
   - 解答题
+- 题目和解析支持内嵌 HTML 渲染（callout boxes、彩色标注等）
+- ` ```html ` 代码块自带**预览/源码切换**
 - AI 智能出题与解析
 - 答题练习模式
 
@@ -55,6 +61,23 @@ StudyStudio 是一个功能丰富的智能学习助手 Web 应用，集成了 AI
 - 对话历史管理
 - 多模态支持（视觉能力）
 - 工具调用（Agent）功能
+
+### 🎨 HTML 内容展示
+
+笔记和题库支持 HTML 内容渲染，可通过以下方式使用：
+
+| 方式 | 说明 | 交互性 |
+|------|------|:---:|
+| 内嵌 HTML | 在 Markdown 中直接写 `<div style="...">` 等标签 | 静态渲染 |
+| ` ```html ` 代码块 | 围栏代码块，自带**预览/源码**切换按钮 | ✓ 可交互 |
+| 纯 HTML 笔记 | 笔记内容为完整 HTML 文档时，自动以 iframe 渲染 | ✓ 可交互 |
+
+**AI 生成 HTML 的模式**：AI 会根据需求选择不同层级的 HTML：
+- **Mode 1 内嵌点缀**：1-3 行 HTML，用于 callout box、彩色文字等小装饰
+- **Mode 2 紧凑组件**：5-15 行 HTML，用于折叠面板、选项卡、CSS 图表
+- **Mode 3 完整块**：` ```html ` 代码块，用于复杂图表、交互式 demo
+
+默认情况下 AI 使用纯 Markdown，仅在排版美化、可视化图表、用户明确要求时使用 HTML。
 
 ### 📊 学习统计
 
@@ -85,7 +108,7 @@ StudyStudio 是一个功能丰富的智能学习助手 Web 应用，集成了 AI
 - **本地存储**: Dexie (IndexedDB)
 - **路由**: React Router v7
 - **思维导图**: ReactFlow
-- **Markdown**: react-markdown + remark-gfm + rehype-katex
+- **Markdown**: react-markdown + remark-gfm + rehype-katex + rehype-raw（内嵌 HTML 渲染）
 - **动画**: Framer Motion
 - **图标**: Lucide React
 
