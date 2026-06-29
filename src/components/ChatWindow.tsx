@@ -383,13 +383,8 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
       {selectedFiles.length > 0 && (
         <div className="px-4 pb-2 flex gap-2 overflow-x-auto">
           {selectedFiles.map((f, i) => (
-            <div key={i} className={`relative backdrop-blur px-3 py-1.5 rounded-lg border flex items-center gap-2 max-w-[200px] shadow-sm animate-in zoom-in duration-200 ${f.name.endsWith('.pdf') ? 'bg-red-50/80 dark:bg-red-900/20 border-red-200 dark:border-red-800' : 'bg-white/80 dark:bg-zinc-800/80 border-primary/20'
-              }`}>
-              {f.name.endsWith('.pdf') ? (
-                <div className="w-8 h-8 rounded bg-red-100 dark:bg-red-900/50 flex items-center justify-center shrink-0">
-                  <span className="text-[10px] font-bold text-red-600 dark:text-red-400">PDF</span>
-                </div>
-              ) : f.images && f.images.length > 0 ? (
+            <div key={i} className="relative backdrop-blur px-3 py-1.5 rounded-lg border flex items-center gap-2 max-w-[200px] shadow-sm animate-in zoom-in duration-200 bg-white/80 dark:bg-zinc-800/80 border-primary/20">
+              {f.images && f.images.length > 0 ? (
                 <div className="w-8 h-8 rounded bg-green-100 dark:bg-green-900/30 flex items-center justify-center shrink-0">
                   <span className="text-[10px] font-bold text-green-600 dark:text-green-400">IMG</span>
                 </div>
