@@ -578,7 +578,7 @@ function QuizEditor({ quiz, isEditingTitle, setIsEditingTitle, editTitle, setEdi
       <div ref={questionListRef} className={cn("flex-1 overflow-y-auto py-4", sidebarWidth < 250 ? "grid grid-cols-2 gap-4 items-start" : "space-y-6")} style={{ overscrollBehavior: 'contain' }}>
         {questions.length === 0 ? <div className="text-center py-20 text-zinc-400"><div className="mb-2">开始添加题目</div><div className="text-sm">点击下方按钮添加不同类型的题目</div></div>
           : questions.map((q, index) => (
-            <div key={q.id} data-question-index={index} className="relative group/item bg-white dark:bg-zinc-900/50 rounded-xl border border-zinc-200 dark:border-zinc-800/50 p-4 transition-all hover:border-zinc-300 dark:hover:border-zinc-700" style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 120px' }}>
+            <div key={q.id} data-question-index={index} className="relative group/item bg-white/70 dark:bg-zinc-900/50 rounded-xl border border-zinc-200 dark:border-zinc-800/50 p-4 transition-all hover:border-zinc-300 dark:hover:border-zinc-700" style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 120px' }}>
               {editingQuestionId === q.id ? <QuestionEditor question={q} onSave={(updates) => updateQuestion(q.id, updates)} onCancel={() => setEditingQuestionId(null)} />
                 : <QuestionViewer question={q} index={index} quizId={quiz.id} existingRecord={recordMap.get(q.id) || null} onEdit={() => setEditingQuestionId(q.id)} onDelete={() => deleteQuestion(q.id)} onRecordSaved={handleRecordSaved} />}
             </div>
@@ -726,13 +726,13 @@ export function QuizModule({ subjectId }: QuizModuleProps) {
       <AnimatePresence mode="wait">
         {!selectedQuiz ? (
           <motion.div key="quiz-empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }} className="flex-1 min-w-0">
-            <div className="h-full flex items-center justify-center text-zinc-400 bg-white dark:bg-zinc-900/50 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800 text-sm">
+            <div className="h-full flex items-center justify-center text-zinc-400 bg-white/70 dark:bg-zinc-900/50 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800 text-sm">
               选择一个题库以查看或编辑，或者创建新题库。
             </div>
           </motion.div>
         ) : (
           <motion.div key={selectedQuiz.id} initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 12 }} transition={{ duration: 0.25 }} className="flex-1 min-w-0">
-            <div className="h-full flex flex-col bg-white dark:bg-zinc-900/50 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800 p-4 relative overflow-clip">
+            <div className="h-full flex flex-col bg-white/70 dark:bg-zinc-900/50 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800 p-4 relative overflow-clip">
               <QuizEditor quiz={selectedQuiz} isEditingTitle={isEditingTitle} setIsEditingTitle={setIsEditingTitle} editTitle={editTitle} setEditTitle={setEditTitle} onUpdateTitle={updateQuizTitle} onDeleteQuiz={() => deleteQuiz(selectedQuiz.id)} scrollToIndex={scrollToIndex} onScrollComplete={handleScrollComplete} sidebarWidth={sidebarWidth} />
             </div>
           </motion.div>

@@ -97,7 +97,7 @@ export function MobileSubjects() {
               key={subject.id}
               to={`/subject/${subject.id}`}
               onClick={() => handleSubjectClick(subject.id)}
-              className="flex items-center gap-4 bg-white dark:bg-zinc-900 p-4 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 hover:border-blue-500 transition-all group animate-in fade-in slide-in-from-bottom-2 duration-300"
+              className="flex items-center gap-4 bg-white/70 dark:bg-zinc-900/70 p-4 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 hover:border-blue-500 transition-all group animate-in fade-in slide-in-from-bottom-2 duration-300"
               style={{ animationDelay: `${idx * 40}ms` }}
             >
               <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-blue-600 shrink-0">
@@ -121,7 +121,7 @@ export function MobileSubjects() {
             </Link>
           ))}
           {(!allSubjects || allSubjects.length === 0) && (
-            <div className="text-center py-12 text-zinc-500 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl border border-dashed border-zinc-300 dark:border-zinc-700">
+            <div className="text-center py-12 text-zinc-500 bg-zinc-50/70 dark:bg-zinc-900/50 rounded-xl border border-dashed border-zinc-300 dark:border-zinc-700">
               <BookOpen size={40} className="mx-auto mb-3 text-zinc-300 dark:text-zinc-600" />
               <p className="font-medium">暂无学科</p>
               <p className="text-sm mt-1">点击右上角「新建」按钮创建学科</p>

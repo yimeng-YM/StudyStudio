@@ -115,7 +115,7 @@ export function SubjectView() {
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="border-b px-4 md:px-8 py-3 md:py-4 bg-white dark:bg-black border-zinc-200 dark:border-zinc-800 flex items-center justify-between sticky top-0 z-10 gap-2">
+      <div className="border-b px-4 md:px-8 py-3 md:py-4 bg-white/70 dark:bg-black/80 backdrop-blur-md border-zinc-200 dark:border-zinc-800 flex items-center justify-between sticky top-0 z-10 gap-2">
         <div
           className="flex items-center gap-2 md:gap-3 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-900 px-2 md:px-3 py-1.5 rounded-xl transition-colors group shrink-0 min-w-0"
           onClick={() => {
@@ -152,7 +152,7 @@ export function SubjectView() {
       </div>
 
       {/* Mobile Tabs - scrollable row below header */}
-      <div className="md:hidden border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black px-2 py-1.5 overflow-x-auto scrollbar-none flex gap-1 shrink-0">
+      <div className="md:hidden border-b border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-black/80 backdrop-blur-md px-2 py-1.5 overflow-x-auto scrollbar-none flex gap-1 shrink-0">
         {tabs.map(tab => (
           <button
             key={tab.key}
@@ -168,7 +168,7 @@ export function SubjectView() {
         ))}
       </div>
 
-      <div className="flex-1 min-h-0 overflow-clip p-3 md:p-6 pb-20 md:pb-6 bg-zinc-50/50 dark:bg-black relative" style={{ contain: 'paint' }}>
+      <div className="flex-1 min-h-0 overflow-clip p-3 md:p-6 pb-20 md:pb-6 relative" style={{ contain: 'paint' }}>
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}

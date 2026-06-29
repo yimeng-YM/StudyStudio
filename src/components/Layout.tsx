@@ -17,12 +17,15 @@ export function Layout() {
   }, [loadSettings]);
 
   return (
-    <div className="flex h-screen w-full bg-white dark:bg-black overflow-hidden">
+    <div className="app-root-bg flex h-screen w-full overflow-hidden">
+      {/* 自定义网页背景层（全局，作用于所有页面与侧边栏） */}
+      <div className="app-bg-layer" aria-hidden="true" />
+
       {/* Desktop Sidebar: always visible */}
       {!isMobile && <Sidebar />}
 
       {/* Main content area */}
-      <main className="flex-1 overflow-hidden bg-white dark:bg-black relative" style={{ contain: 'paint' }}>
+      <main className="flex-1 overflow-hidden relative" style={{ contain: 'paint' }}>
         <AnimatePresence mode="wait">
           <motion.div
             key={location.pathname}

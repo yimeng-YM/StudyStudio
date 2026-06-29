@@ -569,7 +569,7 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
 /** 空状态占位 */
 function NoteDetailPlaceholder() {
   return (
-    <div className="h-full flex items-center justify-center text-zinc-400 bg-white dark:bg-zinc-900/50 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800">
+    <div className="h-full flex items-center justify-center text-zinc-400 bg-white/70 dark:bg-zinc-900/50 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800">
       选择一个笔记以查看或编辑，或者创建新笔记
     </div>
   );
@@ -637,14 +637,14 @@ function NoteDetail({
 
   if (!selectedNote) {
     return (
-      <div className="flex-1 flex items-center justify-center text-zinc-400 bg-white dark:bg-zinc-900/50 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800">
+      <div className="flex-1 flex items-center justify-center text-zinc-400 bg-white/70 dark:bg-zinc-900/50 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800">
         选择一个笔记以查看或编辑，或者创建新笔记
       </div>
     );
   }
 
   return (
-    <div className="h-full flex flex-col bg-white dark:bg-zinc-900/50 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800 p-4 min-h-0">
+    <div className="h-full flex flex-col bg-white/70 dark:bg-zinc-900/50 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800 p-4 min-h-0">
       <div className="flex justify-between items-center mb-4 border-b dark:border-slate-800 pb-2 shrink-0">
         {isEditing ? (
           <input

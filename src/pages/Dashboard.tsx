@@ -242,7 +242,7 @@ export function Dashboard() {
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.1 }}
-                        className="bg-white dark:bg-zinc-900/50 p-5 md:p-6 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 flex items-center justify-between"
+                        className="bg-white/70 dark:bg-zinc-900/50 p-5 md:p-6 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 flex items-center justify-between"
                     >
                         <div>
                             <div className="text-xs md:text-sm text-zinc-500 dark:text-zinc-500 mb-1">今日沉浸时间</div>
@@ -262,7 +262,7 @@ export function Dashboard() {
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.1 }}
-                        className="bg-white dark:bg-zinc-900/50 p-3 md:p-6 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 flex items-center gap-2 md:gap-4"
+                        className="bg-white/70 dark:bg-zinc-900/50 p-3 md:p-6 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 flex items-center gap-2 md:gap-4"
                     >
                         <div className="p-2 md:p-4 bg-zinc-100 dark:bg-zinc-800 rounded-lg text-zinc-700 dark:text-zinc-300">
                             <BookOpen size={20} className="md:w-6 md:h-6" />
@@ -276,7 +276,7 @@ export function Dashboard() {
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.2 }}
-                        className="bg-white dark:bg-zinc-900/50 p-3 md:p-6 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 flex items-center gap-2 md:gap-4"
+                        className="bg-white/70 dark:bg-zinc-900/50 p-3 md:p-6 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 flex items-center gap-2 md:gap-4"
                     >
                         <div className="p-2 md:p-4 bg-zinc-100 dark:bg-zinc-800 rounded-lg text-zinc-700 dark:text-zinc-300">
                             <FileText size={20} className="md:w-6 md:h-6" />
@@ -290,7 +290,7 @@ export function Dashboard() {
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.3 }}
-                        className="bg-white dark:bg-zinc-900/50 p-3 md:p-6 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 flex items-center gap-2 md:gap-4"
+                        className="bg-white/70 dark:bg-zinc-900/50 p-3 md:p-6 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 flex items-center gap-2 md:gap-4"
                     >
                         <div className="p-2 md:p-4 bg-zinc-100 dark:bg-zinc-800 rounded-lg text-zinc-700 dark:text-zinc-300">
                             <CheckSquare size={20} className="md:w-6 md:h-6" />
@@ -309,7 +309,7 @@ export function Dashboard() {
                             <CalendarDays className="text-zinc-800 dark:text-zinc-200" size={18} />
                             <h2 className="text-lg md:text-xl font-bold text-zinc-800 dark:text-zinc-200">学习打卡日历</h2>
                         </div>
-                        <div className="bg-white dark:bg-zinc-900/50 p-4 md:p-6 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 overflow-x-auto">
+                        <div className="bg-white/70 dark:bg-zinc-900/50 p-4 md:p-6 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 overflow-x-auto">
                             <div className="flex gap-1.5 md:gap-2 min-w-max">
                                 {calendarData?.map((day) => {
                                     let colorClass = "bg-zinc-100 dark:bg-zinc-800/50";
@@ -342,7 +342,7 @@ export function Dashboard() {
                     {/* Recent Tasks */}
                     <div className="space-y-3 md:space-y-4">
                         <h2 className="text-lg md:text-xl font-bold text-zinc-800 dark:text-zinc-200">待办事项</h2>
-                        <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+                        <div className="bg-white/70 dark:bg-zinc-900/70 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 overflow-hidden">
                             {recentTasks?.map(task => (
                                 <div key={task.id} className="p-4 border-b dark:border-zinc-800 last:border-0 flex items-center gap-3">
                                     <div className="w-5 h-5 rounded border border-zinc-300 dark:border-zinc-600" />
@@ -376,7 +376,7 @@ export function Dashboard() {
                                     key={subject.id}
                                     to={`/subject/${subject.id}`}
                                     onClick={() => handleSubjectClick(subject.id)}
-                                    className="block bg-white dark:bg-zinc-900 p-4 md:p-6 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 hover:border-blue-500 transition-all group relative animate-in fade-in zoom-in duration-300"
+                                    className="block bg-white/70 dark:bg-zinc-900/70 p-4 md:p-6 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 hover:border-blue-500 transition-all group relative animate-in fade-in zoom-in duration-300"
                                     style={{ animationDelay: `${idx * 50}ms` }}
                                 >
                                     <div className="flex items-start justify-between">
@@ -410,7 +410,7 @@ export function Dashboard() {
                                 </Link>
                             ))}
                             {(!allSubjects || allSubjects.length === 0) && (
-                                <div className="col-span-full text-center py-8 md:py-12 text-zinc-500 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl border border-dashed border-zinc-300 dark:border-zinc-700 text-sm">
+                                <div className="col-span-full text-center py-8 md:py-12 text-zinc-500 bg-zinc-50/70 dark:bg-zinc-900/50 rounded-xl border border-dashed border-zinc-300 dark:border-zinc-700 text-sm">
                                     暂无学科，请点击侧边栏或左上角菜单创建新学科
                                 </div>
                             )}

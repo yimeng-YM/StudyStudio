@@ -91,7 +91,7 @@ export function DailyQuote() {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.15 }}
-      className="relative overflow-hidden bg-white dark:bg-zinc-900/50 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 p-5 md:p-6 min-h-[80px]"
+      className="relative overflow-hidden bg-white/70 dark:bg-zinc-900/50 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 p-5 md:p-6 min-h-[80px]"
     >
       {/* 背景装饰 */}
       <div className="absolute -right-4 -top-4 text-zinc-100 dark:text-zinc-800">

@@ -14,6 +14,33 @@
     /* 全局字体大小 CSS 变量（由 useFontSize hook 动态覆盖） */
     --app-font-size: 14px;
 
+    /*
+     * 强调色调色板 —— 默认与 Tailwind 原生 blue 字节级一致。
+     * 由 useAccentTheme hook 在 JS 加载后覆盖（切换配色）。
+     * 此处提供默认值，确保首屏（JS 执行前）蓝色不丢失。
+     */
+    --blue-50: 239 246 255;
+    --blue-100: 219 234 254;
+    --blue-200: 191 219 254;
+    --blue-300: 147 197 253;
+    --blue-400: 96 165 250;
+    --blue-500: 59 130 246;
+    --blue-600: 37 99 235;
+    --blue-700: 29 78 216;
+    --blue-800: 30 64 175;
+    --blue-900: 30 58 138;
+    --blue-950: 23 37 84;
+
+    /*
+     * 自定义网页背景相关变量（由 useBackground hook 覆盖）。
+     * 默认值：亮色白底 / 暗色黑底，遮罩随主题自动取白/黑。
+     */
+    --app-bg-color: #ffffff;
+    --app-bg-image: none;
+    --app-bg-blur: 0px;
+    --app-bg-overlay-base: 255 255 255;
+    --app-bg-overlay-alpha: 0;
+
     --background: 0 0% 100%;
     /* Pure White */
     --foreground: 240 10% 3.9%;
@@ -52,6 +79,11 @@
   .dark {
     --background: 0 0% 0%;
     /* Pure Black */
+
+    /* 暗色模式下的自定义背景默认底色与遮罩基色（黑色遮罩，压暗图片） */
+    --app-bg-color: #000000;
+    --app-bg-overlay-base: 0 0 0;
+
     --foreground: 0 0% 98%;
 
     --card: 240 10% 3.9%;
@@ -92,25 +124,25 @@
     @apply bg-background text-foreground;
   }
 
-  /* 文本选择框样式 - 亮色模式 */
+  /* 文本选择框样式 - 亮色模式（跟随强调色） */
   ::selection {
-    background-color: hsl(210 100% 50% / 0.2);
+    background-color: rgb(var(--blue-500) / 0.2);
     color: inherit;
   }
 
   ::-moz-selection {
-    background-color: hsl(210 100% 50% / 0.2);
+    background-color: rgb(var(--blue-500) / 0.2);
     color: inherit;
   }
 
-  /* 文本选择框样式 - 暗色模式 */
+  /* 文本选择框样式 - 暗色模式（跟随强调色） */
   .dark ::selection {
-    background-color: hsl(210 100% 60% / 0.35);
+    background-color: rgb(var(--blue-400) / 0.35);
     color: inherit;
   }
 
   .dark ::-moz-selection {
-    background-color: hsl(210 100% 60% / 0.35);
+    background-color: rgb(var(--blue-400) / 0.35);
     color: inherit;
   }
 
@@ -121,6 +153,53 @@
 }
 
 @layer components {
+  /*
+   * 自定义网页背景层（见 Layout.tsx 中的 .app-bg-layer 元素）。
+   *
+   * `.app-root-bg` 建立层叠上下文（isolation: isolate）并作为绝对定位背景层的包含块。
+   * 该背景层为 `.app-root-bg` 的首层子节点，z-index: -1，
+   * 因此它落在所有内容之下，同时不会逃逸到 body 背景之后。
+   *   - background-color：底色（纯色 / 主题默认）
+   *   - ::before：图片层，支持模糊（边缘按模糊量外扩以避免透明描边）
+   *   - ::after：遮罩层（亮/暗主题自动取白/黑），增强内容可读性
+   */
+  .app-root-bg {
+    position: relative;
+    isolation: isolate;
+  }
+
+  .app-bg-layer {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-color: var(--app-bg-color);
+    transition: background-color 0.3s ease;
+  }
+
+  .app-bg-layer::before {
+    content: '';
+    position: absolute;
+    top: calc(-1 * var(--app-bg-blur));
+    right: calc(-1 * var(--app-bg-blur));
+    bottom: calc(-1 * var(--app-bg-blur));
+    left: calc(-1 * var(--app-bg-blur));
+    background-image: var(--app-bg-image);
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    filter: blur(var(--app-bg-blur));
+    transition: filter 0.3s ease, background-image 0.3s ease;
+  }
+
+  .app-bg-layer::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgb(var(--app-bg-overlay-base) / var(--app-bg-overlay-alpha));
+    transition: background 0.3s ease;
+  }
+
   .dark .react-flow__controls {
     @apply bg-slate-800 border border-slate-700 shadow-xl;
     box-shadow: 0 0 2px 1px rgba(0, 0, 0, 0.5);

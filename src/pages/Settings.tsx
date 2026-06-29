@@ -3,7 +3,7 @@ import { useAIStore } from '@/store/useAIStore';
 import { getModels } from '@/services/ai';
 import { DataManager, StudyStudioData } from '@/services/dataManager';
 import { useDialog } from '@/components/ui/DialogProvider';
-import { Upload, Download, ChevronRight, ChevronDown, Folder, FileText, Database, GitBranch, RefreshCw, Check, Search, Type, Settings2, HardDrive } from 'lucide-react';
+import { Upload, Download, ChevronRight, ChevronDown, Folder, FileText, Database, GitBranch, RefreshCw, Check, Search, Type, Settings2, HardDrive, Palette, ImageIcon, X, Link2 } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { db } from '@/db';
 import { cn } from '@/lib/utils';
@@ -11,6 +11,49 @@ import { useFontSize, APP_FONT_OPTIONS } from '@/hooks/useFontSize';
 import { FontSizeSlider } from '@/components/ui/FontSizeSlider';
 import { SegmentSlider } from '@/components/ui/SegmentSlider';
 import { DEFAULT_MAX_TOKENS } from '@/services/promptConfig';
+import { useAccentTheme, ACCENT_THEMES } from '@/hooks/useAccentTheme';
+import { useBackground, DEFAULT_BACKGROUND, BACKGROUND_COLOR_PRESETS } from '@/hooks/useBackground';
+import type { BackgroundConfig, BackgroundMode } from '@/hooks/useBackground';
+
+/**
+ * 将本地图片文件缩放后转为 Data URL，便于持久化到 localStorage。
+ * 超过 maxDim 的图片按比例缩小，并以 JPEG 压缩，避免存储配额溢出。
+ */
+async function fileToScaledDataUrl(file: File, maxDim = 1920, quality = 0.85): Promise<string> {
+  const raw = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error('文件读取失败'));
+    reader.readAsDataURL(file);
+  });
+
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const i = new Image();
+    i.onload = () => resolve(i);
+    i.onerror = () => reject(new Error('图片解码失败'));
+    i.src = raw;
+  });
+
+  let width = img.naturalWidth;
+  let height = img.naturalHeight;
+  if (width > maxDim || height > maxDim) {
+    const ratio = Math.min(maxDim / width, maxDim / height);
+    width = Math.round(width * ratio);
+    height = Math.round(height * ratio);
+  }
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return raw; // 降级：返回原图 Data URL
+  ctx.drawImage(img, 0, 0, width, height);
+  try {
+    return canvas.toDataURL('image/jpeg', quality);
+  } catch {
+    return raw;
+  }
+}
 
 /**
  * 数据选择树组件
@@ -243,6 +286,47 @@ export function Settings() {
   // Font Size State
   const { fontSize, setFontSize } = useFontSize();
 
+  // Accent Theme & Background State
+  const { accent, setAccent } = useAccentTheme();
+  const { background, setBackground } = useBackground();
+  const [imageUrlInput, setImageUrlInput] = useState(background.imageUrl);
+
+  // 当外部背景配置变化时（如重置），同步图片 URL 输入框
+  useEffect(() => {
+    setImageUrlInput(background.imageUrl);
+  }, [background.imageUrl]);
+
+  /** 更新背景配置的单个字段并立即应用 */
+  const updateBg = (patch: Partial<BackgroundConfig>) => {
+    setBackground({ ...background, ...patch });
+  };
+
+  /** 应用图片 URL（点击/回车触发，避免逐字符重载图片造成闪烁） */
+  const applyImageUrl = () => {
+    const url = imageUrlInput.trim();
+    updateBg({ mode: 'image', imageUrl: url });
+  };
+
+  /** 处理本地图片上传：缩放后写入背景配置（Data URL 可持久化） */
+  const handleImageFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const dataUrl = await fileToScaledDataUrl(file);
+      setImageUrlInput(dataUrl);
+      updateBg({ mode: 'image', imageUrl: dataUrl });
+    } catch (err) {
+      showAlert('图片处理失败：' + (err as Error).message, { title: '错误' });
+    }
+    e.target.value = '';
+  };
+
+  /** 重置网页背景为默认（关闭） */
+  const resetBackground = () => {
+    setBackground({ ...DEFAULT_BACKGROUND });
+    setImageUrlInput('');
+  };
+
   useEffect(() => {
     loadSettings();
   }, []);
@@ -468,7 +552,7 @@ export function Settings() {
         </div>
 
         {/* ===== AI 配置 ===== */}
-        <section className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 overflow-hidden">
+        <section className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-950/80 overflow-hidden">
           {/* 节头 */}
           <div className="flex items-center gap-3 px-5 py-4 border-b border-zinc-100 dark:border-zinc-800/50 bg-zinc-50/50 dark:bg-zinc-900/50">
             <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-900/30">
@@ -760,7 +844,7 @@ export function Settings() {
         </section>
 
         {/* ===== 显示设置 ===== */}
-        <section className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 overflow-hidden">
+        <section className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-950/80 overflow-hidden">
           <div className="flex items-center gap-3 px-5 py-4 border-b border-zinc-100 dark:border-zinc-800/50 bg-zinc-50/50 dark:bg-zinc-900/50">
             <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-purple-100 dark:bg-purple-900/30">
               <Type size={16} className="text-purple-600 dark:text-purple-400" />
@@ -821,8 +905,206 @@ export function Settings() {
           </div>
         </section>
 
+        {/* ===== 外观主题 ===== */}
+        <section className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-950/80 overflow-hidden">
+          <div className="flex items-center gap-3 px-5 py-4 border-b border-zinc-100 dark:border-zinc-800/50 bg-zinc-50/50 dark:bg-zinc-900/50">
+            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-pink-100 dark:bg-pink-900/30">
+              <Palette size={16} className="text-pink-600 dark:text-pink-400" />
+            </div>
+            <div>
+              <h2 className="text-base font-semibold text-zinc-800 dark:text-zinc-200">外观主题</h2>
+              <p className="text-xs text-zinc-400 dark:text-zinc-500">选择强调色与自定义网页背景</p>
+            </div>
+          </div>
+
+          <div className="p-5 space-y-6">
+            {/* 主题配色 */}
+            <div>
+              <label className="block text-sm font-medium mb-1.5 text-zinc-700 dark:text-zinc-300">
+                主题配色
+              </label>
+              <p className="text-[10px] text-zinc-400 mb-3">应用于按钮、选中态、图标等强调色元素</p>
+              <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
+                {ACCENT_THEMES.map(t => {
+                  const active = accent === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => setAccent(t.id)}
+                      title={t.name}
+                      className={cn(
+                        'relative flex flex-col items-center gap-1.5 py-2.5 rounded-lg border transition-all',
+                        active
+                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                          : 'border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600 hover:bg-zinc-50 dark:hover:bg-zinc-800/50'
+                      )}
+                    >
+                      <span
+                        className="w-6 h-6 rounded-full border border-black/10 dark:border-white/15"
+                        style={{ backgroundColor: t.swatch }}
+                      />
+                      <span className={cn(
+                        'text-[11px]',
+                        active ? 'text-blue-600 dark:text-blue-400 font-medium' : 'text-zinc-500 dark:text-zinc-400'
+                      )}>
+                        {t.name}
+                      </span>
+                      {active && (
+                        <span className="absolute top-1 right-1.5">
+                          <Check className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 网页背景 */}
+            <div className="border-t border-zinc-100 dark:border-zinc-800 pt-5">
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  网页背景
+                </label>
+                {background.mode !== 'none' && (
+                  <button
+                    onClick={resetBackground}
+                    className="flex items-center gap-1 text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+                  >
+                    <X size={12} />
+                    重置
+                  </button>
+                )}
+              </div>
+              <p className="text-[10px] text-zinc-400 mb-3">为整个应用设置纯色或图片背景，将在卡片间隙与毛玻璃侧边栏中显现</p>
+
+              {/* 模式切换 */}
+              <div className="inline-flex p-1 bg-zinc-100 dark:bg-zinc-800 rounded-lg mb-4">
+                {([
+                  { id: 'none', label: '关闭' },
+                  { id: 'color', label: '纯色' },
+                  { id: 'image', label: '图片' },
+                ] as { id: BackgroundMode; label: string }[]).map(m => (
+                  <button
+                    key={m.id}
+                    onClick={() => updateBg({ mode: m.id })}
+                    className={cn(
+                      'px-4 py-1.5 text-xs font-medium rounded-md transition-all',
+                      background.mode === m.id
+                        ? 'bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 shadow-sm'
+                        : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300'
+                    )}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* 纯色模式 */}
+              {background.mode === 'color' && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="color"
+                      value={background.color}
+                      onChange={e => updateBg({ color: e.target.value })}
+                      className="w-10 h-10 rounded-lg border border-zinc-200 dark:border-zinc-700 cursor-pointer bg-transparent p-0"
+                    />
+                    <input
+                      type="text"
+                      value={background.color}
+                      onChange={e => updateBg({ color: e.target.value })}
+                      className="flex-1 border rounded-lg px-3 py-2 bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                      placeholder="#RRGGBB"
+                    />
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {BACKGROUND_COLOR_PRESETS.map(c => (
+                      <button
+                        key={c}
+                        onClick={() => updateBg({ color: c })}
+                        title={c}
+                        className={cn(
+                          'w-7 h-7 rounded-md border transition-transform hover:scale-110',
+                          background.color.toLowerCase() === c.toLowerCase()
+                            ? 'ring-2 ring-offset-1 ring-offset-white dark:ring-offset-zinc-950 ring-blue-500 border-transparent'
+                            : 'border-zinc-200 dark:border-zinc-700'
+                        )}
+                        style={{ backgroundColor: c }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 图片模式 */}
+              {background.mode === 'image' && (
+                <div className="space-y-4">
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Link2 className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
+                      <input
+                        type="text"
+                        value={imageUrlInput}
+                        onChange={e => setImageUrlInput(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') applyImageUrl(); }}
+                        placeholder="粘贴图片 URL..."
+                        className="w-full pl-8 pr-3 py-2 border rounded-lg bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                      />
+                    </div>
+                    <button
+                      onClick={applyImageUrl}
+                      className="px-3 py-2 rounded-lg text-xs font-medium bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 border border-zinc-200 dark:border-zinc-700 transition-colors whitespace-nowrap"
+                    >
+                      应用
+                    </button>
+                  </div>
+
+                  {/* 本地图片上传 */}
+                  <label className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 border border-zinc-200 dark:border-zinc-700 transition-colors cursor-pointer">
+                    <Upload size={14} />
+                    上传本地图片
+                    <input type="file" accept="image/*" onChange={handleImageFile} className="hidden" />
+                  </label>
+
+                  {background.imageUrl && (
+                    <p className="text-[10px] text-zinc-400 flex items-center gap-1 truncate">
+                      <ImageIcon size={11} className="shrink-0" />
+                      <span className="truncate">
+                        {background.imageUrl.startsWith('data:') ? '本地图片' : background.imageUrl}
+                      </span>
+                    </p>
+                  )}
+
+                  {/* 背景模糊 */}
+                  <SegmentSlider
+                    label="背景模糊"
+                    description="柔化背景图片，减少细节干扰"
+                    options={[0, 2, 4, 8, 12, 16, 20]}
+                    value={background.blur}
+                    onChange={(v) => updateBg({ blur: v })}
+                    unit="px"
+                    formatValue={(v) => v === 0 ? '无' : `${v}px`}
+                  />
+
+                  {/* 遮罩强度 */}
+                  <SegmentSlider
+                    label="遮罩强度"
+                    description="叠加半透明白/黑遮罩以增强内容可读性"
+                    options={[0, 15, 30, 45, 60, 75]}
+                    value={background.overlay}
+                    onChange={(v) => updateBg({ overlay: v })}
+                    unit="%"
+                    formatValue={(v) => `${v}%`}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+
         {/* ===== 数据管理 ===== */}
-        <section className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 overflow-hidden">
+        <section className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-950/80 overflow-hidden">
           <div className="flex items-center gap-3 px-5 py-4 border-b border-zinc-100 dark:border-zinc-800/50 bg-zinc-50/50 dark:bg-zinc-900/50">
             <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-900/30">
               <HardDrive size={16} className="text-amber-600 dark:text-amber-400" />

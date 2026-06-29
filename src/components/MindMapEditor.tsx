@@ -784,7 +784,7 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
   return (
     <div className="flex h-full relative">
       {/* React Flow Editor */}
-      <div className="flex-1 relative bg-white dark:bg-zinc-950 rounded-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden shadow-sm">
+      <div className="flex-1 relative bg-white/80 dark:bg-zinc-950/80 rounded-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden shadow-sm">
         {selectedMindMapId ? (
           <ReactFlow
             nodes={nodesWithHandlers}
@@ -824,7 +824,7 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
             </div>
 
             {/* Desktop: floating pill */}
-            <Panel position="top-center" className="hidden md:block bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md rounded-full border border-zinc-200 dark:border-zinc-800 shadow-lg mt-4 overflow-visible">
+            <Panel position="top-center" className="hidden md:block bg-white/70 dark:bg-zinc-900/80 backdrop-blur-md rounded-full border border-zinc-200 dark:border-zinc-800 shadow-lg mt-4 overflow-visible">
               <div className="flex items-center gap-2 px-4 py-2 overflow-x-auto scrollbar-none">
                 <button onClick={handleAddRootNode} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-full text-xs font-medium hover:bg-blue-700 transition-colors shrink-0 whitespace-nowrap"><Plus size={14} /> 新增中心主题</button>
                 <div className="w-px h-4 bg-zinc-200 dark:bg-zinc-800 mx-1 shrink-0" />
@@ -957,7 +957,7 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
             </select>
           </div>
 
-          <div className="bg-zinc-50 dark:bg-zinc-900/50 p-3 rounded-lg border dark:border-zinc-800">
+          <div className="bg-zinc-50/70 dark:bg-zinc-900/50 p-3 rounded-lg border dark:border-zinc-800">
             <div className="text-xs text-zinc-500 mb-2 uppercase tracking-wider font-semibold">将添加以下项:</div>
             <div className="space-y-1">
               {taskItemsToAdd.length > 0 ? (

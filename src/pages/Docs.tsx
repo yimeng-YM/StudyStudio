@@ -249,13 +249,13 @@ export const Docs = () => {
 
               {/* 详细操作指南 */}
               <div className="space-y-6">
-                <div className="p-5 bg-slate-50 dark:bg-zinc-900/50 rounded-2xl border border-slate-200 dark:border-zinc-800">
+                <div className="p-5 bg-slate-50/70 dark:bg-zinc-900/50 rounded-2xl border border-slate-200 dark:border-zinc-800">
                   <h4 className="font-bold flex items-center gap-2 mb-4 text-lg">
                     <MousePointer2 className="w-5 h-5 text-primary" />
                     节点交互详解
                   </h4>
                   <div className="space-y-3">
-                    <div className="flex items-start gap-3 p-3 bg-white dark:bg-zinc-800/50 rounded-xl">
+                    <div className="flex items-start gap-3 p-3 bg-white/70 dark:bg-zinc-800/50 rounded-xl">
                       <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg shrink-0">
                         <span className="text-sm font-bold text-blue-600 dark:text-blue-400">双击</span>
                       </div>
@@ -264,7 +264,7 @@ export const Docs = () => {
                         <p className="text-sm text-slate-500">双击任意节点即可进入编辑模式，支持纯文本输入</p>
                       </div>
                     </div>
-                    <div className="flex items-start gap-3 p-3 bg-white dark:bg-zinc-800/50 rounded-xl">
+                    <div className="flex items-start gap-3 p-3 bg-white/70 dark:bg-zinc-800/50 rounded-xl">
                       <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg shrink-0">
                         <span className="text-sm font-bold text-purple-600 dark:text-purple-400">悬停</span>
                       </div>
@@ -273,7 +273,7 @@ export const Docs = () => {
                         <p className="text-sm text-slate-500">鼠标悬停在节点上，唤起快捷菜单：添加子节点、删除节点、新建关联笔记或任务卡</p>
                       </div>
                     </div>
-                    <div className="flex items-start gap-3 p-3 bg-white dark:bg-zinc-800/50 rounded-xl">
+                    <div className="flex items-start gap-3 p-3 bg-white/70 dark:bg-zinc-800/50 rounded-xl">
                       <div className="p-2 bg-amber-100 dark:bg-amber-900/30 rounded-lg shrink-0">
                         <Move className="w-4 h-4 text-amber-600 dark:text-amber-400" />
                       </div>
@@ -282,7 +282,7 @@ export const Docs = () => {
                         <p className="text-sm text-slate-500">左下角切换至"移动"图标。滚轮负责<strong>缩放</strong>画布，左键按住背景可<strong>平移</strong>画布位置</p>
                       </div>
                     </div>
-                    <div className="flex items-start gap-3 p-3 bg-white dark:bg-zinc-800/50 rounded-xl">
+                    <div className="flex items-start gap-3 p-3 bg-white/70 dark:bg-zinc-800/50 rounded-xl">
                       <div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg shrink-0">
                         <Square className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                       </div>
@@ -291,7 +291,7 @@ export const Docs = () => {
                         <p className="text-sm text-slate-500">左下角切换至"箭头"图标。滚轮负责<strong>平移</strong>，左键按住背景可<strong>框选</strong>多个节点进行批量操作</p>
                       </div>
                     </div>
-                    <div className="flex items-start gap-3 p-3 bg-white dark:bg-zinc-800/50 rounded-xl">
+                    <div className="flex items-start gap-3 p-3 bg-white/70 dark:bg-zinc-800/50 rounded-xl">
                       <div className="p-2 bg-rose-100 dark:bg-rose-900/30 rounded-lg shrink-0">
                         <Grid3X3 className="w-4 h-4 text-rose-600 dark:text-rose-400" />
                       </div>
@@ -311,7 +311,7 @@ export const Docs = () => {
                   <p className="text-slate-600 dark:text-slate-400 mb-4">
                     点击蓝色圆形的 <strong>AI 悬浮窗</strong>，描述您想学习的主题，例如：
                   </p>
-                  <div className="bg-white/80 dark:bg-zinc-800/80 p-4 rounded-xl font-mono text-sm space-y-2 mb-4">
+                  <div className="bg-white/70 dark:bg-zinc-800/80 p-4 rounded-xl font-mono text-sm space-y-2 mb-4">
                     <p className="text-purple-600 dark:text-purple-400">"帮我生成一份《数据结构与算法》的知识导图"</p>
                     <p className="text-purple-600 dark:text-purple-400">"创建一个关于近代史的学习框架"</p>
                   </div>
@@ -320,7 +320,7 @@ export const Docs = () => {
                   </p>
                 </div>
 
-                <div className="p-5 bg-slate-50 dark:bg-zinc-900/50 rounded-2xl border border-slate-200 dark:border-zinc-800">
+                <div className="p-5 bg-slate-50/70 dark:bg-zinc-900/50 rounded-2xl border border-slate-200 dark:border-zinc-800">
                   <h4 className="font-bold flex items-center gap-2 mb-4 text-lg">
                     <Layout className="w-5 h-5 text-emerald-500" />
                     自动整理布局
@@ -329,23 +329,23 @@ export const Docs = () => {
                     点击顶部导航栏的"自动整理"下拉菜单，选择合适的布局方式：
                   </p>
                   <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                    <div className="p-3 bg-white dark:bg-zinc-800/50 rounded-xl text-center border border-slate-200 dark:border-zinc-700">
+                    <div className="p-3 bg-white/70 dark:bg-zinc-800/50 rounded-xl text-center border border-slate-200 dark:border-zinc-700">
                       <ArrowRight className="w-5 h-5 mx-auto mb-2 text-primary" />
                       <span className="text-sm font-medium">向右</span>
                     </div>
-                    <div className="p-3 bg-white dark:bg-zinc-800/50 rounded-xl text-center border border-slate-200 dark:border-zinc-700">
+                    <div className="p-3 bg-white/70 dark:bg-zinc-800/50 rounded-xl text-center border border-slate-200 dark:border-zinc-700">
                       <ArrowRight className="w-5 h-5 mx-auto mb-2 text-primary rotate-180" />
                       <span className="text-sm font-medium">向左</span>
                     </div>
-                    <div className="p-3 bg-white dark:bg-zinc-800/50 rounded-xl text-center border border-slate-200 dark:border-zinc-700">
+                    <div className="p-3 bg-white/70 dark:bg-zinc-800/50 rounded-xl text-center border border-slate-200 dark:border-zinc-700">
                       <ArrowRight className="w-5 h-5 mx-auto mb-2 text-primary rotate-90" />
                       <span className="text-sm font-medium">向下</span>
                     </div>
-                    <div className="p-3 bg-white dark:bg-zinc-800/50 rounded-xl text-center border border-slate-200 dark:border-zinc-700">
+                    <div className="p-3 bg-white/70 dark:bg-zinc-800/50 rounded-xl text-center border border-slate-200 dark:border-zinc-700">
                       <ArrowRight className="w-5 h-5 mx-auto mb-2 text-primary -rotate-90" />
                       <span className="text-sm font-medium">向上</span>
                     </div>
-                    <div className="p-3 bg-white dark:bg-zinc-800/50 rounded-xl text-center border border-slate-200 dark:border-zinc-700">
+                    <div className="p-3 bg-white/70 dark:bg-zinc-800/50 rounded-xl text-center border border-slate-200 dark:border-zinc-700">
                       <GitBranch className="w-5 h-5 mx-auto mb-2 text-primary" />
                       <span className="text-sm font-medium">发散</span>
                     </div>
@@ -439,7 +439,7 @@ export const Docs = () => {
               </div>
 
               {/* 数学公式支持 */}
-              <div className="p-5 bg-slate-50 dark:bg-zinc-900/50 rounded-2xl border border-slate-200 dark:border-zinc-800">
+              <div className="p-5 bg-slate-50/70 dark:bg-zinc-900/50 rounded-2xl border border-slate-200 dark:border-zinc-800">
                 <h4 className="font-bold flex items-center gap-2 mb-4 text-lg">
                   <Cpu className="w-5 h-5 text-amber-500" />
                   KaTeX 数学公式支持
@@ -447,7 +447,7 @@ export const Docs = () => {
                 <p className="text-slate-600 dark:text-slate-400 mb-4">
                   特别优化的 KaTeX 支持，让复杂的数学公式输入如履平地。支持行内公式和块级公式：
                 </p>
-                <div className="bg-white dark:bg-zinc-800/50 p-4 rounded-xl space-y-3">
+                <div className="bg-white/70 dark:bg-zinc-800/50 p-4 rounded-xl space-y-3">
                   <div className="flex items-center gap-4">
                     <span className="text-sm font-mono text-slate-500 w-32">行内公式：</span>
                     <code className="bg-slate-100 dark:bg-zinc-700 px-2 py-1 rounded text-sm">$E = mc^2$</code>
@@ -471,7 +471,7 @@ export const Docs = () => {
                 <p className="text-slate-600 dark:text-slate-400 mb-3">
                   AI 生成的笔记通常遵循以下结构，您也可以参考这个框架手动编写：
                 </p>
-                <div className="bg-white/80 dark:bg-zinc-800/80 p-4 rounded-xl text-sm space-y-2">
+                <div className="bg-white/70 dark:bg-zinc-800/80 p-4 rounded-xl text-sm space-y-2">
                   <p className="font-medium text-emerald-700 dark:text-emerald-400"># 主题概述 / Introduction</p>
                   <p className="pl-4 text-slate-600 dark:text-slate-400">核心概念解释与背景介绍</p>
                   <p className="font-medium text-emerald-700 dark:text-emerald-400">## 核心概念 / Core Concepts</p>
@@ -525,13 +525,13 @@ export const Docs = () => {
               </div>
 
               {/* 详细操作指南 */}
-              <div className="p-5 bg-slate-50 dark:bg-zinc-900/50 rounded-2xl border border-slate-200 dark:border-zinc-800">
+              <div className="p-5 bg-slate-50/70 dark:bg-zinc-900/50 rounded-2xl border border-slate-200 dark:border-zinc-800">
                 <h4 className="font-bold flex items-center gap-2 mb-4 text-lg">
                   <MousePointer2 className="w-5 h-5 text-primary" />
                   看板操作详解
                 </h4>
                 <div className="space-y-3">
-                  <div className="flex items-start gap-3 p-3 bg-white dark:bg-zinc-800/50 rounded-xl">
+                  <div className="flex items-start gap-3 p-3 bg-white/70 dark:bg-zinc-800/50 rounded-xl">
                     <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg shrink-0">
                       <Plus className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                     </div>
@@ -540,7 +540,7 @@ export const Docs = () => {
                       <p className="text-sm text-slate-500">点击顶部"添加任务块"创建新的分类，例如"第一阶段：基础学习"、"第二阶段：进阶练习"等</p>
                     </div>
                   </div>
-                  <div className="flex items-start gap-3 p-3 bg-white dark:bg-zinc-800/50 rounded-xl">
+                  <div className="flex items-start gap-3 p-3 bg-white/70 dark:bg-zinc-800/50 rounded-xl">
                     <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg shrink-0">
                       <Move className="w-4 h-4 text-purple-600 dark:text-purple-400" />
                     </div>
@@ -549,7 +549,7 @@ export const Docs = () => {
                       <p className="text-sm text-slate-500">同思维导图，支持<strong>拖拽模式</strong>（滚轮缩放）与<strong>框选模式</strong>（滚轮平移），灵活操作画布</p>
                     </div>
                   </div>
-                  <div className="flex items-start gap-3 p-3 bg-white dark:bg-zinc-800/50 rounded-xl">
+                  <div className="flex items-start gap-3 p-3 bg-white/70 dark:bg-zinc-800/50 rounded-xl">
                     <div className="p-2 bg-rose-100 dark:bg-rose-900/30 rounded-lg shrink-0">
                       <Trash2 className="w-4 h-4 text-rose-600 dark:text-rose-400" />
                     </div>
@@ -558,7 +558,7 @@ export const Docs = () => {
                       <p className="text-sm text-slate-500">框选模式下选中多个任务块后，通过左下角菜单一键删除</p>
                     </div>
                   </div>
-                  <div className="flex items-start gap-3 p-3 bg-white dark:bg-zinc-800/50 rounded-xl">
+                  <div className="flex items-start gap-3 p-3 bg-white/70 dark:bg-zinc-800/50 rounded-xl">
                     <div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg shrink-0">
                       <Layers className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                     </div>
@@ -579,7 +579,7 @@ export const Docs = () => {
                 <p className="text-slate-600 dark:text-slate-400 mb-3">
                   告诉 AI 您的学习目标，它会自动生成结构化的任务计划：
                 </p>
-                <div className="bg-white/80 dark:bg-zinc-800/80 p-4 rounded-xl font-mono text-sm space-y-2 mb-3">
+                <div className="bg-white/70 dark:bg-zinc-800/80 p-4 rounded-xl font-mono text-sm space-y-2 mb-3">
                   <p className="text-purple-600 dark:text-purple-400">"帮我制定一个30天攻克高数的学习计划"</p>
                   <p className="text-purple-600 dark:text-purple-400">"创建一个考研英语复习任务清单"</p>
                 </div>
@@ -608,13 +608,13 @@ export const Docs = () => {
               </p>
 
               {/* 支持的题型 */}
-              <div className="p-5 bg-slate-50 dark:bg-zinc-900/50 rounded-2xl border border-slate-200 dark:border-zinc-800">
+              <div className="p-5 bg-slate-50/70 dark:bg-zinc-900/50 rounded-2xl border border-slate-200 dark:border-zinc-800">
                 <h4 className="font-bold flex items-center gap-2 mb-4 text-lg">
                   <HelpCircle className="w-5 h-5 text-primary" />
                   多维题型支持
                 </h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="flex items-start gap-3 p-3 bg-white dark:bg-zinc-800/50 rounded-xl">
+                  <div className="flex items-start gap-3 p-3 bg-white/70 dark:bg-zinc-800/50 rounded-xl">
                     <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg shrink-0">
                       <span className="text-xs font-bold text-blue-600 dark:text-blue-400">单选</span>
                     </div>
@@ -623,7 +623,7 @@ export const Docs = () => {
                       <p className="text-sm text-slate-500">4-5 个选项，选择唯一正确答案</p>
                     </div>
                   </div>
-                  <div className="flex items-start gap-3 p-3 bg-white dark:bg-zinc-800/50 rounded-xl">
+                  <div className="flex items-start gap-3 p-3 bg-white/70 dark:bg-zinc-800/50 rounded-xl">
                     <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg shrink-0">
                       <span className="text-xs font-bold text-purple-600 dark:text-purple-400">多选</span>
                     </div>
@@ -632,7 +632,7 @@ export const Docs = () => {
                       <p className="text-sm text-slate-500">4-5 个选项，可选择多个正确答案</p>
                     </div>
                   </div>
-                  <div className="flex items-start gap-3 p-3 bg-white dark:bg-zinc-800/50 rounded-xl">
+                  <div className="flex items-start gap-3 p-3 bg-white/70 dark:bg-zinc-800/50 rounded-xl">
                     <div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg shrink-0">
                       <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">判断</span>
                     </div>
@@ -641,7 +641,7 @@ export const Docs = () => {
                       <p className="text-sm text-slate-500">判断陈述是否正确</p>
                     </div>
                   </div>
-                  <div className="flex items-start gap-3 p-3 bg-white dark:bg-zinc-800/50 rounded-xl">
+                  <div className="flex items-start gap-3 p-3 bg-white/70 dark:bg-zinc-800/50 rounded-xl">
                     <div className="p-2 bg-amber-100 dark:bg-amber-900/30 rounded-lg shrink-0">
                       <span className="text-xs font-bold text-amber-600 dark:text-amber-400">填空</span>
                     </div>
@@ -650,7 +650,7 @@ export const Docs = () => {
                       <p className="text-sm text-slate-500">根据上下文填写正确内容</p>
                     </div>
                   </div>
-                  <div className="flex items-start gap-3 p-3 bg-white dark:bg-zinc-800/50 rounded-xl md:col-span-2">
+                  <div className="flex items-start gap-3 p-3 bg-white/70 dark:bg-zinc-800/50 rounded-xl md:col-span-2">
                     <div className="p-2 bg-rose-100 dark:bg-rose-900/30 rounded-lg shrink-0">
                       <span className="text-xs font-bold text-rose-600 dark:text-rose-400">大题</span>
                     </div>
@@ -672,7 +672,7 @@ export const Docs = () => {
                   AI 会根据您当前学科下的<strong>笔记和思维导图</strong>，自动提取核心知识点并生成针对性的练习题，真正实现"因材施考"。
                 </p>
                 <div className="space-y-3">
-                  <div className="flex items-start gap-3 p-3 bg-white/80 dark:bg-zinc-800/80 rounded-xl">
+                  <div className="flex items-start gap-3 p-3 bg-white/70 dark:bg-zinc-800/80 rounded-xl">
                     <div className="p-2 bg-indigo-100 dark:bg-indigo-900/30 rounded-lg shrink-0">
                       <FileText className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
                     </div>
@@ -681,7 +681,7 @@ export const Docs = () => {
                       <p className="text-sm text-slate-500">AI 分析笔记内容，提取关键概念和知识点进行出题</p>
                     </div>
                   </div>
-                  <div className="flex items-start gap-3 p-3 bg-white/80 dark:bg-zinc-800/80 rounded-xl">
+                  <div className="flex items-start gap-3 p-3 bg-white/70 dark:bg-zinc-800/80 rounded-xl">
                     <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg shrink-0">
                       <Brain className="w-4 h-4 text-purple-600 dark:text-purple-400" />
                     </div>
@@ -705,7 +705,7 @@ export const Docs = () => {
               </div>
 
               {/* 题型分布建议 */}
-              <div className="p-5 bg-slate-50 dark:bg-zinc-900/50 rounded-2xl border border-slate-200 dark:border-zinc-800">
+              <div className="p-5 bg-slate-50/70 dark:bg-zinc-900/50 rounded-2xl border border-slate-200 dark:border-zinc-800">
                 <h4 className="font-bold flex items-center gap-2 mb-3">
                   <Target className="w-5 h-5 text-primary" />
                   AI 生成题型分布
@@ -765,7 +765,7 @@ export const Docs = () => {
               </p>
 
               {/* 三种使用方式 */}
-              <div className="p-5 bg-slate-50 dark:bg-zinc-900/50 rounded-2xl border border-slate-200 dark:border-zinc-800">
+              <div className="p-5 bg-slate-50/70 dark:bg-zinc-900/50 rounded-2xl border border-slate-200 dark:border-zinc-800">
                 <h4 className="font-bold flex items-center gap-2 mb-4 text-lg">
                   <Layers className="w-5 h-5 text-primary" />
                   三种使用方式
@@ -814,14 +814,14 @@ export const Docs = () => {
                   使用 <code className="bg-slate-200 dark:bg-zinc-700 px-1.5 py-0.5 rounded text-xs font-mono">```html</code> 围栏代码块包裹 HTML 内容时，代码块上方会自动出现<strong>预览/源码</strong>切换按钮：
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="p-4 bg-white/80 dark:bg-zinc-800/80 rounded-xl">
+                  <div className="p-4 bg-white/70 dark:bg-zinc-800/80 rounded-xl">
                     <div className="flex items-center gap-2 mb-2">
                       <span className="px-2 py-0.5 bg-blue-500 text-white rounded text-xs font-medium">预览</span>
                       <span className="text-sm font-medium">可视化渲染</span>
                     </div>
                     <p className="text-xs text-slate-500">HTML 在 iframe 中完整渲染，支持脚本执行、样式展示和用户交互</p>
                   </div>
-                  <div className="p-4 bg-white/80 dark:bg-zinc-800/80 rounded-xl">
+                  <div className="p-4 bg-white/70 dark:bg-zinc-800/80 rounded-xl">
                     <div className="flex items-center gap-2 mb-2">
                       <span className="px-2 py-0.5 bg-blue-500 text-white rounded text-xs font-medium">源码</span>
                       <span className="text-sm font-medium">代码查看</span>
@@ -832,7 +832,7 @@ export const Docs = () => {
               </div>
 
               {/* 内嵌 HTML 示例 */}
-              <div className="p-5 bg-slate-50 dark:bg-zinc-900/50 rounded-2xl border border-slate-200 dark:border-zinc-800">
+              <div className="p-5 bg-slate-50/70 dark:bg-zinc-900/50 rounded-2xl border border-slate-200 dark:border-zinc-800">
                 <h4 className="font-bold flex items-center gap-2 mb-4 text-lg">
                   <FileText className="w-5 h-5 text-amber-500" />
                   内嵌 HTML 常用模式
@@ -841,7 +841,7 @@ export const Docs = () => {
                   在 Markdown 中直接写 HTML 标签，实现 Markdown 无法表达的排版效果：
                 </p>
                 <div className="space-y-4">
-                  <div className="p-4 bg-white dark:bg-zinc-800/50 rounded-xl">
+                  <div className="p-4 bg-white/70 dark:bg-zinc-800/50 rounded-xl">
                     <h5 className="font-medium text-sm mb-2">Callout Box（提示框）</h5>
                     <div className="bg-zinc-100 dark:bg-zinc-900 p-3 rounded font-mono text-xs overflow-x-auto">
                       <span className="text-slate-500">&lt;</span><span className="text-red-500">div</span> <span className="text-amber-500">style</span>=<span className="text-emerald-500">"background:#e8f5e9;padding:12px;border-left:4px solid #4caf50"</span><span className="text-slate-500">&gt;</span><br/>
@@ -849,7 +849,7 @@ export const Docs = () => {
                       <span className="text-slate-500">&lt;/</span><span className="text-red-500">div</span><span className="text-slate-500">&gt;</span>
                     </div>
                   </div>
-                  <div className="p-4 bg-white dark:bg-zinc-800/50 rounded-xl">
+                  <div className="p-4 bg-white/70 dark:bg-zinc-800/50 rounded-xl">
                     <h5 className="font-medium text-sm mb-2">折叠面板</h5>
                     <div className="bg-zinc-100 dark:bg-zinc-900 p-3 rounded font-mono text-xs overflow-x-auto">
                       <span className="text-slate-500">&lt;</span><span className="text-red-500">details</span><span className="text-slate-500">&gt;</span><br/>
@@ -858,7 +858,7 @@ export const Docs = () => {
                       <span className="text-slate-500">&lt;/</span><span className="text-red-500">details</span><span className="text-slate-500">&gt;</span>
                     </div>
                   </div>
-                  <div className="p-4 bg-white dark:bg-zinc-800/50 rounded-xl">
+                  <div className="p-4 bg-white/70 dark:bg-zinc-800/50 rounded-xl">
                     <h5 className="font-medium text-sm mb-2">彩色标注</h5>
                     <div className="bg-zinc-100 dark:bg-zinc-900 p-3 rounded font-mono text-xs overflow-x-auto">
                       <span className="text-slate-500">&lt;</span><span className="text-red-500">span</span> <span className="text-amber-500">style</span>=<span className="text-emerald-500">"color:#e53935;font-weight:bold"</span><span className="text-slate-500">&gt;</span>重要<span className="text-slate-500">&lt;/</span><span className="text-red-500">span</span><span className="text-slate-500">&gt;</span>
@@ -877,7 +877,7 @@ export const Docs = () => {
                   AI 会根据场景需求自动选择合适的方式生成 HTML，优先使用最轻量的模式：
                 </p>
                 <div className="space-y-3">
-                  <div className="flex items-start gap-3 p-3 bg-white/80 dark:bg-zinc-800/80 rounded-xl">
+                  <div className="flex items-start gap-3 p-3 bg-white/70 dark:bg-zinc-800/80 rounded-xl">
                     <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg shrink-0">
                       <span className="text-xs font-bold text-blue-600 dark:text-blue-400">Mode 1</span>
                     </div>
@@ -886,7 +886,7 @@ export const Docs = () => {
                       <p className="text-xs text-slate-500">用于 callout box、彩色文字、小徽章等装饰性元素</p>
                     </div>
                   </div>
-                  <div className="flex items-start gap-3 p-3 bg-white/80 dark:bg-zinc-800/80 rounded-xl">
+                  <div className="flex items-start gap-3 p-3 bg-white/70 dark:bg-zinc-800/80 rounded-xl">
                     <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg shrink-0">
                       <span className="text-xs font-bold text-purple-600 dark:text-purple-400">Mode 2</span>
                     </div>
@@ -895,7 +895,7 @@ export const Docs = () => {
                       <p className="text-xs text-slate-500">折叠面板、选项卡、CSS 进度条、简单图表</p>
                     </div>
                   </div>
-                  <div className="flex items-start gap-3 p-3 bg-white/80 dark:bg-zinc-800/80 rounded-xl">
+                  <div className="flex items-start gap-3 p-3 bg-white/70 dark:bg-zinc-800/80 rounded-xl">
                     <div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg shrink-0">
                       <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">Mode 3</span>
                     </div>
@@ -955,14 +955,14 @@ export const Docs = () => {
                   不同于普通的问答大模型，我们的 Agent 被赋予了一套完整的<strong>工具系统 (Tool Calling)</strong>。它可以直接读取您的学习数据，并代表您创建或修改内容。
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="flex items-start gap-3 p-3 bg-white/80 dark:bg-zinc-800/80 rounded-xl">
+                  <div className="flex items-start gap-3 p-3 bg-white/70 dark:bg-zinc-800/80 rounded-xl">
                     <Database className="w-4 h-4 text-indigo-500 mt-1 shrink-0" />
                     <div>
                       <p className="font-medium text-sm">上下文感知</p>
                       <p className="text-xs text-slate-500">自动识别您当前所在的页面、学科和实体，无需重复提供背景信息。</p>
                     </div>
                   </div>
-                  <div className="flex items-start gap-3 p-3 bg-white/80 dark:bg-zinc-800/80 rounded-xl">
+                  <div className="flex items-start gap-3 p-3 bg-white/70 dark:bg-zinc-800/80 rounded-xl">
                     <PenTool className="w-4 h-4 text-indigo-500 mt-1 shrink-0" />
                     <div>
                       <p className="font-medium text-sm">全栈操作权限</p>
@@ -981,7 +981,7 @@ export const Docs = () => {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
                   {/* ACT 模式 */}
-                  <div className="p-5 bg-slate-50 dark:bg-zinc-900/50 rounded-2xl border border-slate-200 dark:border-zinc-800 flex flex-col h-full">
+                  <div className="p-5 bg-slate-50/70 dark:bg-zinc-900/50 rounded-2xl border border-slate-200 dark:border-zinc-800 flex flex-col h-full">
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-2">
                         <Play className="w-5 h-5 text-emerald-500" />
@@ -992,7 +992,7 @@ export const Docs = () => {
                     <p className="text-sm text-slate-600 dark:text-slate-400 mb-4 flex-1">
                       适用于目标明确、指令清晰的单一任务。Agent 在理解指令后会<strong>立即调用工具执行</strong>，无需等待确认。
                     </p>
-                    <div className="bg-white dark:bg-zinc-800/80 p-3 rounded-xl">
+                    <div className="bg-white/70 dark:bg-zinc-800/80 p-3 rounded-xl">
                       <p className="text-xs font-bold text-slate-500 mb-2">典型指令示例：</p>
                       <ul className="space-y-2 text-sm list-disc list-inside">
                         <li>"帮我建一个名为『微积分基础』的学科"</li>
@@ -1003,7 +1003,7 @@ export const Docs = () => {
                   </div>
 
                   {/* PLAN 模式 */}
-                  <div className="p-5 bg-slate-50 dark:bg-zinc-900/50 rounded-2xl border border-slate-200 dark:border-zinc-800 flex flex-col h-full">
+                  <div className="p-5 bg-slate-50/70 dark:bg-zinc-900/50 rounded-2xl border border-slate-200 dark:border-zinc-800 flex flex-col h-full">
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-2">
                         <Puzzle className="w-5 h-5 text-purple-500" />
@@ -1014,7 +1014,7 @@ export const Docs = () => {
                     <p className="text-sm text-slate-600 dark:text-slate-400 mb-4 flex-1">
                       适用于复杂的宏大目标构建。Agent 会先进行<strong>深度需求分析和目标拆解</strong>，向您展示详细的执行计划，<strong>等待您确认后</strong>才会开始实质性的创建工作。
                     </p>
-                    <div className="bg-white dark:bg-zinc-800/80 p-3 rounded-xl">
+                    <div className="bg-white/70 dark:bg-zinc-800/80 p-3 rounded-xl">
                       <p className="text-xs font-bold text-slate-500 mb-2">典型指令示例：</p>
                       <ul className="space-y-2 text-sm list-disc list-inside">
                         <li>"我下个月要考研政治，帮我准备全套复习资料"</li>
@@ -1135,7 +1135,7 @@ export const Docs = () => {
   );
 
   return (
-    <div className="flex h-full bg-white dark:bg-zinc-950 text-slate-900 dark:text-slate-100 overflow-hidden">
+    <div className="flex h-full text-slate-900 dark:text-slate-100 overflow-hidden">
       {/* Desktop sidebar */}
       <div className="hidden md:flex border-r border-slate-200 dark:border-zinc-900 flex-col bg-slate-50/50 dark:bg-zinc-900/20 relative" style={{ width: sidebarWidth }}>
         <div className="p-6 border-b border-slate-200 dark:border-zinc-900">
@@ -1155,7 +1155,7 @@ export const Docs = () => {
       {showMobileNav && (
         <div className="md:hidden fixed inset-0 z-30 flex">
           <div className="absolute inset-0 bg-black/50" onClick={() => setShowMobileNav(false)} />
-          <div className="relative bg-white dark:bg-zinc-950 border-r border-slate-200 dark:border-zinc-900 flex flex-col h-full z-10" style={{ width: sidebarWidth }}>
+          <div className="relative bg-white/90 dark:bg-zinc-950/90 border-r border-slate-200 dark:border-zinc-900 flex flex-col h-full z-10" style={{ width: sidebarWidth }}>
             <div className="p-4 border-b border-slate-200 dark:border-zinc-900 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Book className="w-5 h-5 text-primary" />
@@ -1171,7 +1171,7 @@ export const Docs = () => {
       )}
 
       {/* Content area */}
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto scroll-smooth bg-white dark:bg-zinc-950">
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto scroll-smooth bg-white/50 dark:bg-zinc-950/20">
         {/* Mobile nav trigger */}
         <div className="md:hidden sticky top-0 z-10 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-sm border-b border-slate-200 dark:border-zinc-900 px-4 py-2.5 flex items-center gap-3">
           <button

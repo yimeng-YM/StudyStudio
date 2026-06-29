@@ -115,7 +115,7 @@ export function Sidebar({ isMobileOpen, onMobileClose }: SidebarProps = {}) {
     <div
       style={{ width: isMobileDrawer ? 280 : sidebarWidth }}
       className={cn(
-        "bg-white/60 dark:bg-zinc-950 backdrop-blur-xl h-full flex flex-col p-4 relative shrink-0 transition-[width] duration-300 ease-in-out",
+        "bg-white/60 dark:bg-zinc-950/70 backdrop-blur-xl h-full flex flex-col p-4 relative shrink-0 transition-[width] duration-300 ease-in-out",
         !isMobileDrawer && "border-r border-slate-200/50 dark:border-zinc-800/50"
       )}
     >

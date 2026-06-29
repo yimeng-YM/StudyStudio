@@ -390,7 +390,7 @@ function TasksModuleInner({ subjectId, initialSessionId }: TasksModuleProps) {
 
   return (
     <div className="flex h-full relative">
-      <div className="flex-1 relative bg-white dark:bg-zinc-950 rounded-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden shadow-sm">
+      <div className="flex-1 relative bg-white/80 dark:bg-zinc-950/80 rounded-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden shadow-sm">
         <ReactFlow
           nodes={nodesWithHandlers}
           edges={edges}
@@ -425,7 +425,7 @@ function TasksModuleInner({ subjectId, initialSessionId }: TasksModuleProps) {
           </div>
 
           {/* Desktop: floating pill */}
-          <Panel position="top-center" className="hidden md:block bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md rounded-full border border-zinc-200 dark:border-zinc-800 shadow-lg mt-4 overflow-visible">
+          <Panel position="top-center" className="hidden md:block bg-white/70 dark:bg-zinc-900/80 backdrop-blur-md rounded-full border border-zinc-200 dark:border-zinc-800 shadow-lg mt-4 overflow-visible">
             <div className="flex items-center gap-2 px-4 py-2 overflow-x-auto scrollbar-none">
               <button onClick={addBlock} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-full text-xs font-medium hover:bg-blue-700 transition-colors shrink-0 whitespace-nowrap"><Plus size={14} /> 添加任务块</button>
               {nodes.length > 0 && <>

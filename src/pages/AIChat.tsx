@@ -57,7 +57,7 @@ export function AIChat() {
     <div
       key={session.id}
       onClick={() => handleSessionClick(session)}
-      className="flex items-center gap-4 p-4 bg-white dark:bg-zinc-900 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 cursor-pointer hover:border-zinc-400 dark:hover:border-zinc-600 hover:shadow-md transition-all group"
+      className="flex items-center gap-4 p-4 bg-white/70 dark:bg-zinc-900/70 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 cursor-pointer hover:border-zinc-400 dark:hover:border-zinc-600 hover:shadow-md transition-all group"
     >
       <div className={`p-3 rounded-lg flex-shrink-0 ${session.mode === 'plan' ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400' : 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400'}`}>
         {session.mode === 'plan' ? <Brain size={24} /> : <Zap size={24} />}
@@ -82,7 +82,7 @@ export function AIChat() {
   );
 
   return (
-    <div className="flex flex-col h-full bg-zinc-50 dark:bg-zinc-950 overflow-y-auto pb-20 md:pb-0">
+    <div className="flex flex-col h-full overflow-y-auto pb-20 md:pb-0">
       <div className="p-4 md:p-8 max-w-5xl mx-auto w-full">
         <div className="mb-6 md:mb-8">
           <h1 className="text-2xl md:text-3xl font-bold text-zinc-900 dark:text-zinc-100 mb-1 md:mb-2">全局任务历史</h1>
@@ -93,7 +93,7 @@ export function AIChat() {
           {sessions?.map(renderSessionItem)}
 
           {sessions?.length === 0 && (
-            <div className="col-span-full text-center text-zinc-400 py-20 bg-white dark:bg-zinc-900/50 rounded-2xl border border-dashed border-zinc-300 dark:border-zinc-800">
+            <div className="col-span-full text-center text-zinc-400 py-20 bg-white/70 dark:bg-zinc-900/50 rounded-2xl border border-dashed border-zinc-300 dark:border-zinc-800">
               <MessageSquare size={48} className="mx-auto mb-4 opacity-20" />
               暂无任务记录，请打开 AI 助手开始新的任务
             </div>

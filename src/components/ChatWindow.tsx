@@ -231,7 +231,7 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
     <div className={`flex flex-col h-full relative ${className || ''}`}>
       {/* Header Controls */}
       <div className="absolute top-2 left-4 right-4 z-20 flex justify-between items-center pointer-events-none">
-        <div className="flex bg-white/80 dark:bg-zinc-800/80 backdrop-blur-md rounded-full p-1 shadow-sm border dark:border-zinc-700 pointer-events-auto">
+        <div className="flex bg-white/70 dark:bg-zinc-800/80 backdrop-blur-md rounded-full p-1 shadow-sm border dark:border-zinc-700 pointer-events-auto">
           <button
             onClick={() => setMode('act')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-all ${mode === 'act' ? 'bg-primary text-primary-foreground shadow' : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200'}`}
@@ -342,7 +342,7 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
                 <div className="flex flex-col gap-2 max-w-[90%] md:max-w-[80%]">
                   <ToolCallRenderer toolCalls={m.tool_calls} results={toolResults} />
                   {m.content && (
-                    <div className="bg-white/80 dark:bg-zinc-800/80 backdrop-blur-sm shadow-sm rounded-2xl rounded-tl-sm ring-1 ring-zinc-900/5 dark:ring-zinc-100/10 p-4">
+                    <div className="bg-white/70 dark:bg-zinc-800/80 backdrop-blur-sm shadow-sm rounded-2xl rounded-tl-sm ring-1 ring-zinc-900/5 dark:ring-zinc-100/10 p-4">
                       <MessageRenderer content={m.content as any} isUser={false} />
                     </div>
                   )}
@@ -350,7 +350,7 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
               ) : (
                 <div className={`max-w-[90%] md:max-w-[80%] p-4 relative group ${m.role === 'user'
                   ? 'bg-zinc-800 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900 rounded-2xl rounded-tr-sm shadow-md'
-                  : 'bg-white/80 dark:bg-zinc-800/80 backdrop-blur-sm shadow-sm rounded-2xl rounded-tl-sm ring-1 ring-zinc-900/5 dark:ring-zinc-100/10'
+                  : 'bg-white/70 dark:bg-zinc-800/80 backdrop-blur-sm shadow-sm rounded-2xl rounded-tl-sm ring-1 ring-zinc-900/5 dark:ring-zinc-100/10'
                   }`}>
                   <MessageRenderer content={m.content as any} isUser={m.role === 'user'} />
                   
@@ -383,7 +383,7 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
       {selectedFiles.length > 0 && (
         <div className="px-4 pb-2 flex gap-2 overflow-x-auto">
           {selectedFiles.map((f, i) => (
-            <div key={i} className="relative backdrop-blur px-3 py-1.5 rounded-lg border flex items-center gap-2 max-w-[200px] shadow-sm animate-in zoom-in duration-200 bg-white/80 dark:bg-zinc-800/80 border-primary/20">
+            <div key={i} className="relative backdrop-blur px-3 py-1.5 rounded-lg border flex items-center gap-2 max-w-[200px] shadow-sm animate-in zoom-in duration-200 bg-white/70 dark:bg-zinc-800/80 border-primary/20">
               {f.images && f.images.length > 0 ? (
                 <div className="w-8 h-8 rounded bg-green-100 dark:bg-green-900/30 flex items-center justify-center shrink-0">
                   <span className="text-[10px] font-bold text-green-600 dark:text-green-400">IMG</span>
@@ -415,7 +415,7 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
             <span>{status}</span>
           </div>
         )}
-        <div className="flex gap-2 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl p-2 rounded-[1.5rem] shadow-lg border border-zinc-200/50 dark:border-zinc-800/50 ring-1 ring-black/5 dark:ring-white/5 items-end transition-all focus-within:ring-primary/20 focus-within:border-primary/30">
+        <div className="flex gap-2 bg-white/70 dark:bg-zinc-900/80 backdrop-blur-xl p-2 rounded-[1.5rem] shadow-lg border border-zinc-200/50 dark:border-zinc-800/50 ring-1 ring-black/5 dark:ring-white/5 items-end transition-all focus-within:ring-primary/20 focus-within:border-primary/30">
           <button onClick={() => fileInputRef.current?.click()} className="p-3 text-zinc-400 hover:text-primary hover:bg-primary/10 rounded-full transition-all duration-300 mb-0.5" title="上传文件">
             <Paperclip size={20} />
           </button>
