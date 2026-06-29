@@ -8,6 +8,16 @@ import { useDialog } from '@/components/ui/DialogProvider';
 import { useChatSession } from '@/hooks/useChatSession';
 
 /**
+ * 格式化文件大小为易读字符串
+ * @param bytes - 文件字节数
+ */
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+}
+
+/**
  * 聊天窗口组件属性
  * @property {string | null} [sessionId] - 当前对话会话 ID
  * @property {(sessionId: string | null) => void} [onSessionChange] - 会话变更时的回调函数
@@ -45,11 +55,15 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
   /** 用户当前输入的文本内容 */
   const [input, setInput] = useState('');
   /** 已选择待上传的文件列表，包含处理后的文本内容和图片 */
-  const [selectedFiles, setSelectedFiles] = useState<{ name: string, content: string, images?: string[] }[]>([]);
+  const [selectedFiles, setSelectedFiles] = useState<{ name: string, size: number, content: string, images?: string[] }[]>([]);
   /** 消息列表滚动容器引用，用于实现自动滚动 */
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  /** 聊天消息区域的滚动容器引用，用于判断用户是否在底部 */
+  const chatScrollRef = useRef<HTMLDivElement>(null);
   /** 文件选择输入框引用 */
   const fileInputRef = useRef<HTMLInputElement>(null);
+  /** 标记用户是否手动滚动离开底部 */
+  const userScrolledUp = useRef(false);
   /** 是否显示历史会话面板 */
   const [showHistory, setShowHistory] = useState(false);
   /**
@@ -82,19 +96,47 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
   }));
 
   /**
-   * 将消息列表滚动至底部
-   * 确保用户始终能看到最新的消息内容
+   * 判断用户是否在聊天区域底部（阈值 100px 内视为在底部）
    */
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const isNearBottom = () => {
+    const el = chatScrollRef.current;
+    if (!el) return true;
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 100;
   };
 
   /**
-   * 核心滚动逻辑：当消息列表更新（如流式渲染中新字符产生）时，自动触发滚动
+   * 将消息列表滚动至底部
+   * 只在用户未手动上翻时执行，避免干扰阅读历史消息
+   */
+  const scrollToBottom = () => {
+    if (!userScrolledUp.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
+  /**
+   * 核心滚动逻辑：当消息列表更新时自动触发滚动
+   * 判断用户是否在底部 —— 在底部则自动跟滚，在上方翻阅历史则不打断
    */
   useEffect(() => {
-    scrollToBottom();
+    if (isNearBottom()) {
+      userScrolledUp.current = false;
+      scrollToBottom();
+    } else {
+      userScrolledUp.current = true;
+    }
   }, [messages]);
+
+  /**
+   * 监听用户手动滚动 —— 如果在底部则重置标记，否则标记为已上翻
+   */
+  const handleScroll = () => {
+    if (isNearBottom()) {
+      userScrolledUp.current = false;
+    } else {
+      userScrolledUp.current = true;
+    }
+  };
 
   /**
    * 处理文件选择事件
@@ -105,11 +147,12 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
     const files = e.target.files;
     if (files && files.length > 0) {
       try {
-        const newFiles: { name: string, content: string, images?: string[] }[] = [];
+        const newFiles: { name: string, size: number, content: string, images?: string[] }[] = [];
         for (let i = 0; i < files.length; i++) {
           const processed = await processFile(files[i]);
           newFiles.push({
             name: files[i].name,
+            size: files[i].size,
             content: processed.text,
             images: processed.images
           });
@@ -174,7 +217,10 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
     
     setInput('');
     setSelectedFiles([]);
-    
+
+    // 发送新消息时重置滚动状态，确保能看到自己的消息
+    userScrolledUp.current = false;
+
     const newSessionId = await sendMessage(content, files);
     if (newSessionId && newSessionId !== currentSessionId && onSessionChange) {
       onSessionChange(newSessionId);
@@ -256,7 +302,11 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
         </div>
       )}
 
-      <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-6 pt-16 scroll-smooth">
+      <div
+        ref={chatScrollRef}
+        onScroll={handleScroll}
+        className="flex-1 min-h-0 overflow-y-auto p-4 space-y-6 pt-16 scroll-smooth"
+      >
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-zinc-400 space-y-4">
             <div className={`w-16 h-16 rounded-full flex items-center justify-center shadow-inner ${mode === 'plan' ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-500' : 'bg-zinc-50 dark:bg-zinc-800/50 text-primary'}`}>
@@ -339,6 +389,10 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
                 <div className="w-8 h-8 rounded bg-red-100 dark:bg-red-900/50 flex items-center justify-center shrink-0">
                   <span className="text-[10px] font-bold text-red-600 dark:text-red-400">PDF</span>
                 </div>
+              ) : f.images && f.images.length > 0 ? (
+                <div className="w-8 h-8 rounded bg-green-100 dark:bg-green-900/30 flex items-center justify-center shrink-0">
+                  <span className="text-[10px] font-bold text-green-600 dark:text-green-400">IMG</span>
+                </div>
               ) : (
                 <div className="w-8 h-8 rounded bg-primary/10 flex items-center justify-center shrink-0">
                   <Sparkles size={14} className="text-primary" />
@@ -346,7 +400,7 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
               )}
               <div className="min-w-0 flex-1">
                 <div className="truncate text-xs font-medium text-foreground">{f.name}</div>
-                <div className="text-[10px] text-muted-foreground truncate">{f.content.length > 0 ? `${(f.content.length / 1024).toFixed(1)}KB` : 'Empty'}</div>
+                <div className="text-[10px] text-muted-foreground truncate">{formatFileSize(f.size)}</div>
               </div>
               <button
                 onClick={() => setSelectedFiles(prev => prev.filter((_, idx) => idx !== i))}

@@ -159,17 +159,45 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act') {
       return activeSessionId;
     }
 
-    const userMessage: Message = { role: 'user', content };
+    let userMessage: Message = { role: 'user', content };
+
     if (files && files.length > 0) {
-      const parts: any[] = [{ type: 'text', text: content }];
-      files.forEach(f => {
+      // 收集所有文件的文本内容（已包含 FILE_METADATA 标记）
+      const fileTexts = files
+        .filter((f: any) => f.content && f.content.trim())
+        .map((f: any) => f.content)
+        .join('\n\n');
+
+      // 检查是否有图片需要多模态处理
+      const allImages: string[] = [];
+      files.forEach((f: any) => {
         if (f.images) {
-          f.images.forEach((img: string) => {
-            parts.push({ type: 'image_url', image_url: { url: img } });
-          });
+          f.images.forEach((img: string) => allImages.push(img));
         }
       });
-      userMessage.content = parts;
+
+      if (allImages.length > 0) {
+        // 多模态消息：用户文字 + 文件内容 + 图片
+        const parts: any[] = [];
+        // 用户输入的文字始终作为第一个独立 text part
+        if (content.trim()) {
+          parts.push({ type: 'text', text: content });
+        }
+        // 文件提取的文本内容紧随其后
+        if (fileTexts) {
+          parts.push({ type: 'text', text: fileTexts });
+        }
+        // 图片放在最后
+        allImages.forEach((img: string) => {
+          parts.push({ type: 'image_url', image_url: { url: img } });
+        });
+        userMessage.content = parts;
+      } else if (fileTexts) {
+        // 纯文本文件：用户文字 + 文件内容合并
+        const fullText = [content, fileTexts].filter(Boolean).join('\n\n');
+        userMessage.content = fullText;
+      }
+      // 如果没有有效内容也没有图片，保持原始 content（兜底）
     }
 
     const newMessages = [...messages, userMessage];
