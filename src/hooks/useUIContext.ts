@@ -42,7 +42,7 @@ interface UseUIContextOptions {
  * });
  */
 export function useUIContext(options: UseUIContextOptions) {
-  const { setContext } = useAIStore();
+  const setContext = useAIStore(s => s.setContext);
   
   const {
     location,

@@ -140,7 +140,8 @@ export function Dashboard() {
             .toArray()
     );
     const location = useLocation();
-    const { setFloatingWindowOpen, setGlobalSessionId } = useAIStore();
+    const setFloatingWindowOpen = useAIStore(s => s.setFloatingWindowOpen);
+    const setGlobalSessionId = useAIStore(s => s.setGlobalSessionId);
 
     /** 处理路由状态中携带的 AI 会话打开请求 */
     useEffect(() => {

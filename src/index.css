@@ -111,33 +111,9 @@
     color: inherit;
   }
 
-  /* 平滑切换主题动画 */
-  body,
-  .bg-white,
-  .bg-slate-50,
-  .bg-slate-100,
-  .bg-slate-200,
-  .bg-slate-900,
-  .bg-slate-950,
-  .bg-slate-800,
-  .text-slate-900,
-  .text-slate-800,
-  .text-slate-700,
-  .text-slate-600,
-  .text-slate-500,
-  .text-slate-400,
-  .text-slate-300,
-  .text-slate-200,
-  .text-slate-100,
-  .border-slate-100,
-  .border-slate-200,
-  .border-slate-300,
-  .border-slate-700,
-  .border-slate-800 {
-    transition:
-      background-color 0.3s ease,
-      color 0.3s ease,
-      border-color 0.3s ease;
+  /* 主题切换平滑过渡 */
+  body {
+    transition: background-color 0.3s ease, color 0.3s ease;
   }
 }
 

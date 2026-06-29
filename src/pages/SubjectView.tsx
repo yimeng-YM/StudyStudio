@@ -168,7 +168,7 @@ export function SubjectView() {
         ))}
       </div>
 
-      <div className="flex-1 min-h-0 overflow-hidden p-3 md:p-6 pb-20 md:pb-6 bg-zinc-50/50 dark:bg-black relative">
+      <div className="flex-1 min-h-0 overflow-clip p-3 md:p-6 pb-20 md:pb-6 bg-zinc-50/50 dark:bg-black relative" style={{ contain: 'paint' }}>
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}

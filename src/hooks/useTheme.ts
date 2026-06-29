@@ -69,7 +69,9 @@ updateDomClass(initialTheme);
  * @returns 包含当前主题配置及相关操作函数的对象
  */
 export function useTheme() {
-  const { theme, setTheme, toggleTheme } = useThemeStore();
+  const theme = useThemeStore(s => s.theme);
+  const setTheme = useThemeStore(s => s.setTheme);
+  const toggleTheme = useThemeStore(s => s.toggleTheme);
   
   useEffect(() => {
     if (theme === 'system') {

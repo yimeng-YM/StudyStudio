@@ -203,7 +203,10 @@ function DataSelectionTree({
  * @returns {JSX.Element} Settings 页面组件
  */
 export function Settings() {
-  const { settings, loadSettings, updateSettings, isLoading } = useAIStore();
+  const settings = useAIStore(s => s.settings);
+  const isLoading = useAIStore(s => s.isLoading);
+  const loadSettings = useAIStore(s => s.loadSettings);
+  const updateSettings = useAIStore(s => s.updateSettings);
   const [localSettings, setLocalSettings] = useState(settings);
   const { showAlert } = useDialog();
   const [models, setModels] = useState<string[]>([]);

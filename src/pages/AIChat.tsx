@@ -17,7 +17,8 @@ import { useDialog } from '@/components/ui/DialogProvider';
  * @returns {JSX.Element} AIChat 页面组件
  */
 export function AIChat() {
-  const { setGlobalSessionId, setFloatingWindowOpen } = useAIStore();
+  const setGlobalSessionId = useAIStore(s => s.setGlobalSessionId);
+  const setFloatingWindowOpen = useAIStore(s => s.setFloatingWindowOpen);
   const { showAlert, showConfirm } = useDialog();
 
   const sessions = useLiveQuery(async () => {

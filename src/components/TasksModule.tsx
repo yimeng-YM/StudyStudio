@@ -53,7 +53,8 @@ function TasksModuleInner({ subjectId, initialSessionId }: TasksModuleProps) {
   const [boardEntity, setBoardEntity] = useState<Entity | null>(null);
   const { showConfirm } = useDialog();
   const { theme } = useTheme();
-  const { setFloatingWindowOpen, setGlobalSessionId } = useAIStore();
+  const setFloatingWindowOpen = useAIStore(s => s.setFloatingWindowOpen);
+  const setGlobalSessionId = useAIStore(s => s.setGlobalSessionId);
   const { setCenter, getNode } = useReactFlow();
   const [isSelectionMode, setIsSelectionMode] = useState(false);
 

@@ -37,7 +37,8 @@ export interface PlanInfo {
  * @returns 包含消息列表、加载状态、计划状态及会话控制方法的对象
  */
 export function useChatSession(sessionId: string | null, mode: 'plan' | 'act') {
-  const { settings, currentContext } = useAIStore();
+  const settings = useAIStore(s => s.settings);
+  const currentContext = useAIStore(s => s.currentContext);
   const { showAlert } = useDialog();
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);

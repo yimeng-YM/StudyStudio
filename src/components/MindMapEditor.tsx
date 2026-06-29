@@ -64,7 +64,8 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
   const [selectedMindMapId, setSelectedMindMapId] = useState<string | null>(null);
   const { showAlert, showConfirm, showPrompt } = useDialog();
   const { theme } = useTheme();
-  const { setFloatingWindowOpen, setGlobalSessionId } = useAIStore();
+  const setFloatingWindowOpen = useAIStore(s => s.setFloatingWindowOpen);
+  const setGlobalSessionId = useAIStore(s => s.setGlobalSessionId);
 
   /** 获取当前学科信息 */
   const subject = useLiveQuery(() => db.subjects.get(subjectId), [subjectId]);

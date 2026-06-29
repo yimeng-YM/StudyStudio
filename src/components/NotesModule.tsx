@@ -1,12 +1,13 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, Entity } from '@/db';
 import {
   Plus, Trash, Edit, Save, ArrowUp, ArrowDown, SortAsc, Clock, GripVertical,
   ImageIcon, Undo, Redo, ArrowLeft,
   Bold, Italic, Strikethrough, List, ListOrdered, Heading1, Heading2, Heading3,
-  Quote, Code, Link as LinkIcon
+  Quote, Code, Link as LinkIcon, BookOpen
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { MessageRenderer } from './MessageRenderer';
 import { cn, generateUUID } from '@/lib/utils';
 import { useDialog } from '@/components/ui/DialogProvider';
@@ -14,16 +15,131 @@ import { useHistory } from '@/hooks/useHistory';
 import { useAIStore } from '@/store/useAIStore';
 import { useNotesContext } from '@/hooks/useUIContext';
 
-/**
- * 笔记模块组件属性
- * @property {string} subjectId - 关联的学科ID
- * @property {string | null} [initialNoteId] - 初始选中的笔记ID
- * @property {string | null} [initialSessionId] - 初始AI会话ID
- */
 interface NotesModuleProps {
   subjectId: string;
   initialNoteId?: string | null;
   initialSessionId?: string | null;
+}
+
+/** TOC 标题条目 */
+interface HeadingItem {
+  level: number;
+  text: string;
+}
+
+/** 从 Markdown 文本中解析所有标题（# ~ ######） */
+function parseHeadings(content: string): HeadingItem[] {
+  const headingRegex = /^(#{1,6})\s+(.+)$/gm;
+  const headings: HeadingItem[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = headingRegex.exec(content)) !== null) {
+    headings.push({
+      level: match[1].length,
+      text: match[2].trim(),
+    });
+  }
+  return headings;
+}
+
+/**
+ * 在容器 DOM 内查找文本匹配的标题元素，仅滚动容器自身（不影响外部布局）。
+ * 使用 ResizeObserver 在 mermaid / katex 等异步渲染完成后自动修正位置。
+ */
+function scrollToHeadingInContainer(text: string, container: HTMLElement) {
+  const findHeading = (): HTMLElement | null => {
+    const headings = container.querySelectorAll('h1, h2, h3, h4, h5, h6');
+    for (const h of headings) {
+      if (h.textContent?.trim() === text) return h as HTMLElement;
+    }
+    for (const h of headings) {
+      if (h.textContent?.trim().includes(text)) return h as HTMLElement;
+    }
+    return null;
+  };
+
+  /**
+   * 仅滚动容器自身，不影响窗口或任何祖先元素。
+   * 通过计算目标元素相对容器的偏移量来设置 scrollTop。
+   */
+  const scrollContainerTo = (smooth: boolean) => {
+    const el = findHeading();
+    if (!el) return false;
+    const containerTop = container.getBoundingClientRect().top;
+    const targetTop = el.getBoundingClientRect().top;
+    const offset = targetTop - containerTop + container.scrollTop;
+    container.scrollTo({ top: Math.max(0, offset - 8), behavior: smooth ? 'smooth' : 'auto' });
+    return true;
+  };
+
+  if (!scrollContainerTo(true)) return;
+
+  // 监听容器尺寸变化（mermaid / katex 渲染会改变布局），修正滚动位置
+  let retries = 0;
+  const maxRetries = 5;
+  const observer = new ResizeObserver(() => {
+    if (retries < maxRetries) {
+      retries++;
+      scrollContainerTo(false); // 后续修正使用 instant 避免视觉抖动
+    } else {
+      observer.disconnect();
+    }
+  });
+  observer.observe(container);
+  // 4 秒后无论如何断开
+  setTimeout(() => observer.disconnect(), 4000);
+}
+
+/** ─── 目录组件 ─── */
+function NotesTOC({
+  content,
+  onBack,
+  onHeadingClick,
+}: {
+  content: string;
+  onBack: () => void;
+  onHeadingClick: (heading: HeadingItem) => void;
+}) {
+  const headings = useMemo(() => parseHeadings(content), [content]);
+
+  return (
+    <div className="md:w-80 md:border-r md:border-zinc-200 md:dark:border-zinc-800 md:pr-4 flex flex-col shrink-0 h-full">
+      <div className="flex items-center gap-2 mb-3 shrink-0">
+        <button
+          onClick={onBack}
+          className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg"
+          title="返回列表"
+        >
+          <ArrowLeft size={20} />
+        </button>
+        <span className="font-medium text-sm text-zinc-600 dark:text-zinc-400">目录</span>
+      </div>
+
+      <div className="flex-1 overflow-y-auto">
+        {headings.length === 0 ? (
+          <div className="text-zinc-400 text-sm text-center py-8">
+            <BookOpen size={32} className="mx-auto mb-2 opacity-30" />
+            暂无标题
+          </div>
+        ) : (
+          <div className="space-y-0.5">
+            {headings.map((h, i) => (
+              <button
+                key={i}
+                onClick={() => onHeadingClick(h)}
+                className="w-full text-left px-2 py-1.5 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 text-sm transition-colors truncate block"
+                style={{ paddingLeft: `${8 + (h.level - 1) * 14}px` }}
+              >
+                <span className="text-zinc-400 mr-1.5 text-xs font-mono select-none">
+                  {'#'.repeat(h.level)}
+                </span>
+                <span className="text-zinc-700 dark:text-zinc-300">{h.text}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export function NotesModule({ subjectId, initialNoteId, initialSessionId }: NotesModuleProps) {
@@ -32,9 +148,8 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>(() =>
     (localStorage.getItem('notesSortDirection') as any) || 'desc');
 
-  const { setFloatingWindowOpen, setGlobalSessionId } = useAIStore();
-
-  /** 获取当前学科信息 */
+  const setFloatingWindowOpen = useAIStore(s => s.setFloatingWindowOpen);
+  const setGlobalSessionId = useAIStore(s => s.setGlobalSessionId);
   const subject = useLiveQuery(() => db.subjects.get(subjectId), [subjectId]);
 
   useEffect(() => {
@@ -51,7 +166,6 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
 
   const notes = useLiveQuery(async () => {
     const allNotes = await db.entities.where({ subjectId, type: 'note' }).toArray();
-
     return allNotes.sort((a, b) => {
       let valA: any, valB: any;
       if (sortMode === 'name') {
@@ -68,19 +182,17 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
         valA = a.createdAt;
         valB = b.createdAt;
       }
-
       if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
       if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
       return 0;
     });
   }, [subjectId, sortMode, sortDirection]);
 
-  /** @type {[Entity | null, Function]} 当前选中的笔记实体 */
   const [selectedNote, setSelectedNote] = useState<Entity | null>(null);
-  /** @type {[boolean, Function]} 是否处于编辑模式 */
   const [isEditing, setIsEditing] = useState(false);
+  const [viewMode, setViewMode] = useState<'list' | 'toc' | 'detail'>('list');
+  const [scrollTarget, setScrollTarget] = useState<string | null>(null);
 
-  /** 笔记内容撤销/重做Hook状态管理 */
   const {
     state: editContent,
     set: setEditContent,
@@ -91,22 +203,13 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
     reset: resetEditContent
   } = useHistory('');
 
-  /** @type {[string, Function]} 当前编辑的笔记标题 */
   const [editTitle, setEditTitle] = useState('');
   const { showConfirm } = useDialog();
 
-  // Clear chat session if no initial note/session
   useEffect(() => {
-    if (!initialNoteId && !initialSessionId) {
-      // Don't clear globalSessionId automatically on tab switch
-    }
+    if (!initialNoteId && !initialSessionId) { /* no-op */ }
   }, [initialNoteId, initialSessionId]);
 
-  /**
-   * 监听笔记列表或初始参数变化，更新选中笔记状态
-   * 优先级1: 若提供了 initialNoteId 且有效，则切换至该笔记
-   * 优先级2: 自动同步数据库中已更新的当前选中笔记内容（非编辑状态下）
-   */
   useEffect(() => {
     if (notes) {
       if (initialNoteId) {
@@ -116,13 +219,13 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
           resetEditContent(target.content);
           setEditTitle(target.title);
           setIsEditing(false);
+          setViewMode('toc');
           if (!initialSessionId && target.chatSessionId) {
             setGlobalSessionId(target.chatSessionId);
           }
           return;
         }
       }
-
       if (selectedNote) {
         const current = notes.find(n => n.id === selectedNote.id);
         if (current && current.updatedAt > selectedNote.updatedAt && !isEditing) {
@@ -134,59 +237,39 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
     }
   }, [initialNoteId, notes, selectedNote?.id, selectedNote?.updatedAt, isEditing, resetEditContent, initialSessionId, setGlobalSessionId]);
 
-  /**
-   * 创建新笔记记录并进入编辑模式
-   */
   const createNote = async () => {
     const id = generateUUID();
     const now = Date.now();
     const newNote = {
-      id,
-      subjectId,
-      type: 'note',
+      id, subjectId, type: 'note' as const,
       title: '无标题笔记',
       content: '# 新建笔记\n\n开始写作...',
-      createdAt: now,
-      updatedAt: now,
-      lastAccessed: now,
-      order: now
-    } as Entity;
+      createdAt: now, updatedAt: now, lastAccessed: now, order: now
+    };
     await db.entities.add(newNote);
     setSelectedNote(newNote);
     resetEditContent(newNote.content);
     setEditTitle(newNote.title);
     setIsEditing(true);
+    setViewMode('toc');
   };
 
-  /**
-   * 移动笔记在列表中的排序位置（仅在 manual 模式下有效）
-   * @param {React.MouseEvent} e - 鼠标事件
-   * @param {string} id - 笔记ID
-   * @param {'up' | 'down'} direction - 移动方向
-   */
   const moveNote = async (e: React.MouseEvent, id: string, direction: 'up' | 'down') => {
     e.preventDefault();
     e.stopPropagation();
     if (!notes) return;
-
     const index = notes.findIndex(n => n.id === id);
     if (index === -1) return;
-
     const targetIndex = direction === 'up' ? index - 1 : index + 1;
     if (targetIndex < 0 || targetIndex >= notes.length) return;
-
     const current = notes[index];
     const target = notes[targetIndex];
-
     await db.transaction('rw', db.entities, async () => {
       await db.entities.update(current.id, { order: target.order });
       await db.entities.update(target.id, { order: current.order });
     });
   };
 
-  /**
-   * 保存当前编辑的笔记内容和标题至数据库
-   */
   const saveNote = async () => {
     if (!selectedNote) return;
     await db.entities.update(selectedNote.id, {
@@ -199,10 +282,6 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
     setIsEditing(false);
   };
 
-  /**
-   * 删除指定的笔记记录
-   * @param {string} id - 笔记ID
-   */
   const deleteNote = async (id: string) => {
     const confirmed = await showConfirm("确认删除此笔记？", { title: "删除笔记" });
     if (confirmed) {
@@ -212,6 +291,7 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
         setIsEditing(false);
         resetEditContent('');
         setEditTitle('');
+        setViewMode('list');
       }
     }
   };
@@ -219,106 +299,62 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  /**
-   * 往编辑器光标处插入 Markdown 语法片段
-   * @param {string} prefix - 前缀字符
-   * @param {string} [suffix=''] - 后缀字符
-   * @param {boolean} [blockMode=false] - 是否为块级元素（需换行）
-   */
   const insertMarkdown = (prefix: string, suffix: string = '', blockMode: boolean = false) => {
     if (!textAreaRef.current) return;
-
     const start = textAreaRef.current.selectionStart;
     const end = textAreaRef.current.selectionEnd;
     const text = editContent;
     const before = text.substring(0, start);
     const selection = text.substring(start, end);
     const after = text.substring(end);
-    
-    // 保存滚动位置
     const scrollTop = textAreaRef.current.scrollTop;
-
     let actualPrefix = prefix;
     let actualSuffix = suffix;
-
     if (blockMode) {
-      if (start > 0 && text[start - 1] !== '\n') {
-        actualPrefix = '\n' + actualPrefix;
-      }
-      if (end < text.length && text[end] !== '\n') {
-        actualSuffix = actualSuffix + '\n';
-      }
+      if (start > 0 && text[start - 1] !== '\n') actualPrefix = '\n' + actualPrefix;
+      if (end < text.length && text[end] !== '\n') actualSuffix = actualSuffix + '\n';
     }
-
     const newContent = before + actualPrefix + selection + actualSuffix + after;
     setEditContent(newContent);
-
-    // Focus back and adjust cursor
     setTimeout(() => {
       if (textAreaRef.current) {
         textAreaRef.current.focus();
-        // If no text was selected, place cursor between prefix and suffix
-        // If text was selected, place cursor at the end of the insertion
         const newCursorPos = selection.length === 0 && suffix.length > 0
           ? start + actualPrefix.length
           : start + actualPrefix.length + selection.length + actualSuffix.length;
-
         textAreaRef.current.setSelectionRange(newCursorPos, newCursorPos);
-        // 恢复滚动位置
         textAreaRef.current.scrollTop = scrollTop;
       }
     }, 0);
   };
 
-  /**
-   * 处理本地图片上传并插入到笔记中
-   * 转换图片为 Base64 格式并存入数据库 attachments 表
-   * @param {React.ChangeEvent<HTMLInputElement>} e - 文件上传事件
-   */
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = async (event) => {
       const base64 = event.target?.result as string;
       if (base64) {
         let id: string;
-        try {
-          id = generateUUID();
-        } catch (e) {
-          console.error("Crypto UUID failed, using timestamp fallback", e);
+        try { id = generateUUID(); } catch (e) {
           id = `img-${Date.now()}-${Math.random().toString(36).slice(2)}`;
         }
-
-        console.log("Saving attachment with ID:", id);
         try {
-          await db.attachments.add({
-            id,
-            data: base64,
-            mimeType: file.type,
-            fileName: file.name,
-            createdAt: Date.now()
-          });
+          await db.attachments.add({ id, data: base64, mimeType: file.type, fileName: file.name, createdAt: Date.now() });
         } catch (dbError) {
-          console.error("Failed to save attachment to DB:", dbError);
           alert("图片保存失败，请重试");
           return;
         }
-
         if (textAreaRef.current) {
           const start = textAreaRef.current.selectionStart;
           const end = textAreaRef.current.selectionEnd;
           const scrollTop = textAreaRef.current.scrollTop;
-
           const text = editContent;
           const before = text.substring(0, start);
           const after = text.substring(end);
           const imageMarkdown = `\n![Image](attachment:${id})\n`;
-
           const newContent = before + imageMarkdown + after;
           setEditContent(newContent);
-
           setTimeout(() => {
             if (textAreaRef.current) {
               textAreaRef.current.focus();
@@ -334,68 +370,58 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
     e.target.value = '';
   };
 
-  // 使用新的 useNotesContext hook 来注册上下文
-  useNotesContext(
-    subjectId,
-    subject?.name,
-    selectedNote?.id,
-    selectedNote?.title,
-    isEditing
-  );
+  useNotesContext(subjectId, subject?.name, selectedNote?.id, selectedNote?.title, isEditing);
 
   const handleSelectNote = (note: Entity) => {
     setSelectedNote(note);
     setEditContent(note.content);
     setEditTitle(note.title);
     setIsEditing(false);
+    setViewMode('toc');
+    setScrollTarget(null);
     db.entities.update(note.id, { lastAccessed: Date.now() });
   };
 
   const handleBackToList = () => {
     setSelectedNote(null);
     setIsEditing(false);
+    setViewMode('list');
+    setScrollTarget(null);
   };
 
-  return (
-    <div className="flex h-full gap-4 relative pb-14 md:pb-0">
-      {/* Desktop: two-column layout */}
-      <div className="hidden md:flex h-full gap-4 w-full">
-        <NotesList
-          notes={notes}
-          selectedNote={selectedNote}
-          onSelectNote={handleSelectNote}
-          createNote={createNote}
-          moveNote={moveNote}
-          sortMode={sortMode}
-          setSortMode={setSortMode}
-          sortDirection={sortDirection}
-          setSortDirection={setSortDirection}
-        />
-        <NoteDetail
-          selectedNote={selectedNote}
-          isEditing={isEditing}
-          editTitle={editTitle}
-          editContent={editContent}
-          setEditTitle={setEditTitle}
-          setEditContent={setEditContent}
-          setIsEditing={setIsEditing}
-          saveNote={saveNote}
-          deleteNote={deleteNote}
-          undoEdit={undoEdit}
-          redoEdit={redoEdit}
-          canUndo={canUndo}
-          canRedo={canRedo}
-          insertMarkdown={insertMarkdown}
-          handleImageUpload={handleImageUpload}
-          textAreaRef={textAreaRef}
-          fileInputRef={fileInputRef}
-        />
-      </div>
+  const handleDetailBack = () => {
+    setViewMode('toc');
+    setScrollTarget(null);
+  };
 
-      {/* Mobile: list-first-then-detail */}
-      <div className="md:hidden flex flex-col h-full w-full">
+  const handleHeadingClick = useCallback((heading: HeadingItem) => {
+    if (window.innerWidth >= 768) {
+      setScrollTarget(heading.text);
+      setTimeout(() => setScrollTarget(null), 100);
+    } else {
+      setViewMode('detail');
+      setTimeout(() => setScrollTarget(heading.text), 50);
+    }
+  }, []);
+
+  const handleScrollComplete = useCallback(() => {
+    setScrollTarget(null);
+  }, []);
+
+  // ── 桌面端布局 ──
+  const desktopLayout = (
+    <div className="hidden md:flex h-full gap-4 w-full">
+      {/* 左侧面板：列表 ⇄ 目录 */}
+      <AnimatePresence mode="wait">
         {!selectedNote ? (
-          <div className="flex-1 overflow-y-auto px-3 pt-3">
+          <motion.div
+            key="notes-list"
+            initial={{ opacity: 0, x: -16 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -16 }}
+            transition={{ duration: 0.2 }}
+            className="shrink-0 h-full"
+          >
             <NotesList
               notes={notes}
               selectedNote={selectedNote}
@@ -407,16 +433,141 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
               sortDirection={sortDirection}
               setSortDirection={setSortDirection}
             />
-          </div>
+          </motion.div>
         ) : (
-          <div className="flex flex-col h-full">
+          <motion.div
+            key="notes-toc"
+            initial={{ opacity: 0, x: -16 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -16 }}
+            transition={{ duration: 0.2 }}
+            className="shrink-0 h-full"
+          >
+            <NotesTOC
+              content={selectedNote.content}
+              onBack={handleBackToList}
+              onHeadingClick={handleHeadingClick}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 右侧面板：内容 */}
+      <AnimatePresence mode="wait">
+        {!selectedNote ? (
+          <motion.div
+            key="placeholder"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25 }}
+            className="flex-1"
+          >
+            <NoteDetailPlaceholder />
+          </motion.div>
+        ) : (
+          <motion.div
+            key={selectedNote.id}
+            initial={{ opacity: 0, x: 12 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 12 }}
+            transition={{ duration: 0.25 }}
+            className="flex-1"
+          >
+            <NoteDetail
+              selectedNote={selectedNote}
+              isEditing={isEditing}
+              editTitle={editTitle}
+              editContent={editContent}
+              setEditTitle={setEditTitle}
+              setEditContent={setEditContent}
+              setIsEditing={setIsEditing}
+              saveNote={saveNote}
+              deleteNote={deleteNote}
+              undoEdit={undoEdit}
+              redoEdit={redoEdit}
+              canUndo={canUndo}
+              canRedo={canRedo}
+              insertMarkdown={insertMarkdown}
+              handleImageUpload={handleImageUpload}
+              textAreaRef={textAreaRef}
+              fileInputRef={fileInputRef}
+              scrollTarget={scrollTarget}
+              onScrollComplete={handleScrollComplete}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+
+  // ── 移动端布局 ──
+  const mobileLayout = (
+    <div className="md:hidden flex flex-col h-full w-full">
+      <AnimatePresence mode="wait">
+        {viewMode === 'list' && (
+          <motion.div
+            key="m-list"
+            initial={{ opacity: 0, x: -30 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -30 }}
+            transition={{ duration: 0.2 }}
+            className="flex-1 overflow-y-auto px-3 pt-3"
+          >
+            <NotesList
+              notes={notes}
+              selectedNote={selectedNote}
+              onSelectNote={handleSelectNote}
+              createNote={createNote}
+              moveNote={moveNote}
+              sortMode={sortMode}
+              setSortMode={setSortMode}
+              sortDirection={sortDirection}
+              setSortDirection={setSortDirection}
+            />
+          </motion.div>
+        )}
+
+        {viewMode === 'toc' && (
+          <motion.div
+            key="m-toc"
+            initial={{ opacity: 0, x: 30 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 30 }}
+            transition={{ duration: 0.2 }}
+            className="flex flex-col h-full"
+          >
             <div className="flex items-center gap-2 px-3 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 shrink-0">
               <button onClick={handleBackToList} className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg">
                 <ArrowLeft size={20} />
               </button>
-              <span className="font-medium text-sm truncate">{selectedNote.title}</span>
+              <span className="font-medium text-sm truncate">{selectedNote?.title}</span>
             </div>
-            <div className="flex-1 overflow-hidden">
+            <div className="flex-1 overflow-y-auto px-3 pt-3">
+              <MobileTOC
+                content={selectedNote?.content || ''}
+                onHeadingClick={handleHeadingClick}
+              />
+            </div>
+          </motion.div>
+        )}
+
+        {viewMode === 'detail' && (
+          <motion.div
+            key="m-detail"
+            initial={{ opacity: 0, x: 30 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 30 }}
+            transition={{ duration: 0.2 }}
+            className="flex flex-col h-full"
+          >
+            <div className="flex items-center gap-2 px-3 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 shrink-0">
+              <button onClick={handleDetailBack} className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg">
+                <ArrowLeft size={20} />
+              </button>
+              <span className="font-medium text-sm truncate">{selectedNote?.title}</span>
+            </div>
+            <div className="flex-1 overflow-clip">
               <NoteDetail
                 selectedNote={selectedNote}
                 isEditing={isEditing}
@@ -435,69 +586,92 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
                 handleImageUpload={handleImageUpload}
                 textAreaRef={textAreaRef}
                 fileInputRef={fileInputRef}
+                scrollTarget={scrollTarget}
+                onScrollComplete={handleScrollComplete}
               />
             </div>
-          </div>
+          </motion.div>
         )}
-      </div>
+      </AnimatePresence>
+    </div>
+  );
+
+  return (
+    <div className="flex h-full gap-4 relative pb-14 md:pb-0">
+      {desktopLayout}
+      {mobileLayout}
     </div>
   );
 }
 
-const READING_POS_PREFIX = 'readingPos_note_';
-
-function getReadingPos(id: string): number {
-  const v = localStorage.getItem(READING_POS_PREFIX + id);
-  return v ? parseInt(v, 10) : 0;
+/** 空状态占位 */
+function NoteDetailPlaceholder() {
+  return (
+    <div className="h-full flex items-center justify-center text-zinc-400 bg-white dark:bg-zinc-900/50 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800">
+      选择一个笔记以查看或编辑
+    </div>
+  );
 }
 
-function saveReadingPos(id: string, pos: number) {
-  localStorage.setItem(READING_POS_PREFIX + id, String(pos));
+/** ─── 移动端内联目录 ─── */
+function MobileTOC({
+  content,
+  onHeadingClick,
+}: {
+  content: string;
+  onHeadingClick: (heading: HeadingItem) => void;
+}) {
+  const headings = useMemo(() => parseHeadings(content), [content]);
+
+  if (headings.length === 0) {
+    return (
+      <div className="text-zinc-400 text-sm text-center py-12">
+        <BookOpen size={40} className="mx-auto mb-3 opacity-25" />
+        暂无标题，点击下方可直接阅读全文
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-0.5">
+      {headings.map((h, i) => (
+        <button
+          key={i}
+          onClick={() => onHeadingClick(h)}
+          className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-sm transition-colors flex items-center gap-2 active:scale-[0.98]"
+        >
+          <span className="text-zinc-400 text-xs font-mono shrink-0">
+            {'#'.repeat(h.level)}
+          </span>
+          <span className="text-zinc-700 dark:text-zinc-300 truncate">{h.text}</span>
+        </button>
+      ))}
+    </div>
+  );
 }
 
-function NoteDetail({ selectedNote, isEditing, editTitle, editContent, setEditTitle, setEditContent, setIsEditing, saveNote, deleteNote, undoEdit, redoEdit, canUndo, canRedo, insertMarkdown, handleImageUpload, textAreaRef, fileInputRef }: any) {
+/** ─── 笔记详情组件 ─── */
+function NoteDetail({
+  selectedNote, isEditing, editTitle, editContent, setEditTitle, setEditContent,
+  setIsEditing, saveNote, deleteNote, undoEdit, redoEdit, canUndo, canRedo,
+  insertMarkdown, handleImageUpload, textAreaRef, fileInputRef,
+  scrollTarget, onScrollComplete,
+}: any) {
   const readingRef = useRef<HTMLDivElement>(null);
-  const scrollTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
-  // 阅读模式：恢复滚动位置
+  // 处理目录滚动（含 mermaid/katex 渲染修正）
   useEffect(() => {
-    if (!isEditing && selectedNote && readingRef.current) {
-      const saved = getReadingPos(selectedNote.id);
-      if (saved > 0) {
-        readingRef.current.scrollTop = saved;
-      }
+    if (scrollTarget && readingRef.current && !isEditing) {
+      const raf = requestAnimationFrame(() => {
+        if (readingRef.current) {
+          scrollToHeadingInContainer(scrollTarget, readingRef.current);
+        }
+        // 延迟清除，确保 ResizeObserver 有机会修正
+        setTimeout(() => onScrollComplete?.(), 4000);
+      });
+      return () => cancelAnimationFrame(raf);
     }
-  }, [selectedNote?.id, isEditing]);
-
-  // 阅读模式：保存滚动位置（防抖）
-  const handleReadingScroll = () => {
-    if (!selectedNote) return;
-    if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
-    scrollTimerRef.current = setTimeout(() => {
-      if (readingRef.current) {
-        saveReadingPos(selectedNote.id, readingRef.current.scrollTop);
-      }
-    }, 300);
-  };
-
-  // 编辑模式：textarea 滚动时保存
-  const handleEditScroll = () => {
-    if (!selectedNote || !textAreaRef.current) return;
-    if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
-    scrollTimerRef.current = setTimeout(() => {
-      saveReadingPos(selectedNote.id + '_edit', textAreaRef.current.scrollTop);
-    }, 300);
-  };
-
-  // 编辑模式：恢复 textarea 滚动位置
-  useEffect(() => {
-    if (isEditing && selectedNote && textAreaRef.current) {
-      const saved = getReadingPos(selectedNote.id + '_edit');
-      if (saved > 0) {
-        textAreaRef.current.scrollTop = saved;
-      }
-    }
-  }, [selectedNote?.id, isEditing]);
+  }, [scrollTarget, isEditing, onScrollComplete]);
 
   if (!selectedNote) {
     return (
@@ -506,8 +680,9 @@ function NoteDetail({ selectedNote, isEditing, editTitle, editContent, setEditTi
       </div>
     );
   }
+
   return (
-    <div className="flex-1 flex flex-col bg-white dark:bg-zinc-900/50 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800 p-4 overflow-hidden">
+    <div className="h-full flex flex-col bg-white dark:bg-zinc-900/50 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800 p-4 overflow-clip">
       <div className="flex justify-between items-center mb-4 border-b dark:border-slate-800 pb-2">
         {isEditing ? (
           <input
@@ -518,7 +693,6 @@ function NoteDetail({ selectedNote, isEditing, editTitle, editContent, setEditTi
         ) : (
           <h2 className="text-lg md:text-xl font-bold text-slate-800 dark:text-slate-200 truncate">{selectedNote.title}</h2>
         )}
-
         <div className="flex gap-1 md:gap-2 shrink-0 ml-2">
           {isEditing ? (
             <>
@@ -535,7 +709,7 @@ function NoteDetail({ selectedNote, isEditing, editTitle, editContent, setEditTi
         </div>
       </div>
 
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-clip">
         {isEditing ? (
           <div className="h-full flex flex-col border border-zinc-200 dark:border-zinc-700 rounded">
             <div className="flex flex-wrap items-center gap-0.5 p-1.5 bg-zinc-50 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 overflow-x-auto">
@@ -559,7 +733,6 @@ function NoteDetail({ selectedNote, isEditing, editTitle, editContent, setEditTi
               className="w-full flex-1 resize-none focus:outline-none bg-transparent text-zinc-800 dark:text-zinc-200 font-mono p-3 text-sm"
               value={editContent}
               onChange={e => setEditContent(e.target.value)}
-              onScroll={handleEditScroll}
               placeholder="开始写作..."
             />
           </div>
@@ -567,7 +740,7 @@ function NoteDetail({ selectedNote, isEditing, editTitle, editContent, setEditTi
           <div
             ref={readingRef}
             className="prose dark:prose-invert max-w-none text-zinc-800 dark:text-zinc-200 overflow-y-auto h-full text-sm"
-            onScroll={handleReadingScroll}
+            style={{ overscrollBehavior: 'contain' }}
           >
             <MessageRenderer content={selectedNote.content} />
           </div>
@@ -577,54 +750,36 @@ function NoteDetail({ selectedNote, isEditing, editTitle, editContent, setEditTi
   );
 }
 
+/** ─── 笔记列表组件 ─── */
 function NotesList({ notes, selectedNote, onSelectNote, createNote, moveNote, sortMode, setSortMode, sortDirection, setSortDirection }: any) {
   return (
-    <div className="md:w-80 md:border-r md:border-zinc-200 md:dark:border-zinc-800 md:pr-4 flex flex-col relative shrink-0">
+    <div className="md:w-80 md:border-r md:border-zinc-200 md:dark:border-zinc-800 md:pr-4 flex flex-col relative shrink-0 h-full">
       <div className="flex flex-col gap-2 mb-4">
         <div className="flex gap-2">
           <button onClick={createNote} className="flex-1 flex items-center justify-center gap-2 bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700 transition-colors">
             <Plus size={16} /> 新建笔记
           </button>
         </div>
-        {/* Sort Toolbar */}
         <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800 p-1 rounded-lg">
-          <button
-            onClick={() => setSortMode('name')}
-            className={cn("p-1.5 rounded transition-colors flex-1 flex justify-center", sortMode === 'name' ? "bg-white dark:bg-zinc-700 shadow-sm text-blue-600" : "text-zinc-400 hover:text-zinc-600")}
-            title="按名称"
-          ><SortAsc size={14} /></button>
-          <button
-            onClick={() => setSortMode('lastAccessed')}
-            className={cn("p-1.5 rounded transition-colors flex-1 flex justify-center", sortMode === 'lastAccessed' ? "bg-white dark:bg-zinc-700 shadow-sm text-blue-600" : "text-zinc-400 hover:text-zinc-600")}
-            title="按时间"
-          ><Clock size={14} /></button>
-          <button
-            onClick={() => setSortMode('manual')}
-            className={cn("p-1.5 rounded transition-colors flex-1 flex justify-center", sortMode === 'manual' ? "bg-white dark:bg-zinc-700 shadow-sm text-blue-600" : "text-zinc-400 hover:text-zinc-600")}
-            title="手动"
-          ><GripVertical size={14} /></button>
+          <button onClick={() => setSortMode('name')} className={cn("p-1.5 rounded transition-colors flex-1 flex justify-center", sortMode === 'name' ? "bg-white dark:bg-zinc-700 shadow-sm text-blue-600" : "text-zinc-400 hover:text-zinc-600")} title="按名称"><SortAsc size={14} /></button>
+          <button onClick={() => setSortMode('lastAccessed')} className={cn("p-1.5 rounded transition-colors flex-1 flex justify-center", sortMode === 'lastAccessed' ? "bg-white dark:bg-zinc-700 shadow-sm text-blue-600" : "text-zinc-400 hover:text-zinc-600")} title="按时间"><Clock size={14} /></button>
+          <button onClick={() => setSortMode('manual')} className={cn("p-1.5 rounded transition-colors flex-1 flex justify-center", sortMode === 'manual' ? "bg-white dark:bg-zinc-700 shadow-sm text-blue-600" : "text-zinc-400 hover:text-zinc-600")} title="手动"><GripVertical size={14} /></button>
           <div className="w-px h-4 bg-zinc-300 dark:bg-zinc-600 mx-1" />
-          <button
-            onClick={() => setSortDirection((prev: any) => prev === 'asc' ? 'desc' : 'asc')}
-            className="p-1.5 rounded text-zinc-400 hover:text-zinc-600 transition-colors"
-          >
+          <button onClick={() => setSortDirection((prev: any) => prev === 'asc' ? 'desc' : 'asc')} className="p-1.5 rounded text-zinc-400 hover:text-zinc-600 transition-colors">
             {sortDirection === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
           </button>
         </div>
       </div>
-
       <div className="space-y-2 overflow-y-auto flex-1">
         {notes?.map((note: any, idx: number) => (
           <div
             key={note.id}
-            onClick={async () => {
-              onSelectNote(note);
-            }}
+            onClick={() => onSelectNote(note)}
             className={cn(
               "p-3 rounded cursor-pointer transition-all group relative animate-in slide-in-from-left duration-300",
               selectedNote?.id === note.id ? 'bg-zinc-200 dark:bg-zinc-800' : 'hover:bg-zinc-100 dark:hover:bg-zinc-900'
             )}
-            style={{ animationDelay: `${idx * 30}ms` }}
+            style={{ animationDelay: `${idx * 30}ms`, contentVisibility: 'auto', containIntrinsicSize: 'auto 60px' }}
           >
             <div className="flex justify-between items-start gap-2">
               <div className="min-w-0 flex-1">
@@ -633,16 +788,8 @@ function NotesList({ notes, selectedNote, onSelectNote, createNote, moveNote, so
               </div>
               {sortMode === 'manual' && (
                 <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
-                  <button
-                    onClick={(e) => moveNote(e, note.id, 'up')}
-                    disabled={idx === 0}
-                    className="p-0.5 hover:bg-slate-300 dark:hover:bg-slate-700 rounded text-slate-400 hover:text-slate-600 disabled:opacity-0"
-                  ><ArrowUp size={12} /></button>
-                  <button
-                    onClick={(e) => moveNote(e, note.id, 'down')}
-                    disabled={idx === (notes?.length || 0) - 1}
-                    className="p-0.5 hover:bg-slate-300 dark:hover:bg-slate-700 rounded text-slate-400 hover:text-slate-600 disabled:opacity-0"
-                  ><ArrowDown size={12} /></button>
+                  <button onClick={(e) => moveNote(e, note.id, 'up')} disabled={idx === 0} className="p-0.5 hover:bg-slate-300 dark:hover:bg-slate-700 rounded text-slate-400 hover:text-slate-600 disabled:opacity-0"><ArrowUp size={12} /></button>
+                  <button onClick={(e) => moveNote(e, note.id, 'down')} disabled={idx === (notes?.length || 0) - 1} className="p-0.5 hover:bg-slate-300 dark:hover:bg-slate-700 rounded text-slate-400 hover:text-slate-600 disabled:opacity-0"><ArrowDown size={12} /></button>
                 </div>
               )}
             </div>

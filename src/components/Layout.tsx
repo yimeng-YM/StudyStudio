@@ -8,7 +8,7 @@ import { AIFloatingWindow } from './AIFloatingWindow';
 import { useIsMobile } from '@/hooks/useIsMobile';
 
 export function Layout() {
-  const { loadSettings } = useAIStore();
+  const loadSettings = useAIStore(s => s.loadSettings);
   const location = useLocation();
   const isMobile = useIsMobile();
 
@@ -22,7 +22,7 @@ export function Layout() {
       {!isMobile && <Sidebar />}
 
       {/* Main content area */}
-      <main className="flex-1 overflow-hidden bg-white dark:bg-black relative">
+      <main className="flex-1 overflow-hidden bg-white dark:bg-black relative" style={{ contain: 'paint' }}>
         <AnimatePresence mode="wait">
           <motion.div
             key={location.pathname}
