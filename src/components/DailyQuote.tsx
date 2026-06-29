@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Quote, Loader2 } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { getDailyQuote, getRandomQuote } from '@/data/dailyQuotes';
 
 interface QuoteData {
@@ -151,18 +151,26 @@ export function DailyQuote() {
             <span className="text-sm">加载中…</span>
           </div>
         ) : (
-          <>
-            {/* 名言内容 */}
-            <p className="text-base md:text-lg text-zinc-700 dark:text-zinc-300 leading-relaxed italic">
-              「{quoteData?.quote}」
-            </p>
-            {/* 出处 */}
-            {quoteData?.author ? (
-              <p className="mt-2 text-sm text-zinc-400 dark:text-zinc-500 text-right">
-                —— {quoteData.author}
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={quoteData?.quote ?? 'empty'}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.3, ease: 'easeOut' }}
+            >
+              {/* 名言内容 */}
+              <p className="text-base md:text-lg text-zinc-700 dark:text-zinc-300 leading-relaxed italic">
+                「{quoteData?.quote}」
               </p>
-            ) : null}
-          </>
+              {/* 出处 */}
+              {quoteData?.author ? (
+                <p className="mt-2 text-sm text-zinc-400 dark:text-zinc-500 text-right">
+                  —— {quoteData.author}
+                </p>
+              ) : null}
+            </motion.div>
+          </AnimatePresence>
         )}
       </div>
     </motion.div>
