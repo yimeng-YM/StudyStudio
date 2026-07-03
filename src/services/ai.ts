@@ -199,7 +199,8 @@ export async function streamAICompletion(
   onToolCallChunk?: (toolCallChunk: any) => void,
   options?: AIRequestOptions,
   abortSignal?: AbortSignal,
-  onReasoningChunk?: (chunk: string) => void
+  onReasoningChunk?: (chunk: string) => void,
+  onFinish?: (reason: string | null) => void
 ): Promise<void> {
   if (!settings.apiKey) throw new Error("未配置 API Key");
 
@@ -279,6 +280,9 @@ export async function streamAICompletion(
         if (trimmedLine.startsWith('data: ')) {
           try {
             const json = JSON.parse(trimmedLine.slice(6));
+            // 捕获流式结束原因（'length' 表示被 max_tokens 截断），供上层做截断恢复
+            const finishReason = json.choices[0]?.finish_reason;
+            if (finishReason && onFinish) onFinish(finishReason);
             const delta = json.choices[0]?.delta || {};
             
             // 触发普通文本分片回调

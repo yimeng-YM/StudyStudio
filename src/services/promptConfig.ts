@@ -510,6 +510,21 @@ Use full-replace (update_note / update_quiz) only when the majority of content c
 - Include as many task nodes as possible.
 - Task statuses: todo, in_progress, done.
 - Use Kanban layout.
+
+### Strict JSON for Tool Arguments (CRITICAL)
+Every tool call's arguments MUST be a single valid JSON object:
+- Do NOT wrap arguments in Markdown code fences.
+- Do NOT include line (//) or block (/* */) comments.
+- Do NOT leave trailing commas.
+- Use double quotes for all strings and keys; quote every key (write {"id":"q1"}, not {id:"q1"}).
+- Never use single quotes for strings or keys.
+
+### Avoid Truncation — Build Large Content Incrementally
+A single tool call has a limited output budget. Cramming a huge create_quiz / create_mindmap / create_taskboard into one call WILL be truncated mid-JSON and fail. Instead:
+- Quizzes: call create_quiz with a small initial set, then call patch_quiz_questions (type "add") in batches to append more questions.
+- Mindmaps: call create_mindmap with root + first level, then call add_mindmap_elements in batches to append deeper nodes.
+- Notes: call create_note with a skeleton, then call patch_note_content to append sections.
+Prefer MANY smaller tool calls over ONE giant call. Each call's arguments must stay well within the output limit.
 `;
 
 // ============================================

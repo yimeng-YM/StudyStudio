@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { db } from '@/db';
-import { generateUUID } from '@/lib/utils';
+import { generateUUID, isJsonComplete } from '@/lib/utils';
 import { Message, ToolCall, streamAICompletion } from '@/services/ai';
 import { useAIStore, getFullContextPrompt } from '@/store/useAIStore';
 import { ToolDefinitions, executeTool } from '@/services/agent/ToolRegistry';
@@ -53,6 +53,9 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act') {
   
   // 用于取消请求的 AbortController
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  // 记录本轮流式的结束原因，'length' 表示输出被 max_tokens 截断
+  const finishReasonRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (sessionId) {
@@ -355,6 +358,8 @@ IMPORTANT: Always respond in Chinese.
     // 创建新的 AbortController 用于取消请求
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
+    // 重置本轮流式结束原因，用于后续判断输出是否被 max_tokens 截断
+    finishReasonRef.current = null;
 
     try {
       await streamAICompletion(
@@ -365,7 +370,8 @@ IMPORTANT: Always respond in Chinese.
         handleToolCallChunk,
         { maxTokens: DEFAULT_MAX_TOKENS },
         abortController.signal,
-        handleReasoningChunk
+        handleReasoningChunk,
+        (reason) => { if (reason) finishReasonRef.current = reason; }
       );
     } catch (error: any) {
       // 如果是用户主动取消，不抛出错误
@@ -408,6 +414,19 @@ IMPORTANT: Always respond in Chinese.
       }
     }
 
+    // 纯文本回复被 max_tokens 截断时，追加可见提示（工具调用场景由上面的截断检测分支处理）
+    if (finishReasonRef.current === 'length' && typeof aiMessage.content === 'string'
+        && (!aiMessage.tool_calls || aiMessage.tool_calls.length === 0)) {
+      aiMessage.content += '\n\n---\n✂️ **（回复因长度限制被截断，如需完整内容请回复"继续"）**';
+      setMessages(prev => {
+        const newArr = [...prev];
+        const lastIdx = newArr.findIndex(m => m === aiMessage);
+        if (lastIdx !== -1) newArr[lastIdx] = { ...aiMessage };
+        else newArr[newArr.length - 1] = { ...aiMessage };
+        return newArr;
+      });
+    }
+
     await saveMessage(aiMessage, activeSessionId);
 
     if (aiMessage.tool_calls && aiMessage.tool_calls.length > 0) {
@@ -432,6 +451,23 @@ IMPORTANT: Always respond in Chinese.
           setPlanStatus('confirmed');
           awaitingConfirmation.current = false;
           skipPlanning = true;
+        }
+
+        // 截断检测：当 finish_reason 为 'length' 且参数 JSON 结构不完整时，判定为被
+        // max_tokens 截断。此时不执行（宽容解析虽可补全括号，但语义已残缺），改为回传
+        // 明确引导，让 AI 用更小批次或增量工具（patch_quiz_questions / add_mindmap_elements）
+        // 分批自愈，避免整个 Agent 循环因残缺数据崩溃或写入残缺内容。
+        if (finishReasonRef.current === 'length' && !isJsonComplete(toolCall.function.arguments)) {
+          toolMessages.push({
+            role: 'tool',
+            tool_call_id: toolCall.id,
+            name: toolCall.function.name,
+            content: JSON.stringify({
+              error: 'tool_arguments_truncated',
+              message: '参数 JSON 不完整（疑似因输出长度限制被截断），未执行。请缩减单次工具调用的内容体量，或改用增量工具（如 patch_quiz_questions 追加题目、add_mindmap_elements 追加节点、patch_note_content 追加笔记段落）分批完成，然后重新调用。'
+            })
+          });
+          continue;
         }
 
         try {

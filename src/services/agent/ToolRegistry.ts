@@ -1,6 +1,7 @@
 import * as readTools from './tools/readTools';
 import * as writeTools from './tools/writeTools';
 import { ToolCall } from '@/services/ai';
+import { parseToolArguments } from '@/lib/utils';
 
 /**
  * 集中注册和管理 AI 可调用的所有前端本地工具。
@@ -48,8 +49,10 @@ export async function executeTool(toolCall: ToolCall): Promise<any> {
   if (!toolName) {
     throw new Error('Invalid tool call: missing function name');
   }
-  // 部分供应商对无参工具会回传空字符串，兜底为 "{}" 以避免 JSON.parse 报错
-  const toolArgs = JSON.parse(toolCall.function.arguments || '{}');
+  // 宽容解析工具参数：复用 parseAIJson 的清洗 + repairJsonString 容错（剥代码块/注释、
+  // 单引号转双引号、裸 key 加引号、去尾随逗号、补全截断的括号），大幅降低长 JSON 解析失败率。
+  // 空串兜底为 {} 以兼容无参工具。
+  const toolArgs = parseToolArguments(toolCall.function.arguments || '{}');
 
   const tool = (ToolRegistry as any)[toolName];
   if (!tool) {

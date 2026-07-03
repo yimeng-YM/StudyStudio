@@ -62,19 +62,206 @@ export function cleanAIJson(jsonString: string): string {
 
 /**
  * 安全地解析由大语言模型生成的 JSON 字符串。
- * 内部会先调用 cleanAIJson 方法去除无关的 Markdown 标记和注释内容，然后再执行标准的 JSON.parse。
- * 若解析失败，则抛出带有具体错误信息的异常。
+ * 先调用 cleanAIJson 做基础清理（剥 Markdown 代码块标记 + 注释）并尝试标准 JSON.parse；
+ * 若失败，再调用 repairJsonString 进行宽容修复（单引号转双引号、裸 key 加引号、去尾随逗号、
+ * 补全被截断的括号/字符串）后重试。两段式策略既保留严格解析的成功路径，又对 AI 长输出
+ * 常见的格式瑕疵与流式截断提供容错。
  *
  * @template T - 期望返回的数据结构类型，默认为 any
  * @param jsonString - 待解析的 AI 响应字符串
  * @returns 解析并转换为对象的指定类型数据
- * @throws 当清理后的字符串仍不符合合法 JSON 格式时，抛出包含详细原因的 Error
+ * @throws 当修复后仍不符合合法 JSON 格式时，抛出包含详细原因的 Error
  */
 export function parseAIJson<T = any>(jsonString: string): T {
-  try {
-    const clean = cleanAIJson(jsonString);
-    return JSON.parse(clean);
-  } catch (e) {
-    throw new Error("Invalid AI JSON: " + (e instanceof Error ? e.message : String(e)));
+  if (!jsonString || !jsonString.trim()) {
+    throw new Error("Invalid AI JSON: empty input");
   }
+  try {
+    return JSON.parse(cleanAIJson(jsonString));
+  } catch (_first) {
+    try {
+      return JSON.parse(repairJsonString(jsonString)) as T;
+    } catch (e) {
+      throw new Error("Invalid AI JSON: " + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+}
+
+/**
+ * 剥离 Markdown 代码块围栏（如 ```json ... ```），仅处理代码块标记，不触碰字符串内部。
+ * 作为宽容解析的统一第一步，供 repairJsonString / isJsonComplete 复用。
+ */
+function stripCodeFence(jsonString: string): string {
+  let clean = jsonString.replace(/^```[a-z]*\n/i, '').replace(/\n```$/i, '').trim();
+  const match = clean.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (match) {
+    clean = match[1].trim();
+  } else {
+    clean = clean.replace(/```json/gi, '').replace(/```/g, '').trim();
+  }
+  return clean;
+}
+
+/**
+ * 宽容修复 AI 生成的 JSON 字符串。
+ * 采用字符级状态机，正确识别双引号/单引号字符串字面量与转义，避免误伤字符串内部内容。
+ * 处理以下常见瑕疵：
+ *   1. Markdown 代码块围栏（stripCodeFence）
+ *   2. 字符串外的单行 // 与多行块注释（字符串内部的不误删）
+ *   3. 单引号字符串 → 双引号字符串（串内双引号自动转义）
+ *   4. 裸 key 加引号（{foo: 1} → {"foo": 1}）
+ *   5. 尾随逗号（[1, 2,] → [1, 2]）
+ *   6. 未闭合的字符串引号 / 括号补全（流式输出被 max_tokens 截断时的兜底）
+ *
+ * @param jsonString - 待修复的原始字符串
+ * @returns 修复后尽量合法的 JSON 字符串
+ */
+function repairJsonString(jsonString: string): string {
+  const s = stripCodeFence(jsonString);
+  let out = '';
+  const stack: Array<'{' | '['> = [];
+  let i = 0;
+  const n = s.length;
+  // 解析状态：top 字符串外；str 双引号串内；single 单引号串内
+  let mode: 'top' | 'str' | 'single' = 'top';
+  let escape = false;
+
+  while (i < n) {
+    const c = s[i];
+
+    if (mode === 'str') {
+      out += c;
+      if (escape) escape = false;
+      else if (c === '\\') escape = true;
+      else if (c === '"') mode = 'top';
+      i++;
+      continue;
+    }
+
+    if (mode === 'single') {
+      if (escape) {
+        if (c === "'") out += "'";
+        else if (c === '"') out += '\\"';
+        else out += '\\' + c;
+        escape = false; i++; continue;
+      }
+      if (c === '\\') { escape = true; i++; continue; }
+      if (c === "'") { out += '"'; mode = 'top'; i++; continue; }
+      if (c === '"') { out += '\\"'; i++; continue; }
+      out += c; i++; continue;
+    }
+
+    // mode === 'top'：字符串外
+    if (c === '"') { out += c; mode = 'str'; i++; continue; }
+    if (c === "'") { out += '"'; mode = 'single'; i++; continue; }
+
+    // 注释剥离（仅在字符串外处理，避免误删字符串内的 // 或 /*）
+    if (c === '/' && s[i + 1] === '/') {
+      i += 2;
+      while (i < n && s[i] !== '\n') i++;
+      continue;
+    }
+    if (c === '/' && s[i + 1] === '*') {
+      i += 2;
+      while (i < n && !(s[i] === '*' && s[i + 1] === '/')) i++;
+      i += 2;
+      continue;
+    }
+
+    if (c === '{' || c === '[') { out += c; stack.push(c); i++; continue; }
+    if (c === '}' || c === ']') {
+      out += c;
+      const top = stack[stack.length - 1];
+      if ((c === '}' && top === '{') || (c === ']' && top === '[')) stack.pop();
+      else if (stack.length) stack.pop();
+      i++; continue;
+    }
+
+    // 尾随逗号：逗号后跨空白若遇 } 或 ]，删除该逗号
+    if (c === ',') {
+      let j = i + 1;
+      while (j < n && /\s/.test(s[j])) j++;
+      if (j < n && (s[j] === '}' || s[j] === ']')) { i++; continue; }
+      out += c; i++; continue;
+    }
+
+    // 裸 key 检测：标识符后紧跟 : 且当前处于对象内 → 给 key 加引号
+    if (/[A-Za-z_$]/.test(c)) {
+      let j = i;
+      while (j < n && /[\w$]/.test(s[j])) j++;
+      const ident = s.slice(i, j);
+      let k = j;
+      while (k < n && /\s/.test(s[k])) k++;
+      if (k < n && s[k] === ':' && stack[stack.length - 1] === '{') {
+        out += '"' + ident + '"';
+        i = j;
+        continue;
+      }
+      out += ident;
+      i = j;
+      continue;
+    }
+
+    out += c; i++;
+  }
+
+  // 截断兜底：未闭合的字符串补上引号
+  if (mode === 'str' || mode === 'single') out += '"';
+  // 去掉字符串外残留的尾随逗号（截断常见，避免补全后产生 [,] 非法结构）
+  out = out.replace(/,\s*$/, '');
+  // 补全未闭合的括号
+  while (stack.length) {
+    const top = stack.pop() as '{' | '[';
+    out += top === '{' ? '}' : ']';
+  }
+  return out;
+}
+
+/**
+ * 判断 JSON 字符串是否结构完整（括号/方括号配平、字符串引号闭合）。
+ * 仅做检测不做修复，用于识别流式输出是否被 max_tokens 截断，与 finish_reason 配合使用。
+ *
+ * @param jsonString - 待检测的原始字符串
+ * @returns true 表示结构完整可直接解析；false 表示疑似被截断或括号失衡
+ */
+export function isJsonComplete(jsonString: string): boolean {
+  if (!jsonString || !jsonString.trim()) return true;
+  const s = stripCodeFence(jsonString);
+  let mode: 'top' | 'str' | 'single' = 'top';
+  let escape = false;
+  const stack: Array<'{' | '['> = [];
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (mode === 'str') {
+      if (escape) escape = false;
+      else if (c === '\\') escape = true;
+      else if (c === '"') mode = 'top';
+      continue;
+    }
+    if (mode === 'single') {
+      if (escape) escape = false;
+      else if (c === '\\') escape = true;
+      else if (c === "'") mode = 'top';
+      continue;
+    }
+    if (c === '"') mode = 'str';
+    else if (c === "'") mode = 'single';
+    else if (c === '{' || c === '[') stack.push(c);
+    else if (c === '}') { if (stack.pop() !== '{') return false; }
+    else if (c === ']') { if (stack.pop() !== '[') return false; }
+  }
+  return mode === 'top' && stack.length === 0;
+}
+
+/**
+ * 解析 AI 工具调用的参数 JSON。
+ * 相比 parseAIJson，针对 function calling 场景对空串/缺失参数兜底为空对象，
+ * 避免无参工具回传空字符串时抛错。其余复用 parseAIJson 的两段式宽容解析。
+ *
+ * @param jsonString - 工具调用 arguments 字符串
+ * @returns 解析后的参数对象
+ */
+export function parseToolArguments(jsonString: string): any {
+  if (!jsonString || !jsonString.trim()) return {};
+  return parseAIJson(jsonString);
 }
