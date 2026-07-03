@@ -1,12 +1,13 @@
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { Send, Paperclip, X, Trash2, Plus, History, Sparkles, Brain, Zap, RotateCw, Loader2, Square } from 'lucide-react';
-import { MessageRenderer, ToolCallRenderer } from './MessageRenderer';
+import { MessageRenderer, ToolCallRenderer, ThinkingBlock } from './MessageRenderer';
 import { db, ChatSession } from '@/db';
 import { processFile } from '@/lib/fileProcessor';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useChatSession } from '@/hooks/useChatSession';
 import { ModelSwitcher } from './ModelSwitcher';
+import { ModeSwitcher } from './ModeSwitcher';
 
 /**
  * 格式化文件大小为易读字符串
@@ -232,34 +233,28 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
     <div className={`flex flex-col h-full relative ${className || ''}`}>
       {/* Header Controls */}
       <div className="absolute top-2 left-4 right-4 z-20 flex justify-between items-center pointer-events-none">
-        <div className="flex bg-white/70 dark:bg-zinc-800/80 backdrop-blur-md rounded-full p-1 shadow-sm border dark:border-zinc-700 pointer-events-auto">
+        <div className="flex items-center gap-2 pointer-events-auto">
           <button
-            onClick={() => setMode('act')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-all ${mode === 'act' ? 'bg-primary text-primary-foreground shadow' : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200'}`}
+            onClick={handleNewChat}
+            className="p-2 bg-white dark:bg-zinc-800 rounded-full shadow-md text-zinc-500 hover:text-primary border dark:border-zinc-700 transition-colors"
+            title="新建对话"
           >
-            <Zap size={14} /> 快速执行
+            <Plus size={18} />
           </button>
           <button
-            onClick={() => setMode('plan')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-all ${mode === 'plan' ? 'bg-indigo-500 text-white shadow' : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200'}`}
+            onClick={() => setShowHistory(!showHistory)}
+            className="p-2 bg-white dark:bg-zinc-800 rounded-full shadow-md text-zinc-500 hover:text-blue-600 border dark:border-zinc-700 transition-colors"
+            title="历史对话"
           >
-            <Brain size={14} /> 深度规划
+            <History size={18} />
           </button>
         </div>
-
-        <button
-          onClick={() => setShowHistory(!showHistory)}
-          className="p-2 bg-white dark:bg-zinc-800 rounded-full shadow-md text-zinc-500 hover:text-blue-600 border dark:border-zinc-700 pointer-events-auto"
-          title="历史对话"
-        >
-          <History size={18} />
-        </button>
       </div>
 
       {/* History Overlay */}
       {showHistory && (
         <div className="absolute inset-0 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl z-30 flex flex-col p-4 animate-in fade-in zoom-in-95 duration-200">
-          <div className="flex justify-between items-center mb-4 pt-10">
+          <div className="flex justify-between items-center mb-4">
             <h3 className="font-bold text-lg text-zinc-800 dark:text-zinc-100">全局任务历史</h3>
             <button onClick={() => setShowHistory(false)} className="p-2 bg-zinc-100 dark:bg-zinc-800 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"><X size={18} /></button>
           </div>
@@ -337,10 +332,16 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
             }
           }
 
+          // 思考块「进行中」判定：含推理内容、尚未结束计时、且正处于生成中
+          const thinkingActive = !!m.reasoning_content && m.reasoningTimeMs === undefined && loading;
+
           return (
             <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
               {m.role === 'assistant' && m.tool_calls && m.tool_calls.length > 0 ? (
                 <div className="flex flex-col gap-2 max-w-[90%] md:max-w-[80%]">
+                  {m.reasoning_content && (
+                    <ThinkingBlock content={m.reasoning_content} durationMs={m.reasoningTimeMs} active={thinkingActive} />
+                  )}
                   <ToolCallRenderer toolCalls={m.tool_calls} results={toolResults} subAgentStates={subAgentStates} />
                   {m.content && (
                     <div className="bg-white/70 dark:bg-zinc-800/80 backdrop-blur-sm shadow-sm rounded-2xl rounded-tl-sm ring-1 ring-zinc-900/5 dark:ring-zinc-100/10 p-4">
@@ -349,10 +350,14 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
                   )}
                 </div>
               ) : (
-                <div className={`max-w-[90%] md:max-w-[80%] p-4 relative group ${m.role === 'user'
-                  ? 'bg-zinc-800 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900 rounded-2xl rounded-tr-sm shadow-md'
-                  : 'bg-white/70 dark:bg-zinc-800/80 backdrop-blur-sm shadow-sm rounded-2xl rounded-tl-sm ring-1 ring-zinc-900/5 dark:ring-zinc-100/10'
-                  }`}>
+                <div className="flex flex-col gap-2 max-w-[90%] md:max-w-[80%]">
+                  {m.reasoning_content && (
+                    <ThinkingBlock content={m.reasoning_content} durationMs={m.reasoningTimeMs} active={thinkingActive} />
+                  )}
+                  <div className={`max-w-full p-4 relative group ${m.role === 'user'
+                    ? 'bg-zinc-800 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900 rounded-2xl rounded-tr-sm shadow-md'
+                    : 'bg-white/70 dark:bg-zinc-800/80 backdrop-blur-sm shadow-sm rounded-2xl rounded-tl-sm ring-1 ring-zinc-900/5 dark:ring-zinc-100/10'
+                    }`}>
                   <MessageRenderer content={m.content as any} isUser={m.role === 'user'} />
                   
                   {m.role === 'user' && !loading && (
@@ -364,6 +369,7 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
                       <RotateCw size={14} />
                     </button>
                   )}
+                  </div>
                 </div>
               )}
             </div>
@@ -416,7 +422,8 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
             <span>{status}</span>
           </div>
         )}
-        <div className="flex justify-end mb-2 pr-1">
+        <div className="flex justify-end items-center gap-2 mb-2 pr-1">
+          <ModeSwitcher mode={mode} onChange={setMode} />
           <ModelSwitcher />
         </div>
         <div className="flex gap-2 bg-white/70 dark:bg-zinc-900/80 backdrop-blur-xl p-2 rounded-[1.5rem] shadow-lg border border-zinc-200/50 dark:border-zinc-800/50 ring-1 ring-black/5 dark:ring-white/5 items-end transition-all focus-within:ring-primary/20 focus-within:border-primary/30">

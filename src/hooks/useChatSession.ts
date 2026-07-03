@@ -72,6 +72,9 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act') {
   // 记录本轮流式的结束原因，'length' 表示输出被 max_tokens 截断
   const finishReasonRef = useRef<string | null>(null);
 
+  // 思考（reasoning）开始时间戳，用于计算「已思考 Xs」耗时；null 表示本轮未产生思考内容
+  const reasoningStartRef = useRef<number | null>(null);
+
   // 子 Agent（delegate_task）的实时状态，按 toolCall.id 索引，供 UI 渲染子任务卡片
   const [subAgentStates, setSubAgentStates] = useState<Record<string, SubAgentState>>({});
 
@@ -97,7 +100,8 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act') {
           name: m.name,
           tool_calls: m.tool_calls,
           tool_call_id: m.tool_call_id,
-          reasoning_content: m.reasoning_content
+          reasoning_content: m.reasoning_content,
+          reasoningTimeMs: m.reasoningTimeMs
         })));
       });
     } else {
@@ -146,6 +150,7 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act') {
       tool_calls: msg.tool_calls,
       tool_call_id: msg.tool_call_id,
       reasoning_content: msg.reasoning_content,
+      reasoningTimeMs: msg.reasoningTimeMs,
       createdAt: Date.now()
     });
     
@@ -334,6 +339,10 @@ IMPORTANT: Always respond in Chinese.
     setStatus('AI 正在思考...');
 
     const handleToolCallChunk = (toolCallChunks: any[]) => {
+      // 首次进入工具调用：结束思考计时，冻结为最终耗时
+      if (reasoningStartRef.current !== null && aiMessage.reasoningTimeMs === undefined) {
+        aiMessage.reasoningTimeMs = Date.now() - reasoningStartRef.current;
+      }
       if (!aiMessage.tool_calls) aiMessage.tool_calls = [];
       
       toolCallChunks.forEach(chunk => {
@@ -359,6 +368,10 @@ IMPORTANT: Always respond in Chinese.
 
     const handleChunk = (chunk: string) => {
       setStatus('AI 正在生成回复...');
+      // 首次进入正文：结束思考计时，冻结为最终耗时
+      if (reasoningStartRef.current !== null && aiMessage.reasoningTimeMs === undefined) {
+        aiMessage.reasoningTimeMs = Date.now() - reasoningStartRef.current;
+      }
       aiMessage.content += chunk;
       setMessages(prev => {
         const newArr = [...prev];
@@ -368,7 +381,14 @@ IMPORTANT: Always respond in Chinese.
     };
 
     const handleReasoningChunk = (chunk: string) => {
+      // 首个思考分片：记录起始时间，用于计算「已思考 Xs」
+      if (reasoningStartRef.current === null) reasoningStartRef.current = Date.now();
       aiMessage.reasoning_content = (aiMessage.reasoning_content ?? '') + chunk;
+      setMessages(prev => {
+        const newArr = [...prev];
+        newArr[newArr.length - 1] = { ...aiMessage };
+        return newArr;
+      });
     };
 
     const activeTools = mode === 'act' 
@@ -380,6 +400,8 @@ IMPORTANT: Always respond in Chinese.
     abortControllerRef.current = abortController;
     // 重置本轮流式结束原因，用于后续判断输出是否被 max_tokens 截断
     finishReasonRef.current = null;
+    // 重置思考计时，本轮若产生 reasoning_content 会在首个分片时记录起始时间
+    reasoningStartRef.current = null;
 
     try {
       await streamAICompletion(
@@ -402,6 +424,18 @@ IMPORTANT: Always respond in Chinese.
       throw error;
     } finally {
       abortControllerRef.current = null;
+      // 思考已开始但未因正文/工具调用结束计时（如仅产出推理、被截断或用户停止）时，补全耗时
+      if (reasoningStartRef.current !== null && aiMessage.reasoningTimeMs === undefined) {
+        aiMessage.reasoningTimeMs = Date.now() - reasoningStartRef.current;
+        setMessages(prev => {
+          const newArr = [...prev];
+          const lastIdx = newArr.findIndex(x => x === aiMessage);
+          if (lastIdx !== -1) newArr[lastIdx] = { ...aiMessage };
+          else newArr[newArr.length - 1] = { ...aiMessage };
+          return newArr;
+        });
+      }
+      reasoningStartRef.current = null;
     }
     
     setStatus('');

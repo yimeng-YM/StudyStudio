@@ -10,7 +10,7 @@ import { vscDarkPlus, prism } from 'react-syntax-highlighter/dist/esm/styles/pri
 
 import 'katex/dist/katex.min.css';
 import { MessageContentPart, ToolCall } from '@/services/ai';
-import { FileText, FileSpreadsheet, FileCode, FileJson, ChevronDown, ChevronRight, CheckCircle2, Loader2, GitCompare, Eye, Code2, XCircle } from 'lucide-react';
+import { FileText, FileSpreadsheet, FileCode, FileJson, ChevronDown, ChevronRight, CheckCircle2, Loader2, GitCompare, Eye, Code2, XCircle, Brain } from 'lucide-react';
 import { db } from '@/db';
 import mermaid from 'mermaid';
 import { useTheme } from '@/hooks/useTheme';
@@ -351,7 +351,50 @@ function getToolResultSummary(name: string, result: string): string {
 }
 
 /**
- * 子任务（delegate_task）卡片：展示子 Agent 的实时状态、可折叠的流式输出与内部工具调用列表。
+ * 将子任务文本中的实体 ID / UUID 替换为对应实体名（查 db），避免出现长 UUID 噪音。
+ * 处理三类形态：①整段括注「（实体ID: <uuid>）」直接删除②「键: <uuid>」标记 → 实体名③其余裸 UUID（如「为学科 <uuid> 创建」）→ 实体名。
+ * nameMap 由组件异步解析后回填；解析前 nameMap 为空，未命中的 UUID 先删除并收敛空白，命中后回填为「`name`」。
+ */
+const UUID_PAT = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}';
+const ID_KEY = '(?:实体ID|entityId|subjectId|noteId|quizId|mindmapId|taskboardId)';
+const RE_PAREN_ID = new RegExp(`[（(]\\s*${ID_KEY}\\s*[:：]?\\s*(${UUID_PAT})\\s*[)）]`, 'gi');
+const RE_KEY_UUID = new RegExp(`\\s*${ID_KEY}\\s*[:：]?\\s*(${UUID_PAT})`, 'gi');
+const RE_BARE_UUID = new RegExp(`(${UUID_PAT})`, 'gi');
+const RE_UUID_EXTRACT = new RegExp(UUID_PAT, 'gi');
+const RE_WS = /[ \t]{2,}/g;
+const RE_PUNCT = /[ \t]+([，。、；！？])/g;
+
+/** 按 UUID 查实体名：先查学科表（name），再查统一实体表（title：笔记/测验/导图/任务板） */
+async function resolveEntityName(uuid: string): Promise<string | null> {
+  try {
+    const subject = await db.subjects.get(uuid);
+    if (subject?.name) return subject.name;
+    const entity = await db.entities.get(uuid);
+    if (entity?.title) return entity.title;
+  } catch { /* 查询失败静默 */ }
+  return null;
+}
+
+/** 提取文本中所有 UUID（去重） */
+function extractUuids(text: string): string[] {
+  return Array.from(new Set(text.match(RE_UUID_EXTRACT) || []));
+}
+
+/** 用 nameMap 将文本中的 UUID 渲染为实体名；未命中的删除并收敛空白 */
+function renderIds(text: string, nameMap: Record<string, string>): string {
+  if (!text) return text;
+  return text
+    .replace(RE_PAREN_ID, '')
+    .replace(RE_KEY_UUID, (_m, uuid) => nameMap[uuid] ? `\`${nameMap[uuid]}\`` : '')
+    .replace(RE_BARE_UUID, (_m, uuid) => nameMap[uuid] ? `\`${nameMap[uuid]}\`` : '')
+    .replace(RE_WS, ' ')
+    .replace(RE_PUNCT, '$1')
+    .trim();
+}
+
+/**
+ * 子任务（delegate_task）卡片：展示子 Agent 的实时状态与内部工具调用列表。
+ * 「分配的任务」默认收缩，点击展开后才显示完整任务文本；不展示上下文与子 Agent 流式输出。
  */
 function SubAgentCard({ tc, state, summary }: {
   tc: ToolCall;
@@ -359,24 +402,44 @@ function SubAgentCard({ tc, state, summary }: {
   summary?: string;
 }) {
   const [expanded, setExpanded] = useState(false);
+  // 「分配的任务」详情默认收缩，用户点击展开后才显示完整任务
+  const [taskExpanded, setTaskExpanded] = useState(false);
+  // UUID → 实体名 映射，异步从 db 解析后回填，用于把任务/摘要里的 UUID 渲染为实体名
+  const [nameMap, setNameMap] = useState<Record<string, string>>({});
+  const resolvedRef = useRef<Set<string>>(new Set());
   // 完成态判定：优先看子 Agent 内存状态；若无状态但已有结果摘要（tool 消息已回传/已落库），
   // 也视为完成。修复：主 Agent 收尾（如新会话触发 onSessionChange 导致 Hook 重载）后
   // subAgentStates 可能丢失，但 delegate 的 tool 消息已持久化，据此仍应显示完成（打勾）而非转圈。
   const done = !!state?.done || !!summary;
   const failed = !!state?.error;
   const status = state?.status || (summary ? '已完成' : '等待中…');
-  const streamText = state?.streamText || '';
   const subTools = state?.toolCalls || [];
 
-  // 解析主 Agent 分配给本子 Agent 的完整任务与上下文，供展开后完整查看
+  // 仅解析分配的任务（上下文不再展示，故不解析）
   let taskFull = '';
-  let contextFull = '';
   try {
     const a = JSON.parse(tc.function.arguments || '{}');
     taskFull = String(a.task || '');
-    contextFull = String(a.context || '');
   } catch { /* 参数非标准 JSON 时静默 */ }
-  const taskPreview = taskFull.slice(0, 50);
+  // 展示用：把任务文本中的实体 ID / UUID 替换为实体名（nameMap 异步解析前先删除，命中后回填为「`name`」）
+  const taskDisplay = renderIds(taskFull, nameMap);
+  const taskPreview = taskDisplay.slice(0, 50);
+
+  // 异步解析任务/摘要中出现的 UUID → 实体名，命中后回填 nameMap 触发重渲染
+  useEffect(() => {
+    const uuids = extractUuids(`${taskFull}\n${summary || ''}`);
+    const missing = uuids.filter(u => !resolvedRef.current.has(u));
+    if (missing.length === 0) return;
+    missing.forEach(u => resolvedRef.current.add(u));
+    let cancelled = false;
+    Promise.all(missing.map(async u => [u, await resolveEntityName(u)] as const)).then(entries => {
+      if (cancelled) return;
+      const added: Record<string, string> = {};
+      for (const [u, name] of entries) if (name) added[u] = name;
+      if (Object.keys(added).length) setNameMap(prev => ({ ...prev, ...added }));
+    });
+    return () => { cancelled = true; };
+  }, [taskFull, summary]);
 
   return (
     <div className="flex flex-col my-1 text-[11px] animate-in fade-in slide-in-from-left-1 duration-200">
@@ -404,15 +467,22 @@ function SubAgentCard({ tc, state, summary }: {
       </div>
       {expanded && (
         <div className="mt-1 ml-4 space-y-1.5 border-l border-zinc-200 dark:border-zinc-700 pl-2">
-          {/* 主 Agent 分配给本子 Agent 的完整任务详情 */}
+          {/* 分配的任务：默认收缩，展开后才显示完整任务文本 */}
           <div className="space-y-0.5">
-            <div className="text-[10px] text-zinc-400">分配的任务：</div>
-            <div className="text-zinc-600 dark:text-zinc-300 whitespace-pre-wrap break-words">{taskFull || '（未提供任务描述）'}</div>
-            {contextFull && (
-              <>
-                <div className="text-[10px] text-zinc-400 mt-1">上下文：</div>
-                <div className="text-zinc-500 dark:text-zinc-400 font-mono text-[10px] whitespace-pre-wrap break-words">{contextFull}</div>
-              </>
+            <div
+              onClick={() => setTaskExpanded(v => !v)}
+              className="text-[10px] text-zinc-400 flex items-center gap-1 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-300 select-none"
+            >
+              <span className="transition-transform inline-block shrink-0" style={{ transform: taskExpanded ? 'rotate(90deg)' : 'none' }}>
+                <ChevronRight size={10} />
+              </span>
+              <span>分配的任务</span>
+              {taskDisplay.length > 50 && (
+                <span className="text-zinc-300 dark:text-zinc-600 font-normal">{taskExpanded ? '收起' : '展开'}</span>
+              )}
+            </div>
+            {taskExpanded && (
+              <div className="text-zinc-600 dark:text-zinc-300 whitespace-pre-wrap break-words">{taskDisplay || '（未提供任务描述）'}</div>
             )}
           </div>
           {subTools.length > 0 && (
@@ -428,17 +498,66 @@ function SubAgentCard({ tc, state, summary }: {
               ))}
             </div>
           )}
-          {streamText && (
-            <div className="space-y-0.5">
-              <div className="text-[10px] text-zinc-400">子 Agent 输出：</div>
-              <div className="font-mono text-[10px] text-zinc-600 dark:text-zinc-300 whitespace-pre-wrap max-h-40 overflow-y-auto bg-zinc-50 dark:bg-zinc-900/50 rounded p-1.5">{streamText}</div>
-            </div>
-          )}
           {done && summary && (
             <div className="text-[10px] text-zinc-500 dark:text-zinc-400">
-              <span className="text-zinc-400">摘要：</span>{summary}
+              <span className="text-zinc-400">摘要：</span>{renderIds(summary, nameMap)}
             </div>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 思考过程展示组件（reasoning_content）。
+ * 折叠态显示「思考中 Xs」（进行中，转圈计时）或「已思考 Xs」（已完成）；
+ * 展开后渲染模型的推理内容。进行中以挂载时刻为起点实时计时，
+ * 完成后由 durationMs 给出精确耗时。
+ */
+export function ThinkingBlock({ content, durationMs, active }: {
+  content: string;
+  durationMs?: number;
+  active: boolean;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [liveMs, setLiveMs] = useState(0);
+
+  // 进行中：以挂载时刻为起点实时计时；结束后清除定时器，改用精确的 durationMs
+  useEffect(() => {
+    if (!active) return;
+    const start = Date.now();
+    const id = setInterval(() => setLiveMs(Date.now() - start), 200);
+    return () => clearInterval(id);
+  }, [active]);
+
+  const seconds = durationMs != null
+    ? Math.floor(durationMs / 1000)
+    : active
+      ? Math.floor(liveMs / 1000)
+      : null;
+
+  const label = active
+    ? (seconds ? `思考中 ${seconds}s` : '思考中…')
+    : (seconds != null ? `已思考 ${seconds}s` : '思考过程');
+
+  return (
+    <div className="text-[11px] text-zinc-500 dark:text-zinc-400 my-0.5 select-none">
+      <button
+        onClick={() => setExpanded(v => !v)}
+        className="inline-flex items-center gap-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 rounded px-1.5 py-1 -mx-1.5 transition-colors"
+      >
+        {active
+          ? <Loader2 size={12} className="animate-spin text-blue-500 shrink-0" />
+          : <Brain size={12} className="text-zinc-400 dark:text-zinc-500 shrink-0" />}
+        <span className="font-medium">{label}</span>
+        <span className="text-zinc-400 transition-transform shrink-0" style={{ transform: expanded ? 'rotate(90deg)' : 'none' }}>
+          <ChevronRight size={13} />
+        </span>
+      </button>
+      {expanded && (
+        <div className="mt-1.5 ml-3 pl-3 border-l border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 max-h-60 overflow-y-auto select-text" style={{ fontSize: 'var(--app-font-size, 13px)' }}>
+          <MessageRenderer content={content} isUser={false} />
         </div>
       )}
     </div>

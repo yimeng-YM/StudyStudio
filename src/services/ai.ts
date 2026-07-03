@@ -47,6 +47,8 @@ export interface Message {
   tool_call_id?: string;
   /** DeepSeek thinking 模式的推理内容，回传时必须原样附带，否则 API 会报错 */
   reasoning_content?: string;
+  /** 思考（reasoning）耗时（毫秒），仅用于 UI 展示「已思考 Xs」，发送给 API 前会被剥离 */
+  reasoningTimeMs?: number;
 }
 
 /**
@@ -218,6 +220,8 @@ export async function streamAICompletion(
   // 过滤掉空的 tool_calls 数组，避免 API 报错
   const sanitizedMessages = messages.map(m => {
     const msg = { ...m };
+    // reasoningTimeMs 仅为 UI 字段，剥离后避免污染 API 请求体
+    delete msg.reasoningTimeMs;
     if (msg.tool_calls && msg.tool_calls.length === 0) {
       delete msg.tool_calls;
     }

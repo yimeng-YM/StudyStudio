@@ -212,6 +212,8 @@ export interface ChatMessage {
   name?: string;
   /** DeepSeek thinking 模式的推理内容，必须在后续请求中原样回传 */
   reasoning_content?: string;
+  /** 思考（reasoning）耗时（毫秒），仅用于 UI 展示「已思考 Xs」 */
+  reasoningTimeMs?: number;
   /** 消息创建时间戳 */
   createdAt: number;
 }
