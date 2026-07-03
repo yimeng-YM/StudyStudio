@@ -211,8 +211,8 @@ export async function streamAICompletion(
        url = `${url}/v1`;
   }
 
-  const maxTokens = options?.maxTokens ?? DEFAULT_MAX_TOKENS;
-  const temperature = options?.temperature ?? TEMPERATURE.balanced;
+  const maxTokens = options?.maxTokens ?? settings.maxTokens ?? DEFAULT_MAX_TOKENS;
+  const temperature = options?.temperature ?? settings.temperature ?? TEMPERATURE.balanced;
 
   // 过滤掉空的 tool_calls 数组，避免 API 报错
   const sanitizedMessages = messages.map(m => {

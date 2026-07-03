@@ -5,10 +5,7 @@ import { Message, ToolCall, streamAICompletion } from '@/services/ai';
 import { useAIStore, getFullContextPrompt } from '@/store/useAIStore';
 import { ToolDefinitions, executeTool } from '@/services/agent/ToolRegistry';
 import { useDialog } from '@/components/ui/DialogProvider';
-import {
-  getSystemPromptWithContext,
-  DEFAULT_MAX_TOKENS
-} from '@/services/promptConfig';
+import { getSystemPromptWithContext } from '@/services/promptConfig';
 import { generateSessionTitle } from '@/services/aiGenerator';
 
 /**
@@ -368,7 +365,7 @@ IMPORTANT: Always respond in Chinese.
         handleChunk,
         activeTools,
         handleToolCallChunk,
-        { maxTokens: DEFAULT_MAX_TOKENS },
+        { maxTokens: settings.maxTokens, temperature: settings.temperature },
         abortController.signal,
         handleReasoningChunk,
         (reason) => { if (reason) finishReasonRef.current = reason; }

@@ -3,7 +3,7 @@ import { getAICompletion, AIRequestOptions } from './ai';
 import * as dagre from 'dagre';
 import { Node, Edge } from 'reactflow';
 import { parseAIJson } from '@/lib/utils';
-import { DEFAULT_MAX_TOKENS, TEMPERATURE, CONTENT_GENERATION_PROMPTS, TITLE_GENERATION_PROMPT } from './promptConfig';
+import { TEMPERATURE, CONTENT_GENERATION_PROMPTS, TITLE_GENERATION_PROMPT } from './promptConfig';
 
 /**
  * 思维导图生成的高级配置选项。
@@ -69,8 +69,8 @@ export async function generateMindMapData(
   const prompt = CONTENT_GENERATION_PROMPTS.mindmap(topic);
   
   const apiOptions: AIRequestOptions = {
-    maxTokens: DEFAULT_MAX_TOKENS,
-    temperature: 0.7
+    maxTokens: settings.maxTokens,
+    temperature: settings.temperature
   };
 
   const response = await getAICompletion(
@@ -183,8 +183,8 @@ export async function generateTasksData(
   const prompt = CONTENT_GENERATION_PROMPTS.tasks(goal);
   
   const apiOptions: AIRequestOptions = {
-    maxTokens: DEFAULT_MAX_TOKENS,
-    temperature: 0.7
+    maxTokens: settings.maxTokens,
+    temperature: settings.temperature
   };
 
   const response = await getAICompletion(
@@ -223,8 +223,8 @@ export async function generateQuizData(
   const prompt = CONTENT_GENERATION_PROMPTS.quiz(subject, topic);
   
   const apiOptions: AIRequestOptions = {
-    maxTokens: DEFAULT_MAX_TOKENS,
-    temperature: 0.7
+    maxTokens: settings.maxTokens,
+    temperature: settings.temperature
   };
 
   const response = await getAICompletion(
@@ -267,8 +267,8 @@ export async function generateNoteContent(
   const prompt = CONTENT_GENERATION_PROMPTS.note(subject, topic);
   
   const apiOptions: AIRequestOptions = {
-    maxTokens: DEFAULT_MAX_TOKENS,
-    temperature: 0.7
+    maxTokens: settings.maxTokens,
+    temperature: settings.temperature
   };
 
   // 直接返回生成的长文本字符串，不需要经过 JSON 反序列化
@@ -300,11 +300,12 @@ export async function generateSessionTitle(
 ): Promise<string> {
   const prompt = TITLE_GENERATION_PROMPT(firstUserMessage, firstAssistantReply);
 
-  // namingModel 为空则回退主模型；标题任务用低温度保证稳定、低 token 节省成本
+  // namingModel 为空则回退主模型；temperature 固定低值(0.3)保证标题稳定，
+  // max_tokens 跟随用户全局设置，避免推理型模型(reasoning_content 占用 token 预算)因预算过小被截断导致标题内容为空
   const apiOptions: AIRequestOptions = {
     model: settings.namingModel || settings.model,
     temperature: TEMPERATURE.precise,
-    maxTokens: 48,
+    maxTokens: settings.maxTokens,
   };
 
   const response = await getAICompletion(
