@@ -5,7 +5,8 @@ import {
   Plus, Trash, Edit, ArrowUp, ArrowDown,
   CheckCircle2, FileText, ListChecks, Type, AlignLeft, X, Check, XCircle, RefreshCw,
   Image as ImageIcon, Bold, Italic, Strikethrough, List, ListOrdered, Heading1, Heading2, Heading3,
-  Quote, Code, Link as LinkIcon, Upload, ArrowLeft
+  Quote, Code, Link as LinkIcon, Upload, ArrowLeft,
+  PanelLeftClose, PanelLeftOpen
 } from 'lucide-react';
 import { useSorting, sortItems } from '@/hooks/useSorting';
 import { useManualReorder } from '@/hooks/useManualReorder';
@@ -385,12 +386,13 @@ function QuestionEditor({ question, onSave, onCancel }: { question: Question, on
 // ─── 题目导航组件（桌面端） ───
 
 function QuizNavigation({
-  questions, recordMap, onBack, onSelectQuestion,
+  questions, recordMap, onBack, onSelectQuestion, onCollapse,
 }: {
   questions: Question[];
   recordMap: Map<string, QuizRecord>;
   onBack: () => void;
   onSelectQuestion: (index: number) => void;
+  onCollapse: () => void;
 }) {
   const grouped = useMemo(() => {
     const typeOrder = ['single_choice', 'multiple_choice', 'true_false', 'fill_in_blank', 'short_answer', 'essay'];
@@ -411,6 +413,7 @@ function QuizNavigation({
         <button onClick={onBack} className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg" title="返回列表"><ArrowLeft size={20} /></button>
         <span className="font-medium text-sm text-zinc-600 dark:text-zinc-400">题目导航</span>
         <span className="text-xs text-zinc-400 ml-auto">{questions.length} 题</span>
+        <button onClick={onCollapse} className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200" title="收起导航"><PanelLeftClose size={18} /></button>
       </div>
       <div className="flex-1 overflow-y-auto space-y-4">
         {grouped.map(({ type, label, indices }) => (
@@ -528,7 +531,7 @@ function scrollToQuestionInContainer(index: number, container: HTMLElement) {
   setTimeout(() => observer.disconnect(), 4000);
 }
 
-function QuizEditor({ quiz, isEditingTitle, setIsEditingTitle, editTitle, setEditTitle, onUpdateTitle, onDeleteQuiz, scrollToIndex, onScrollComplete, sidebarWidth }: any) {
+function QuizEditor({ quiz, isEditingTitle, setIsEditingTitle, editTitle, setEditTitle, onUpdateTitle, onDeleteQuiz, scrollToIndex, onScrollComplete, sidebarWidth, sidebarCollapsed, onExpandSidebar }: any) {
   const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
   const questions = (quiz.content as QuizContent)?.questions || [];
   const { showConfirm } = useDialog();
@@ -562,20 +565,27 @@ function QuizEditor({ quiz, isEditingTitle, setIsEditingTitle, editTitle, setEdi
   return (
     <div className="flex flex-col h-full">
       <div className="hidden md:flex items-center justify-between gap-4 pb-4 border-b border-zinc-200 dark:border-zinc-800 shrink-0">
-        <div className="flex-1">
-          {isEditingTitle ? <input value={editTitle} onChange={e => setEditTitle(e.target.value)} onBlur={onUpdateTitle} onKeyDown={e => e.key === 'Enter' && onUpdateTitle()} className="text-xl font-bold bg-transparent border-b-2 border-blue-500 focus:outline-none w-full text-zinc-800 dark:text-zinc-200" autoFocus />
-            : <h2 onClick={() => { setEditTitle(quiz.title); setIsEditingTitle(true); }} className="text-xl font-bold text-zinc-800 dark:text-zinc-200 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded px-2 -ml-2 py-1 transition-colors">{quiz.title}</h2>}
-          <div className="text-xs text-zinc-500 mt-1 ml-1 space-x-2">
-            <span>共 {questions.length} 题</span><span>·</span><span>创建于 {new Date(quiz.createdAt).toLocaleDateString()}</span>
-            {stats && <><span>·</span><span className="text-blue-600 dark:text-blue-400">已练 {stats.attempted}/{questions.length} 题</span>{stats.objectiveTotal > 0 && <><span>·</span><span className="text-green-600 dark:text-green-400">正确率 {Math.round((stats.correctCount / stats.objectiveTotal) * 100)}%</span></>}</>}
+        <div className="flex items-start gap-2 min-w-0 flex-1">
+          {sidebarCollapsed && (
+            <button onClick={onExpandSidebar} className="shrink-0 mt-1 p-1.5 text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded" title="展开导航">
+              <PanelLeftOpen size={18} />
+            </button>
+          )}
+          <div className="flex-1 min-w-0">
+            {isEditingTitle ? <input value={editTitle} onChange={e => setEditTitle(e.target.value)} onBlur={onUpdateTitle} onKeyDown={e => e.key === 'Enter' && onUpdateTitle()} className="text-xl font-bold bg-transparent border-b-2 border-blue-500 focus:outline-none w-full text-zinc-800 dark:text-zinc-200" autoFocus />
+              : <h2 onClick={() => { setEditTitle(quiz.title); setIsEditingTitle(true); }} className="text-xl font-bold text-zinc-800 dark:text-zinc-200 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded px-2 -ml-2 py-1 transition-colors">{quiz.title}</h2>}
+            <div className="text-xs text-zinc-500 mt-1 ml-1 space-x-2">
+              <span>共 {questions.length} 题</span><span>·</span><span>创建于 {new Date(quiz.createdAt).toLocaleDateString()}</span>
+              {stats && <><span>·</span><span className="text-blue-600 dark:text-blue-400">已练 {stats.attempted}/{questions.length} 题</span>{stats.objectiveTotal > 0 && <><span>·</span><span className="text-green-600 dark:text-green-400">正确率 {Math.round((stats.correctCount / stats.objectiveTotal) * 100)}%</span></>}</>}
+            </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <button onClick={handleExport} className="p-2 text-zinc-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors" title="导出题库"><Upload size={18} /></button>
           <button onClick={onDeleteQuiz} className="p-2 text-zinc-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors" title="删除题库"><Trash size={18} /></button>
         </div>
       </div>
-      <div ref={questionListRef} className={cn("flex-1 overflow-y-auto py-2 md:py-4", sidebarWidth < 250 ? "grid grid-cols-2 gap-4 items-start" : "space-y-6")} style={{ overscrollBehavior: 'contain' }}>
+      <div ref={questionListRef} className={cn("flex-1 overflow-y-auto py-2 md:py-4", (sidebarCollapsed || sidebarWidth < 250) ? "grid grid-cols-2 gap-4 items-start" : "space-y-6")} style={{ overscrollBehavior: 'contain' }}>
         {questions.length === 0 ? <div className="text-center py-20 text-zinc-400"><div className="mb-2">开始添加题目</div><div className="text-sm">点击下方按钮添加不同类型的题目</div></div>
           : questions.map((q, index) => (
             <div key={q.id} data-question-index={index} className="relative group/item bg-white/70 dark:bg-zinc-900/50 rounded-xl border border-zinc-200 dark:border-zinc-800/50 p-4 transition-all hover:border-zinc-300 dark:hover:border-zinc-700" style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 120px' }}>
@@ -617,8 +627,10 @@ export function QuizModule({ subjectId }: QuizModuleProps) {
   const [scrollToIndex, setScrollToIndex] = useState<number | null>(null);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitle, setEditTitle] = useState('');
+  // 题目导航侧栏是否完全收起（仅桌面端、查看题库时生效）
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { showConfirm } = useDialog();
-  const { width: sidebarWidth, startResizing } = useResizable({
+  const { width: sidebarWidth, startResizing, isResizing } = useResizable({
     initialWidth: 320,
     minWidth: 180,
     maxWidth: 500,
@@ -640,12 +652,12 @@ export function QuizModule({ subjectId }: QuizModuleProps) {
   const createQuiz = async () => {
     const id = generateUUID(); const now = Date.now();
     await db.entities.add({ id, subjectId, type: 'quiz_bank' as const, title: '未命名题库', content: { questions: [] }, createdAt: now, updatedAt: now, lastAccessed: now, order: now });
-    setSelectedQuizId(id); setEditTitle('未命名题库'); setIsEditingTitle(true); setViewMode('nav');
+    setSelectedQuizId(id); setEditTitle('未命名题库'); setIsEditingTitle(true); setViewMode('nav'); setSidebarCollapsed(false);
   };
 
   const deleteQuiz = async (id: string) => {
     const c = await showConfirm("确认删除此题库？", { title: "删除题库" });
-    if (c) { await db.entities.delete(id); if (selectedQuizId === id) { setSelectedQuizId(null); setIsEditingTitle(false); setViewMode('list'); } }
+    if (c) { await db.entities.delete(id); if (selectedQuizId === id) { setSelectedQuizId(null); setIsEditingTitle(false); setViewMode('list'); setSidebarCollapsed(false); } }
   };
 
   const handleMobileExport = async () => {
@@ -662,10 +674,10 @@ export function QuizModule({ subjectId }: QuizModuleProps) {
   const { moveItem } = useManualReorder(quizzes, db.entities);
 
   const handleSelectQuiz = async (quiz: Entity) => {
-    setSelectedQuizId(quiz.id); setEditTitle(quiz.title); setIsEditingTitle(false); setViewMode('nav'); setScrollToIndex(null);
+    setSelectedQuizId(quiz.id); setEditTitle(quiz.title); setIsEditingTitle(false); setViewMode('nav'); setScrollToIndex(null); setSidebarCollapsed(false);
     await db.entities.update(quiz.id, { lastAccessed: Date.now() });
   };
-  const handleBackToList = () => { setSelectedQuizId(null); setIsEditingTitle(false); setViewMode('list'); setScrollToIndex(null); };
+  const handleBackToList = () => { setSelectedQuizId(null); setIsEditingTitle(false); setViewMode('list'); setScrollToIndex(null); setSidebarCollapsed(false); };
   const handleDetailBack = () => { setViewMode('nav'); setScrollToIndex(null); };
   const handleSelectQuestion = (index: number) => {
     if (window.innerWidth >= 768) { setScrollToIndex(index); setTimeout(() => setScrollToIndex(null), 100); }
@@ -710,22 +722,37 @@ export function QuizModule({ subjectId }: QuizModuleProps) {
 
   // ── 桌面端布局 ──
   const desktopLayout = (
-    <div className="hidden md:flex h-full gap-4 w-full">
-      {/* 左侧面板：列表 ⇄ 导航 */}
-      <div className="relative shrink-0 h-full" style={{ width: sidebarWidth }}>
-        <AnimatePresence mode="wait">
-          {!selectedQuiz ? (
-            <motion.div key="quiz-list" initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }} transition={{ duration: 0.2 }} className="h-full">
-              {quizListContent}
-            </motion.div>
-          ) : (
-            <motion.div key="quiz-nav" initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }} transition={{ duration: 0.2 }} className="h-full">
-              <QuizNavigation questions={questions} recordMap={recordMap} onBack={handleBackToList} onSelectQuestion={handleSelectQuestion} />
-            </motion.div>
-          )}
-        </AnimatePresence>
-        <ResizeHandle onMouseDown={startResizing} className="absolute right-0 top-0 bottom-0 translate-x-1/2" />
-      </div>
+    <div className="hidden md:flex h-full w-full">
+      {/* 左侧面板：列表 ⇄ 导航（查看题库时可完全收起，带宽度过渡动画） */}
+      <AnimatePresence initial={false}>
+        {(!sidebarCollapsed || !selectedQuiz) && (
+          <motion.div
+            key="quiz-sidebar"
+            initial={{ width: 0, marginRight: 0, opacity: 0 }}
+            animate={{ width: sidebarWidth, marginRight: 16, opacity: 1 }}
+            exit={{ width: 0, marginRight: 0, opacity: 0 }}
+            transition={{ duration: isResizing ? 0 : 0.25, ease: [0.4, 0, 0.2, 1] }}
+            className="relative shrink-0 h-full"
+          >
+            <div className="absolute inset-0 overflow-hidden">
+              <div style={{ width: sidebarWidth }} className="h-full">
+                <AnimatePresence mode="wait">
+                  {!selectedQuiz ? (
+                    <motion.div key="quiz-list" initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }} transition={{ duration: 0.2 }} className="h-full">
+                      {quizListContent}
+                    </motion.div>
+                  ) : (
+                    <motion.div key="quiz-nav" initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }} transition={{ duration: 0.2 }} className="h-full">
+                      <QuizNavigation questions={questions} recordMap={recordMap} onBack={handleBackToList} onSelectQuestion={handleSelectQuestion} onCollapse={() => setSidebarCollapsed(true)} />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
+            <ResizeHandle onMouseDown={startResizing} className="absolute right-0 top-0 bottom-0 translate-x-1/2" />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* 右侧面板：内容 */}
       <AnimatePresence mode="wait">
@@ -738,7 +765,7 @@ export function QuizModule({ subjectId }: QuizModuleProps) {
         ) : (
           <motion.div key={selectedQuiz.id} initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 12 }} transition={{ duration: 0.25 }} className="flex-1 min-w-0">
             <div className="h-full flex flex-col bg-white/70 dark:bg-zinc-900/50 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800 p-4 relative overflow-clip">
-              <QuizEditor quiz={selectedQuiz} isEditingTitle={isEditingTitle} setIsEditingTitle={setIsEditingTitle} editTitle={editTitle} setEditTitle={setEditTitle} onUpdateTitle={updateQuizTitle} onDeleteQuiz={() => deleteQuiz(selectedQuiz.id)} scrollToIndex={scrollToIndex} onScrollComplete={handleScrollComplete} sidebarWidth={sidebarWidth} />
+              <QuizEditor quiz={selectedQuiz} isEditingTitle={isEditingTitle} setIsEditingTitle={setIsEditingTitle} editTitle={editTitle} setEditTitle={setEditTitle} onUpdateTitle={updateQuizTitle} onDeleteQuiz={() => deleteQuiz(selectedQuiz.id)} scrollToIndex={scrollToIndex} onScrollComplete={handleScrollComplete} sidebarWidth={sidebarWidth} sidebarCollapsed={sidebarCollapsed} onExpandSidebar={() => setSidebarCollapsed(false)} />
             </div>
           </motion.div>
         )}

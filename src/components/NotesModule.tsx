@@ -5,7 +5,8 @@ import {
   Plus, Trash, Edit, Save, ArrowUp, ArrowDown,
   ImageIcon, Undo, Redo, ArrowLeft,
   Bold, Italic, Strikethrough, List, ListOrdered, Heading1, Heading2, Heading3,
-  Quote, Code, Link as LinkIcon, BookOpen
+  Quote, Code, Link as LinkIcon, BookOpen,
+  PanelLeftClose, PanelLeftOpen
 } from 'lucide-react';
 import { useSorting, sortItems } from '@/hooks/useSorting';
 import { useManualReorder } from '@/hooks/useManualReorder';
@@ -99,10 +100,12 @@ function NotesTOC({
   content,
   onBack,
   onHeadingClick,
+  onCollapse,
 }: {
   content: string;
   onBack: () => void;
   onHeadingClick: (heading: HeadingItem) => void;
+  onCollapse: () => void;
 }) {
   const headings = useMemo(() => parseHeadings(content), [content]);
 
@@ -117,6 +120,13 @@ function NotesTOC({
           <ArrowLeft size={20} />
         </button>
         <span className="font-medium text-sm text-zinc-600 dark:text-zinc-400">目录</span>
+        <button
+          onClick={onCollapse}
+          className="ml-auto p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+          title="收起目录"
+        >
+          <PanelLeftClose size={18} />
+        </button>
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -170,6 +180,8 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
   const [isEditing, setIsEditing] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'toc' | 'detail'>('list');
   const [scrollTarget, setScrollTarget] = useState<string | null>(null);
+  // 目录侧栏是否完全收起（仅桌面端、查看笔记时生效）
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const {
     state: editContent,
@@ -183,7 +195,7 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
 
   const [editTitle, setEditTitle] = useState('');
   const { showConfirm } = useDialog();
-  const { width: sidebarWidth, startResizing } = useResizable({
+  const { width: sidebarWidth, startResizing, isResizing } = useResizable({
     initialWidth: 320,
     minWidth: 200,
     maxWidth: 500,
@@ -205,6 +217,7 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
           setEditTitle(target.title);
           setIsEditing(false);
           setViewMode('toc');
+          setSidebarCollapsed(false);
           if (!initialSessionId && target.chatSessionId) {
             setGlobalSessionId(target.chatSessionId);
           }
@@ -237,6 +250,7 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
     setEditTitle(newNote.title);
     setIsEditing(true);
     setViewMode('toc');
+    setSidebarCollapsed(false);
   };
 
   const saveNote = async () => {
@@ -261,6 +275,7 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
         resetEditContent('');
         setEditTitle('');
         setViewMode('list');
+        setSidebarCollapsed(false);
       }
     }
   };
@@ -348,6 +363,7 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
     setIsEditing(false);
     setViewMode('toc');
     setScrollTarget(null);
+    setSidebarCollapsed(false);
     db.entities.update(note.id, { lastAccessed: Date.now() });
   };
 
@@ -356,6 +372,7 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
     setIsEditing(false);
     setViewMode('list');
     setScrollTarget(null);
+    setSidebarCollapsed(false);
   };
 
   const handleDetailBack = () => {
@@ -379,45 +396,61 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
 
   // ── 桌面端布局 ──
   const desktopLayout = (
-    <div className="hidden md:flex h-full gap-4 w-full">
-      {/* 左侧面板：列表 ⇄ 目录 */}
-      <div className="relative shrink-0 h-full" style={{ width: sidebarWidth }}>
-        <AnimatePresence mode="wait">
-          {!selectedNote ? (
-            <motion.div
-              key="notes-list"
-              initial={{ opacity: 0, x: -16 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -16 }}
-              transition={{ duration: 0.2 }}
-              className="h-full"
-            >
-              <NotesList
-                notes={notes}
-                selectedNote={selectedNote}
-                onSelectNote={handleSelectNote}
-                createNote={createNote}
-              />
-            </motion.div>
-          ) : (
-            <motion.div
-              key="notes-toc"
-              initial={{ opacity: 0, x: -16 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -16 }}
-              transition={{ duration: 0.2 }}
-              className="h-full"
-            >
-              <NotesTOC
-                content={selectedNote.content}
-                onBack={handleBackToList}
-                onHeadingClick={handleHeadingClick}
-              />
-            </motion.div>
-          )}
-        </AnimatePresence>
-        <ResizeHandle onMouseDown={startResizing} className="absolute right-0 top-0 bottom-0 translate-x-1/2" />
-      </div>
+    <div className="hidden md:flex h-full w-full">
+      {/* 左侧面板：列表 ⇄ 目录（查看笔记时可完全收起，带宽度过渡动画） */}
+      <AnimatePresence initial={false}>
+        {(!sidebarCollapsed || !selectedNote) && (
+          <motion.div
+            key="notes-sidebar"
+            initial={{ width: 0, marginRight: 0, opacity: 0 }}
+            animate={{ width: sidebarWidth, marginRight: 16, opacity: 1 }}
+            exit={{ width: 0, marginRight: 0, opacity: 0 }}
+            transition={{ duration: isResizing ? 0 : 0.25, ease: [0.4, 0, 0.2, 1] }}
+            className="relative shrink-0 h-full"
+          >
+            <div className="absolute inset-0 overflow-hidden">
+              <div style={{ width: sidebarWidth }} className="h-full">
+                <AnimatePresence mode="wait">
+                  {!selectedNote ? (
+                    <motion.div
+                      key="notes-list"
+                      initial={{ opacity: 0, x: -16 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -16 }}
+                      transition={{ duration: 0.2 }}
+                      className="h-full"
+                    >
+                      <NotesList
+                        notes={notes}
+                        selectedNote={selectedNote}
+                        onSelectNote={handleSelectNote}
+                        createNote={createNote}
+                      />
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key="notes-toc"
+                      initial={{ opacity: 0, x: -16 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -16 }}
+                      transition={{ duration: 0.2 }}
+                      className="h-full"
+                    >
+                      <NotesTOC
+                        content={selectedNote.content}
+                        onBack={handleBackToList}
+                        onHeadingClick={handleHeadingClick}
+                        onCollapse={() => setSidebarCollapsed(true)}
+                      />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
+            <ResizeHandle onMouseDown={startResizing} className="absolute right-0 top-0 bottom-0 translate-x-1/2" />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* 右侧面板：内容 */}
       <AnimatePresence mode="wait">
@@ -461,6 +494,8 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
               fileInputRef={fileInputRef}
               scrollTarget={scrollTarget}
               onScrollComplete={handleScrollComplete}
+              sidebarCollapsed={sidebarCollapsed}
+              onExpandSidebar={() => setSidebarCollapsed(false)}
             />
           </motion.div>
         )}
@@ -627,7 +662,7 @@ function NoteDetail({
   selectedNote, isEditing, editTitle, editContent, setEditTitle, setEditContent,
   setIsEditing, saveNote, deleteNote, undoEdit, redoEdit, canUndo, canRedo,
   insertMarkdown, handleImageUpload, textAreaRef, fileInputRef,
-  scrollTarget, onScrollComplete,
+  scrollTarget, onScrollComplete, sidebarCollapsed, onExpandSidebar,
 }: any) {
   const readingRef = useRef<HTMLDivElement>(null);
 
@@ -656,15 +691,26 @@ function NoteDetail({
   return (
     <div className="h-full flex flex-col bg-white/70 dark:bg-zinc-900/50 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800 p-3 md:p-4 min-h-0">
       <div className="hidden md:flex justify-between items-center mb-4 border-b dark:border-slate-800 pb-2 shrink-0">
-        {isEditing ? (
-          <input
-            value={editTitle}
-            onChange={e => setEditTitle(e.target.value)}
-            className="text-lg md:text-xl font-bold bg-transparent border-b focus:outline-none text-slate-800 dark:text-slate-200 flex-1"
-          />
-        ) : (
-          <h2 className="text-lg md:text-xl font-bold text-slate-800 dark:text-slate-200 truncate">{selectedNote.title}</h2>
-        )}
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          {sidebarCollapsed && (
+            <button
+              onClick={onExpandSidebar}
+              className="shrink-0 p-1.5 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded"
+              title="展开目录"
+            >
+              <PanelLeftOpen size={18} />
+            </button>
+          )}
+          {isEditing ? (
+            <input
+              value={editTitle}
+              onChange={e => setEditTitle(e.target.value)}
+              className="text-lg md:text-xl font-bold bg-transparent border-b focus:outline-none text-slate-800 dark:text-slate-200 flex-1 min-w-0"
+            />
+          ) : (
+            <h2 className="text-lg md:text-xl font-bold text-slate-800 dark:text-slate-200 truncate min-w-0">{selectedNote.title}</h2>
+          )}
+        </div>
         <div className="flex gap-1 md:gap-2 shrink-0 ml-2">
           {isEditing ? (
             <>
