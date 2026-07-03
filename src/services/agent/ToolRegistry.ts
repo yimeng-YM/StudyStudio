@@ -44,14 +44,18 @@ export const ToolRegistry = {
  * @throws 当请求了未在 ToolRegistry 中注册的工具时抛出异常
  */
 export async function executeTool(toolCall: ToolCall): Promise<any> {
-  const toolName = toolCall.function.name;
-  const toolArgs = JSON.parse(toolCall.function.arguments);
-  
+  const toolName = toolCall?.function?.name;
+  if (!toolName) {
+    throw new Error('Invalid tool call: missing function name');
+  }
+  // 部分供应商对无参工具会回传空字符串，兜底为 "{}" 以避免 JSON.parse 报错
+  const toolArgs = JSON.parse(toolCall.function.arguments || '{}');
+
   const tool = (ToolRegistry as any)[toolName];
   if (!tool) {
     throw new Error(`Tool ${toolName} not found`);
   }
-  
+
   return await tool(toolArgs);
 }
 

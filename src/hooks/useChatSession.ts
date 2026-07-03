@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { db } from '@/db';
 import { generateUUID } from '@/lib/utils';
-import { Message, streamAICompletion } from '@/services/ai';
+import { Message, ToolCall, streamAICompletion } from '@/services/ai';
 import { useAIStore, getFullContextPrompt } from '@/store/useAIStore';
 import { ToolDefinitions, executeTool } from '@/services/agent/ToolRegistry';
 import { useDialog } from '@/components/ui/DialogProvider';
@@ -314,7 +314,7 @@ IMPORTANT: Always respond in Chinese.
       if (!aiMessage.tool_calls) aiMessage.tool_calls = [];
       
       toolCallChunks.forEach(chunk => {
-        const index = chunk.index;
+        const index = chunk.index ?? 0;
         if (!aiMessage.tool_calls![index]) {
           aiMessage.tool_calls![index] = {
             id: chunk.id,
@@ -379,6 +379,15 @@ IMPORTANT: Always respond in Chinese.
     }
     
     setStatus('');
+
+    // 清理 tool_calls 中的稀疏空洞：部分 OpenAI 兼容供应商在流式工具调用时
+    // index 缺失或跳跃，会导致数组出现 undefined 空洞，后续 for..of 遍历会抛
+    // "Cannot read properties of undefined (reading 'function')"。
+    if (aiMessage.tool_calls) {
+      aiMessage.tool_calls = aiMessage.tool_calls.filter(
+        (tc): tc is ToolCall => !!tc && !!tc.function
+      );
+    }
 
     // 冗余清理：处理某些模型（如 Gemini）在触发工具调用时，会将参数 JSON 误输出到 content 中的情况
     if (typeof aiMessage.content === 'string' && aiMessage.tool_calls && aiMessage.tool_calls.length > 0) {

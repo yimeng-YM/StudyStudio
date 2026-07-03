@@ -15,6 +15,7 @@ import { db } from '@/db';
 import mermaid from 'mermaid';
 import { useTheme } from '@/hooks/useTheme';
 import { parseAIJson } from '@/lib/utils';
+import { reloadOnChunkError } from '@/lib/chunkLoadError';
 import { Modal } from './ui/Modal';
 
 /**
@@ -585,11 +586,18 @@ export function hasHtmlContent(content: string): boolean {
 }
 
 /**
- * 严格检测：内容是否为纯 HTML 文档（用于决定是否用 iframe 预览）
+ * 严格检测：内容是否为纯 HTML 文档（用于决定是否用 iframe 预览整篇笔记）。
+ *
+ * 注意：含 markdown 代码围栏（```）的内容一律按 markdown 渲染——其内嵌的
+ * ```html / ```mermaid 等代码块会由 MarkdownText 的代码块渲染器单独处理为
+ * 内嵌预览。若不排除，```html 代码块里的 HTML 标签会把整篇 markdown 误判为
+ * HTML 文档，导致 markdown 部分被塞进 iframe 而错误展示。纯 HTML 文档不会使用 ``` 围栏。
  */
 export function isHtmlContent(content: string): boolean {
   if (!content || !content.trim()) return false;
   const trimmed = content.trim();
+  // 含 markdown 代码围栏 → 是 markdown（内嵌了 html/mermaid 等代码块），不是纯 HTML 文档
+  if (/```/.test(trimmed)) return false;
   // 以 DOCTYPE、html 标签、或 div/table/style/script 等结构标签开头
   if (/^\s*<(!DOCTYPE|html|head|body|div|table|style|script|meta|link|iframe)[\s>]/i.test(trimmed)) return true;
   // 或内容中 HTML 标签占比显著（>30% 的行含 HTML 标签）
@@ -659,19 +667,36 @@ img,svg,canvas,video,iframe,object{max-width:100%!important;height:auto!importan
 table{max-width:100%!important;display:block!important;overflow-x:auto!important}
 body{margin:0;padding:8px;font-family:system-ui,sans-serif;font-size:14px;max-width:100%!important;overflow-x:hidden!important}
 </style>`;
+  // iframe 仅开放 allow-scripts（不透明源），父页面无法读取 contentDocument，
+  // 故注入脚本主动通过 postMessage 上报内容高度，供父组件按需调整 iframe 高度
+  const heightReportScript = `<script>(function () {
+  function report() {
+    var b = document.body, de = document.documentElement;
+    var h = Math.max((de && de.scrollHeight) || 0, (b && b.scrollHeight) || 0, 200);
+    try { parent.postMessage({ __htmlPreviewHeight: h }, '*'); } catch (e) {}
+  }
+  function schedule() { report(); setTimeout(report, 60); setTimeout(report, 400); }
+  if (document.readyState === 'complete') { schedule(); }
+  else { window.addEventListener('load', schedule); document.addEventListener('DOMContentLoaded', report); }
+  window.addEventListener('resize', report);
+  if (window.ResizeObserver && document.body) {
+    try { new ResizeObserver(report).observe(document.body); } catch (e) {}
+  }
+})();</script>`;
+  const headInject = overflowCSS + heightReportScript;
   const trimmed = html.trim();
   // 已有完整 HTML 结构：注入到 head 中
   if (/^\s*<(!DOCTYPE|html)/i.test(trimmed)) {
     if (/<head[^>]*>/i.test(trimmed)) {
-      return trimmed.replace(/<head[^>]*>/i, (match) => match + overflowCSS);
+      return trimmed.replace(/<head[^>]*>/i, (match) => match + headInject);
     }
     if (/<html[^>]*>/i.test(trimmed)) {
-      return trimmed.replace(/<html[^>]*>/i, (match) => match + '<head>' + overflowCSS + '</head>');
+      return trimmed.replace(/<html[^>]*>/i, (match) => match + '<head>' + headInject + '</head>');
     }
-    return overflowCSS + trimmed;
+    return headInject + trimmed;
   }
   // 片段 HTML：直接拼接
-  return '<!DOCTYPE html><html><head><meta charset="UTF-8">' + overflowCSS + '</head><body>' + trimmed + '</body></html>';
+  return '<!DOCTYPE html><html><head><meta charset="UTF-8">' + headInject + '</head><body>' + trimmed + '</body></html>';
 }
 
 export function HtmlPreview({ content, mode, autoHeight = true, className = '' }: { content: string; mode: 'view' | 'code'; autoHeight?: boolean; className?: string }) {
@@ -681,37 +706,26 @@ export function HtmlPreview({ content, mode, autoHeight = true, className = '' }
 
   const srcdoc = useMemo(() => (mode === 'view' ? wrapHtmlForIframe(content) : ''), [mode, content]);
 
-  // autoHeight 模式：持续测量 iframe 内容高度（用于内联代码块）
+  // autoHeight 模式：监听 iframe 内通过 postMessage 上报的内容高度
+  // iframe 仅开放 allow-scripts（不透明源），父页面无法读取 contentDocument，
+  // 故由 wrapHtmlForIframe 注入的脚本在 load / resize / ResizeObserver 时主动上报
   useEffect(() => {
     if (mode !== 'view' || !autoHeight || !iframeRef.current) return;
     const iframe = iframeRef.current;
     let mounted = true;
-    let lastHeight = 0;
-    const measure = () => {
+    const onMessage = (e: MessageEvent) => {
       if (!mounted) return;
-      try {
-        const doc = iframe.contentDocument || iframe.contentWindow?.document;
-        if (doc && doc.body) {
-          const h = Math.max(doc.documentElement.scrollHeight, doc.body.scrollHeight, 200);
-          // 仅在实际高度变化超过阈值时才更新，避免 +padding 导致正反馈无限增长
-          if (mounted && Math.abs(h - lastHeight) > 3) {
-            lastHeight = h;
-            setMeasuredHeight(h);
-          }
-        }
-      } catch { /* cross-origin */ }
+      // 仅处理来自当前 iframe 的消息，避免同页多个预览互相串扰
+      if (e.source !== iframe.contentWindow) return;
+      const data = e.data as { __htmlPreviewHeight?: number } | null;
+      if (data && typeof data.__htmlPreviewHeight === 'number') {
+        setMeasuredHeight(Math.max(data.__htmlPreviewHeight, 200));
+      }
     };
-    const onLoad = () => setTimeout(measure, 100);
-    iframe.addEventListener('load', onLoad);
-    const fast = setInterval(measure, 200);
-    const slowDown = setTimeout(() => { clearInterval(fast); }, 5000);
-    const slow = setInterval(measure, 1000);
+    window.addEventListener('message', onMessage);
     return () => {
       mounted = false;
-      iframe.removeEventListener('load', onLoad);
-      clearInterval(fast);
-      clearTimeout(slowDown);
-      clearInterval(slow);
+      window.removeEventListener('message', onMessage);
     };
   }, [mode, srcdoc, autoHeight]);
 
@@ -741,7 +755,7 @@ export function HtmlPreview({ content, mode, autoHeight = true, className = '' }
       <iframe
         ref={iframeRef}
         srcDoc={srcdoc}
-        sandbox="allow-scripts allow-same-origin"
+        sandbox="allow-scripts"
         className="w-full border-0"
         style={iframeStyle}
         title="HTML Preview"
@@ -882,6 +896,9 @@ function Mermaid({ chart }: { chart: string }) {
           setError(null);
         }
       } catch (e: any) {
+        // mermaid 11 懒加载图表模块（如 ganttDiagram-xxxx.js），重新部署后旧哈希 chunk
+        // 失效或缓存损坏时会触发动态 import 失败——此时带缓存破坏参数刷新一次即可恢复
+        if (reloadOnChunkError(e)) return;
         console.error("Mermaid Render Fail", e);
         if (mounted) {
           setError(e.message || "Invalid Diagram");
