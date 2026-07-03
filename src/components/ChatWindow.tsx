@@ -423,26 +423,14 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
             <span>{status}</span>
           </div>
         )}
+        {/* 模型选择：保持原位置（输入框上方右侧）；工具开关与模式切换已下移至输入框底部 */}
         <div className="flex justify-end items-center gap-2 mb-2 pr-1">
-          <ToolConfigSwitcher />
-          <ModeSwitcher mode={mode} onChange={setMode} />
           <ModelSwitcher />
         </div>
-        <div className="flex gap-2 bg-white/70 dark:bg-zinc-900/80 backdrop-blur-xl p-2 rounded-[1.5rem] shadow-lg border border-zinc-200/50 dark:border-zinc-800/50 ring-1 ring-black/5 dark:ring-white/5 items-end transition-all focus-within:ring-primary/20 focus-within:border-primary/30">
-          <button onClick={() => fileInputRef.current?.click()} className="p-3 text-zinc-400 hover:text-primary hover:bg-primary/10 rounded-full transition-all duration-300 mb-0.5" title="上传文件">
-            <Paperclip size={20} />
-          </button>
-          
-          <input
-            type="file"
-            ref={fileInputRef}
-            className="hidden"
-            multiple
-            onChange={handleFileSelect}
-          />
+        <div className="bg-white/70 dark:bg-zinc-900/80 backdrop-blur-xl p-2 rounded-[1.5rem] shadow-lg border border-zinc-200/50 dark:border-zinc-800/50 ring-1 ring-black/5 dark:ring-white/5 transition-all focus-within:ring-primary/20 focus-within:border-primary/30">
           <textarea
             style={{ fontSize: 'var(--app-font-size, 14px)' }}
-            className="flex-1 bg-transparent px-2 py-3.5 text-zinc-900 dark:text-zinc-100 focus:outline-none placeholder:text-zinc-400 disabled:opacity-50 disabled:cursor-not-allowed resize-none max-h-[150px] min-h-[48px]"
+            className="w-full bg-transparent px-2 pt-2.5 pb-1 text-zinc-900 dark:text-zinc-100 focus:outline-none placeholder:text-zinc-400 disabled:opacity-50 disabled:cursor-not-allowed resize-none max-h-[150px] min-h-[48px]"
             value={input}
             placeholder={placeholder || "告诉 Agent 你想做什么..."}
             onChange={e => {
@@ -461,26 +449,45 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
               }
             }}
           />
-          {loading ? (
-            <button
-              onClick={stop}
-              className="p-3 rounded-full transition-all duration-300 mb-0.5 shadow-sm bg-red-500 text-white hover:bg-red-600 hover:scale-105 active:scale-95"
-              title="停止生成"
-            >
-              <Square size={18} className="fill-current" />
-            </button>
-          ) : (
-            <button
-              onClick={handleSend}
-              disabled={!input.trim() && selectedFiles.length === 0}
-              className={`p-3 rounded-full transition-all duration-300 mb-0.5 shadow-sm ${!input.trim() && selectedFiles.length === 0
-                ? 'bg-zinc-100 text-zinc-400 dark:bg-zinc-800 cursor-not-allowed'
-                : 'bg-primary text-primary-foreground hover:bg-primary/90 hover:scale-105 active:scale-95'
-                }`}
-            >
-              <Send size={18} />
-            </button>
-          )}
+          <input
+            type="file"
+            ref={fileInputRef}
+            className="hidden"
+            multiple
+            onChange={handleFileSelect}
+          />
+          {/* 底部控制条：左下角 = 文件上传 + 工具开关；右下角 = 模式切换 + 发送 */}
+          <div className="flex justify-between items-center gap-2 pt-1">
+            <div className="flex items-center gap-1">
+              <button onClick={() => fileInputRef.current?.click()} className="p-2.5 text-zinc-400 hover:text-primary hover:bg-primary/10 rounded-full transition-all duration-300" title="上传文件">
+                <Paperclip size={18} />
+              </button>
+              <ToolConfigSwitcher />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <ModeSwitcher mode={mode} onChange={setMode} align="right" />
+              {loading ? (
+                <button
+                  onClick={stop}
+                  className="p-2.5 rounded-full transition-all duration-300 shadow-sm bg-red-500 text-white hover:bg-red-600 hover:scale-105 active:scale-95"
+                  title="停止生成"
+                >
+                  <Square size={16} className="fill-current" />
+                </button>
+              ) : (
+                <button
+                  onClick={handleSend}
+                  disabled={!input.trim() && selectedFiles.length === 0}
+                  className={`p-2.5 rounded-full transition-all duration-300 shadow-sm ${!input.trim() && selectedFiles.length === 0
+                    ? 'bg-zinc-100 text-zinc-400 dark:bg-zinc-800 cursor-not-allowed'
+                    : 'bg-primary text-primary-foreground hover:bg-primary/90 hover:scale-105 active:scale-95'
+                    }`}
+                >
+                  <Send size={16} />
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </div>

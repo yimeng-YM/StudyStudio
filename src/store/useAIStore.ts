@@ -85,13 +85,23 @@ interface AIStore {
 
   isFloatingWindowOpen: boolean;
   isFloatingWindowMinimized: boolean;
-  floatingWindowPosition: { x: number; y: number };
+  /** AI 窗口显示模式：'floating' 悬浮窗 | 'sidebar' 右侧侧边栏 */
+  aiWindowMode: 'floating' | 'sidebar';
+  /** 悬浮触发按钮的位置（与窗口位置独立保存，开启窗口时按钮自动隐藏） */
+  floatingButtonPosition: { x: number; y: number };
+  /** 悬浮窗位置（独立于按钮位置，调整大小时不再被按钮位置拉回） */
+  aiWindowPosition: { x: number; y: number };
   floatingWindowSize: { width: number; height: number };
+  /** 侧边栏模式宽度 */
+  aiSidebarWidth: number;
 
   setFloatingWindowOpen: (open: boolean) => void;
   setFloatingWindowMinimized: (minimized: boolean) => void;
-  setFloatingWindowPosition: (x: number, y: number) => void;
+  setAIWindowMode: (mode: 'floating' | 'sidebar') => void;
+  setFloatingButtonPosition: (x: number, y: number) => void;
+  setAIWindowPosition: (x: number, y: number) => void;
   setFloatingWindowSize: (width: number, height: number) => void;
+  setAISidebarWidth: (width: number) => void;
 
   currentContext: AIContext | null;
   setContext: (context: AIContext | null) => void;
@@ -218,6 +228,43 @@ function newProviderId(): string {
   return `prov_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+// --- AI 窗口位置/尺寸的持久化与默认值 ---
+// 窗口与悬浮按钮的位置各自独立保存：开启窗口时按钮隐藏，窗口位置不再受按钮位置约束，
+// 调整窗口大小不会把窗口拉回到按钮绑定的位置。
+
+/** 悬浮触发按钮默认位置：页面右下角 */
+const DEFAULT_BUTTON_POS = { x: window.innerWidth - 80, y: window.innerHeight - 80 };
+/** 悬浮窗默认尺寸 */
+const DEFAULT_WINDOW_SIZE = { width: 400, height: 600 };
+/** 悬浮窗默认位置：右上角（与按钮解耦，按钮开启窗口时自动隐藏，故无需避让按钮） */
+const DEFAULT_WINDOW_POS = { x: window.innerWidth - DEFAULT_WINDOW_SIZE.width - 24, y: 24 };
+/** 侧边栏模式默认宽度 */
+const DEFAULT_SIDEBAR_WIDTH = 380;
+/** 悬浮按钮尺寸（用于将按钮位置约束在视口内） */
+const FLOATING_BUTTON_SIZE = 60;
+
+/** 从 localStorage 读取 JSON，失败或缺失时回退默认值 */
+function loadJSON<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw) return JSON.parse(raw) as T;
+  } catch { /* ignore */ }
+  return fallback;
+}
+
+/** 写入 JSON 到 localStorage，失败时静默 */
+function saveJSON(key: string, value: unknown): void {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* ignore */ }
+}
+
+/** 将按钮位置约束在视口内，确保按钮始终可见、可拖拽 */
+function clampButtonPos(p: { x: number; y: number }): { x: number; y: number } {
+  return {
+    x: Math.max(0, Math.min(p.x, window.innerWidth - FLOATING_BUTTON_SIZE)),
+    y: Math.max(0, Math.min(p.y, window.innerHeight - FLOATING_BUTTON_SIZE)),
+  };
+}
+
 /**
  * 全局 AI 状态管理的 Zustand Store
  * 负责维护供应商预设、运行时配置、解析后有效配置、悬浮窗交互状态以及跨组件会话流转逻辑
@@ -230,8 +277,11 @@ export const useAIStore = create<AIStore>((set, get) => ({
 
   isFloatingWindowOpen: false,
   isFloatingWindowMinimized: false,
-  floatingWindowPosition: { x: window.innerWidth - 420, y: 100 },
-  floatingWindowSize: { width: 400, height: 600 },
+  aiWindowMode: loadJSON<'floating' | 'sidebar'>('aiWindowMode', 'floating'),
+  floatingButtonPosition: clampButtonPos(loadJSON('aiButtonPos', DEFAULT_BUTTON_POS)),
+  aiWindowPosition: loadJSON('aiWindowPos', DEFAULT_WINDOW_POS),
+  floatingWindowSize: loadJSON('aiWindowSize', DEFAULT_WINDOW_SIZE),
+  aiSidebarWidth: loadJSON('aiSidebarWidth', DEFAULT_SIDEBAR_WIDTH),
 
   loadSettings: async () => {
     try {
@@ -379,8 +429,11 @@ export const useAIStore = create<AIStore>((set, get) => ({
 
   setFloatingWindowOpen: (open) => set({ isFloatingWindowOpen: open }),
   setFloatingWindowMinimized: (minimized) => set({ isFloatingWindowMinimized: minimized }),
-  setFloatingWindowPosition: (x, y) => set({ floatingWindowPosition: { x, y } }),
-  setFloatingWindowSize: (width, height) => set({ floatingWindowSize: { width, height } }),
+  setAIWindowMode: (mode) => { saveJSON('aiWindowMode', mode); set({ aiWindowMode: mode }); },
+  setFloatingButtonPosition: (x, y) => { const p = { x, y }; saveJSON('aiButtonPos', p); set({ floatingButtonPosition: p }); },
+  setAIWindowPosition: (x, y) => { const p = { x, y }; saveJSON('aiWindowPos', p); set({ aiWindowPosition: p }); },
+  setFloatingWindowSize: (width, height) => { const s = { width, height }; saveJSON('aiWindowSize', s); set({ floatingWindowSize: s }); },
+  setAISidebarWidth: (width) => { saveJSON('aiSidebarWidth', width); set({ aiSidebarWidth: width }); },
 
   currentContext: null,
   setContext: (context) => set({ currentContext: context }),

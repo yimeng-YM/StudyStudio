@@ -6,14 +6,17 @@ import { ChevronUp, Check, Zap, Brain } from 'lucide-react';
  * Agent 模式快速切换器（位于输入栏上方，与 ModelSwitcher 并排）。
  * 以紧凑 pill 展示当前模式（快速执行 / 深度规划），点击向上展开列表选择。
  *
- * 定位说明：本组件 pill 位于 ModelSwitcher 左侧，列表采用 left-0 向右展开，
- * 并靠左对齐触发 pill —— 避免窄窗口下向左展开越过窗口左边界被 overflow-hidden 裁切。
+ * 定位说明：popover 向上展开。
+ * - align='left'（默认）：靠左对齐触发 pill、向右展开，适合 pill 位于左侧的场景（避免向左越过窗口左边界被裁切）。
+ * - align='right'：靠右对齐触发 pill、向左展开，适合 pill 位于右下角等右侧场景（避免向右越过窗口右边界被裁切）。
  */
 type AgentMode = 'act' | 'plan';
 
 interface ModeSwitcherProps {
   mode: AgentMode;
   onChange: (mode: AgentMode) => void;
+  /** popover 水平对齐方式：'left' 向右展开 / 'right' 向左展开，默认 'left' */
+  align?: 'left' | 'right';
 }
 
 const MODES: { key: AgentMode; label: string; desc: string; Icon: typeof Zap }[] = [
@@ -21,7 +24,7 @@ const MODES: { key: AgentMode; label: string; desc: string; Icon: typeof Zap }[]
   { key: 'plan', label: '深度规划', desc: '先思考规划，再逐步执行复杂任务', Icon: Brain },
 ];
 
-export function ModeSwitcher({ mode, onChange }: ModeSwitcherProps) {
+export function ModeSwitcher({ mode, onChange, align = 'left' }: ModeSwitcherProps) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -55,9 +58,12 @@ export function ModeSwitcher({ mode, onChange }: ModeSwitcherProps) {
         <ChevronUp size={12} className={cn("shrink-0 transition-transform", !open && "rotate-180")} />
       </button>
 
-      {/* popover：向上、向右展开（靠左对齐触发 pill，避免窄窗口向左溢出被裁切） */}
+      {/* popover：向上展开，水平方向按 align 靠左/靠右对齐触发 pill */}
       {open && (
-        <div className="absolute bottom-full left-0 mb-2 w-56 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-xl overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-150">
+        <div className={cn(
+          "absolute bottom-full mb-2 w-56 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-xl overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-150",
+          align === 'right' ? "right-0" : "left-0"
+        )}>
           <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-400 bg-zinc-50/50 dark:bg-zinc-800/30">
             Agent 模式
           </div>
