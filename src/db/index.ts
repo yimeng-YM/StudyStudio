@@ -126,6 +126,16 @@ export interface AIConfig {
   maxTokens?: number;
   /** 生成的随机性控制参数（0.0 ~ 2.0，数值越高越具发散性） */
   temperature?: number;
+  /** Jina 联网服务的 API Key（免费注册 https://jina.ai/）；留空时联网工具可能返回 401 */
+  jinaApiKey?: string;
+  /** 是否启用联网搜索（仅 web_search；read_url 网页读取始终可用，不受此开关影响） */
+  webSearchEnabled?: boolean;
+  /** 联网搜索使用的后端：'jina'（默认）或 'serper'（需 Serper API Key） */
+  webSearchBackend?: 'jina' | 'serper';
+  /** Serper（google.serper.dev）API Key，仅当 webSearchBackend 为 'serper' 时使用 */
+  serperApiKey?: string;
+  /** 是否启用维基百科权威知识查询（search_wikipedia，免 Key）；默认开启 */
+  wikipediaEnabled?: boolean;
 }
 
 /**

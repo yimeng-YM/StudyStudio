@@ -82,6 +82,9 @@ const TOOL_NAMES: Record<string, string> = {
   'update_taskboard': '更新任务板',
   'codebase_search': '代码搜索',
   'apply_diff': '应用代码差异',
+  'web_search': '联网搜索',
+  'read_url': '读取网页',
+  'search_wikipedia': '维基百科',
   'present_plan': '规划建议',
   'start_execution': '进入执行'
 };
@@ -122,6 +125,9 @@ const getToolDescription = (name: string, args: string) => {
       case 'get_note_lines': return `读取笔记第 ${parsed.start_line}–${parsed.end_line ?? '末尾'} 行`;
       case 'get_quiz_questions': return `读取题库题目`;
       case 'apply_diff': return `应用差异: ${parsed.path}`;
+      case 'web_search': return `联网搜索: "${parsed.query || ''}"`;
+      case 'read_url': return `读取网页: ${(parsed.url || '').replace(/^https?:\/\//, '').slice(0, 40)}`;
+      case 'search_wikipedia': return `维基百科: "${parsed.query || ''}"`;
       case 'present_plan': return `规划方案已准备就绪`;
       case 'start_execution': return `正在初始化执行环境`;
       default: return `${TOOL_NAMES[name] || name}`;
@@ -328,6 +334,19 @@ function getToolResultSummary(name: string, result: string): string {
       case 'get_quiz_questions': {
         const total = parsed.total_questions || 0;
         return `${total} 道题`;
+      }
+      case 'web_search': {
+        if (parsed.error) return '失败';
+        const count = parsed.count || (Array.isArray(parsed.results) ? parsed.results.length : 0);
+        return `${count} 条结果`;
+      }
+      case 'read_url': {
+        if (parsed.error) return '失败';
+        return parsed.truncated ? `${parsed.chars || 0} 字 (已截断)` : `${parsed.chars || 0} 字`;
+      }
+      case 'search_wikipedia': {
+        if (parsed.error) return '失败';
+        return `${parsed.count || 0} 条`;
       }
       case 'create_mindmap':
       case 'create_taskboard':

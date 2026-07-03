@@ -1,5 +1,6 @@
 import * as readTools from './tools/readTools';
 import * as writeTools from './tools/writeTools';
+import * as webTools from './tools/webTools';
 import { ToolCall } from '@/services/ai';
 import { parseToolArguments } from '@/lib/utils';
 import { DELEGATE_TASK_DESCRIPTION } from '@/services/promptConfig';
@@ -15,6 +16,11 @@ export const ToolRegistry = {
   get_entity_content: readTools.get_entity_content,
   get_note_lines: readTools.get_note_lines,
   get_quiz_questions: readTools.get_quiz_questions,
+
+  // 联网工具：经 Jina 公共端点搜索网络并读取网页全文，供模型获取训练数据外的权威/时效信息
+  web_search: webTools.web_search,
+  read_url: webTools.read_url,
+  search_wikipedia: webTools.search_wikipedia,
 
   // 写入工具
   create_subject: writeTools.create_subject,
@@ -269,6 +275,86 @@ Returns: Selected questions each annotated with their 1-based index in the full 
           end_index: { type: 'number', description: 'Last question index to return (1-indexed, inclusive)' }
         },
         required: ['entityId']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'web_search',
+      description: `Search the live web for up-to-date or authoritative information beyond your training data.
+Use this tool to:
+- Find current facts, news, recent releases, or knowledge newer than your training cutoff.
+- Locate authoritative sources (official docs, papers, encyclopedias, reputable publishers) before answering fact-sensitive questions.
+- Discover authoritative URLs that you then read in full with read_url.
+
+Workflow: web_search → pick the most authoritative result URL(s) → read_url each → synthesize the answer and cite the source URL(s).
+
+Parameters:
+- query: The search query (required). Use concise, specific keywords; prefer the user's language for better hits.
+- max_results: Max number of results to return (optional, default 5, max 10).
+
+Returns: { query, count, results: [{ title, url, snippet }] }. Snippets are short — call read_url on the best URL(s) to get the full content before answering. On 429 (rate limit), wait and retry or rephrase the query. Prefer a few high-quality searches over many noisy ones.`,
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'The search query text (concise and specific)' },
+          max_results: { type: 'number', description: 'Maximum number of results to return (default 5, max 10)' }
+        },
+        required: ['query']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'read_url',
+      description: `Fetch a web page and return its main content as clean Markdown, ready to read into your context.
+Use this tool AFTER web_search to ingest the FULL content of an authoritative URL, or whenever the user gives you a specific link to digest.
+
+Parameters:
+- url: The full URL to read (required). The http(s):// prefix is added automatically if missing.
+- max_chars: Optional cap on returned content length (default 16000, max 40000). Increase only if you genuinely need more of a long article.
+
+Returns: { url, title, content, chars, full_chars, truncated }. If truncated is true, the article was longer than what was returned — you may re-call with a larger max_chars, or search for a more focused page. If content is empty, the page may be JS-rendered / paywalled / blocked — try another URL. On 429 (rate limit), wait and retry.
+
+Always CITE the source URL(s) you actually read when the answer relies on web content. Never fabricate URLs.`,
+      parameters: {
+        type: 'object',
+        properties: {
+          url: { type: 'string', description: 'The full URL of the web page to read' },
+          max_chars: { type: 'number', description: 'Optional cap on returned content length (default 16000, max 40000)' }
+        },
+        required: ['url']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'search_wikipedia',
+      description: `Search Wikipedia for authoritative encyclopedic knowledge. Keyless and CORS-native — always works without any API key.
+Use this tool to:
+- Look up definitional, encyclopedic, or factual "authoritative" knowledge (concepts, people, events, science, history, terms).
+- Get a reliable source to cite when answering fact-sensitive questions, as a complement to web_search.
+- Prefer this OVER web_search for encyclopedic / definitional queries (it is authoritative and free).
+
+Parameters:
+- query: The search query (required). Use the topic's common name; prefer the language that matches the topic.
+- language: Wikipedia language edition (optional, default 'zh'). Use 'en' for broader coverage on technical / academic / international topics — English Wikipedia is far more comprehensive; you then translate the answer to Chinese. Use 'zh' for Chinese-specific topics.
+- limit: Max number of entries (optional, default 5, max 10).
+
+Returns: { query, language, count, results: [{ title, url, extract }] }. Each result includes the article URL and a plaintext intro extract (authoritative summary). For the full article, call read_url on the chosen URL (read_url is always available).
+
+Cite the Wikipedia URL(s) you use. Distill content into your own answer — do not dump the raw extract back to the user.`,
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'The search query (topic common name)' },
+          language: { type: 'string', description: "Wikipedia language edition (default 'zh'; use 'en' for broader coverage on technical/academic topics)" },
+          limit: { type: 'number', description: 'Maximum number of entries to return (default 5, max 10)' }
+        },
+        required: ['query']
       }
     }
   },

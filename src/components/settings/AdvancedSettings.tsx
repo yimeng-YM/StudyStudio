@@ -3,7 +3,7 @@ import { useAIStore } from '@/store/useAIStore';
 import { SegmentSlider } from '@/components/ui/SegmentSlider';
 import { DEFAULT_MAX_TOKENS } from '@/services/promptConfig';
 import { cn } from '@/lib/utils';
-import { Search, ChevronDown, Check, SlidersHorizontal, Tag } from 'lucide-react';
+import { Search, ChevronDown, Check, SlidersHorizontal, Tag, Globe } from 'lucide-react';
 
 /**
  * 高级参数设置页。
@@ -262,6 +262,52 @@ export function AdvancedSettings() {
               )}
             </div>
           </div>
+        </div>
+
+        {/* 联网配置 */}
+        <div className="border-t border-zinc-100 dark:border-zinc-800 pt-5 space-y-3">
+          <div className="flex items-center gap-2">
+            <Globe size={15} className="text-zinc-500" />
+            <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">联网搜索</h3>
+          </div>
+          <p className="text-[11px] text-zinc-400 -mt-1">
+            配置联网搜索工具使用后端，不配置则无法启用联网搜索
+          </p>
+
+          {/* 搜索后端 */}
+          <div>
+            <label className="block text-xs font-medium mb-1.5 text-zinc-600 dark:text-zinc-300">搜索后端</label>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => updateConfig({ webSearchBackend: 'jina' })} className={cn('flex-1 px-3 py-2 rounded-lg text-xs font-medium border transition-colors', (config?.webSearchBackend ?? 'jina') === 'jina' ? 'bg-blue-600 text-white border-blue-600' : 'bg-zinc-50 dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600')}>Jina</button>
+              <button type="button" onClick={() => updateConfig({ webSearchBackend: 'serper' })} className={cn('flex-1 px-3 py-2 rounded-lg text-xs font-medium border transition-colors', config?.webSearchBackend === 'serper' ? 'bg-blue-600 text-white border-blue-600' : 'bg-zinc-50 dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600')}>Serper</button>
+            </div>
+          </div>
+
+          {/* Jina Key：仅当选 Jina 时显示 */}
+          {(config?.webSearchBackend ?? 'jina') === 'jina' && (
+            <div>
+              <label className="block text-xs font-medium mb-1.5 text-zinc-600 dark:text-zinc-300">
+                Jina API Key
+                <a href="https://jina.ai/" target="_blank" rel="noreferrer" className="text-blue-500 hover:underline font-normal ml-1">获取</a>
+              </label>
+              <div className="flex gap-2">
+                <input type="password" className={inputCls} value={config?.jinaApiKey ?? ''} onChange={e => updateConfig({ jinaApiKey: e.target.value.trim() })} placeholder="jina_..." autoComplete="off" />
+              </div>
+            </div>
+          )}
+
+          {/* Serper Key：仅当选 Serper 时显示 */}
+          {config?.webSearchBackend === 'serper' && (
+            <div>
+              <label className="block text-xs font-medium mb-1.5 text-zinc-600 dark:text-zinc-300">
+                Serper API Key
+                <a href="https://serper.dev/" target="_blank" rel="noreferrer" className="text-blue-500 hover:underline font-normal ml-1">获取</a>
+              </label>
+              <div className="flex gap-2">
+                <input type="password" className={inputCls} value={config?.serperApiKey ?? ''} onChange={e => updateConfig({ serperApiKey: e.target.value.trim() })} placeholder="serper.dev API Key" autoComplete="off" />
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </section>

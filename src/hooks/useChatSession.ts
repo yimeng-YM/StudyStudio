@@ -8,6 +8,7 @@ import { runSubAgent, SubAgentCallbacks } from '@/services/agent/runSubAgent';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { getSystemPromptWithContext } from '@/services/promptConfig';
 import { generateSessionTitle } from '@/services/aiGenerator';
+import { isWebSearchUsable, isWikipediaOn, buildWebToolsStatus } from '@/lib/toolConfig';
 
 /**
  * 任务执行计划状态
@@ -55,6 +56,7 @@ export interface SubAgentState {
 export function useChatSession(sessionId: string | null, mode: 'plan' | 'act') {
   const settings = useAIStore(s => s.settings);
   const currentContext = useAIStore(s => s.currentContext);
+  const config = useAIStore(s => s.config);
   const { showAlert } = useDialog();
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
@@ -328,6 +330,9 @@ IMPORTANT: Always respond in Chinese.
 `;
     }
 
+    // 注入联网工具的可用性状态：告诉模型本轮 web_search / search_wikipedia 是否可用（read_url 始终可用）
+    systemPrompt += '\n\n' + buildWebToolsStatus(config);
+
     const messagesWithSystem = [
       { role: 'system' as const, content: systemPrompt },
       ...currentMessages
@@ -391,9 +396,18 @@ IMPORTANT: Always respond in Chinese.
       });
     };
 
-    const activeTools = mode === 'act' 
-      ? ToolDefinitions.filter(t => t.function.name !== 'present_plan' && t.function.name !== 'start_execution')
-      : ToolDefinitions;
+    // 工具可用性过滤：
+    //   - present_plan / start_execution 仅 plan 模式可见（act 模式过滤掉）
+    //   - web_search 需「开关打开 + 当前后端 Key 已配置」才注入（见 toolConfig.ts）
+    //   - search_wikipedia 按 wikipediaEnabled 开关注入（默认开）
+    //   - read_url 始终注入，不受任何开关控制
+    const activeTools = ToolDefinitions.filter(t => {
+      const n = t.function.name;
+      if (n === 'present_plan' || n === 'start_execution') return mode === 'plan';
+      if (n === 'web_search') return isWebSearchUsable(config);
+      if (n === 'search_wikipedia') return isWikipediaOn(config);
+      return true;
+    });
 
     // 创建新的 AbortController 用于取消请求
     const abortController = new AbortController();

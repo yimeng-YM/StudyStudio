@@ -8,6 +8,7 @@ import { useDialog } from '@/components/ui/DialogProvider';
 import { useChatSession } from '@/hooks/useChatSession';
 import { ModelSwitcher } from './ModelSwitcher';
 import { ModeSwitcher } from './ModeSwitcher';
+import { ToolConfigSwitcher } from './ToolConfigSwitcher';
 
 /**
  * 格式化文件大小为易读字符串
@@ -423,6 +424,7 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
           </div>
         )}
         <div className="flex justify-end items-center gap-2 mb-2 pr-1">
+          <ToolConfigSwitcher />
           <ModeSwitcher mode={mode} onChange={setMode} />
           <ModelSwitcher />
         </div>

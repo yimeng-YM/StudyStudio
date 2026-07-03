@@ -1,8 +1,9 @@
-import { AISettings } from '@/db';
+import { AISettings, db } from '@/db';
 import { Message, ToolCall, streamAICompletion } from '@/services/ai';
 import { ToolDefinitions, executeTool } from './ToolRegistry';
 import { isJsonComplete } from '@/lib/utils';
 import { SUB_AGENT_PROMPT, DEFAULT_MAX_TOKENS } from '@/services/promptConfig';
+import { isWebSearchUsable, isWikipediaOn, buildWebToolsStatus } from '@/lib/toolConfig';
 
 /**
  * 子 Agent 执行过程中向 UI 上报的回调集合。
@@ -53,17 +54,25 @@ export async function runSubAgent(params: RunSubAgentParams): Promise<string> {
   const { task, context, settings, signal, callbacks: cb } = params;
   const maxRounds = params.maxRounds ?? 10;
 
-  // 子 Agent 可用工具：排除流程控制与委派工具，避免子 Agent 触发规划或再委派
-  const subTools = ToolDefinitions.filter(
-    (t) => !['delegate_task', 'present_plan', 'start_execution'].includes(t.function.name)
-  );
+  // 读取用户的联网工具开关（与主 Agent 共用同一份 AIConfig），按可用性过滤 web 工具。
+  // 子 Agent 始终排除委派/规划工具（避免再委派/触发规划）；read_url 不受开关控制，始终可用。
+  const cfg = (await db.settings.get(1)) as any;
+  const webSearchOn = isWebSearchUsable(cfg);
+  const wikiOn = isWikipediaOn(cfg);
+  const subTools = ToolDefinitions.filter((t) => {
+    const n = t.function.name;
+    if (['delegate_task', 'present_plan', 'start_execution'].includes(n)) return false;
+    if (n === 'web_search') return webSearchOn;
+    if (n === 'search_wikipedia') return wikiOn;
+    return true;
+  });
 
   const userContent = context
     ? `${task}\n\n## Context\n${context}`
     : task;
 
   let messages: Message[] = [
-    { role: 'system', content: SUB_AGENT_PROMPT },
+    { role: 'system', content: SUB_AGENT_PROMPT + '\n\n' + buildWebToolsStatus(cfg) },
     { role: 'user', content: userContent },
   ];
 
