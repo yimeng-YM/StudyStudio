@@ -1,5 +1,3 @@
-import mammoth from 'mammoth';
-import * as XLSX from 'xlsx';
 // pdfjs worker 以 ?url 形式引用：Vite 只把 worker 作为独立资源发出并返回其 URL，
 // 不会把 worker 代码并入主 bundle；浏览器仅在真正解析 PDF 时才按需拉取。
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
@@ -87,6 +85,8 @@ function readFileAsDataURL(file: File): Promise<string> {
 async function processDocx(file: File): Promise<ProcessedFile> {
   const arrayBuffer = await file.arrayBuffer();
   try {
+    // mammoth 按需动态加载，避免其进入首屏主 bundle（仅在上传 DOCX 时加载）
+    const mammoth = (await import('mammoth')).default;
     const result = await mammoth.convertToHtml({ arrayBuffer });
     const doc = new DOMParser().parseFromString(result.value, 'text/html');
 
@@ -152,10 +152,13 @@ async function processDocx(file: File): Promise<ProcessedFile> {
  */
 async function processExcel(file: File): Promise<ProcessedFile> {
   const arrayBuffer = await file.arrayBuffer();
+  // xlsx 按需动态加载，避免其进入首屏主 bundle（仅在上传 Excel 时加载）
+  const XLSXModule: any = await import('xlsx');
+  const XLSX = XLSXModule.default ?? XLSXModule;
   const workbook = XLSX.read(arrayBuffer);
   let text = `--- Excel: ${file.name} ---\n`;
   
-  workbook.SheetNames.forEach(sheetName => {
+  workbook.SheetNames.forEach((sheetName: string) => {
     const sheet = workbook.Sheets[sheetName];
     const csv = XLSX.utils.sheet_to_csv(sheet);
     text += `Sheet: ${sheetName}\n${csv}\n\n`;

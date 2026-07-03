@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { lazy, Suspense, useState, useEffect, useRef } from 'react';
 import { useAIStore } from '@/store/useAIStore';
-import { ChatWindow } from './ChatWindow';
+// ChatWindow 懒加载：仅在用户打开 AI 浮窗时才加载聊天相关重依赖（MessageRenderer/mermaid/fileProcessor 等）
+const ChatWindow = lazy(() => import('./ChatWindow').then(m => ({ default: m.ChatWindow })));
 import { Sparkles, X, PanelRight, AppWindow } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useIsMobile } from '@/hooks/useIsMobile';
@@ -275,11 +276,13 @@ export function AIFloatingWindow() {
     // 背景透明：由外层窗口容器提供底色（侧边栏为半透明毛玻璃，悬浮窗为不透明），弱化分界
     const chatContent = (
         <div className="flex-1 overflow-hidden relative">
-            <ChatWindow
-                sessionId={globalSessionId}
-                onSessionChange={setGlobalSessionId}
-                placeholder={currentContext ? "针对当前内容提问，或输入指令..." : "你好，我是你的智能学习助手。"}
-            />
+            <Suspense fallback={<div className="flex items-center justify-center h-full text-sm text-zinc-400">加载 AI 助手…</div>}>
+                <ChatWindow
+                    sessionId={globalSessionId}
+                    onSessionChange={setGlobalSessionId}
+                    placeholder={currentContext ? "针对当前内容提问，或输入指令..." : "你好，我是你的智能学习助手。"}
+                />
+            </Suspense>
         </div>
     );
 

@@ -51,6 +51,26 @@ export function MindMapEditor(props: MindMapEditorProps) {
   );
 }
 
+/** 主题感知的 MiniMap：单独订阅 theme，避免整个 ReactFlow 因主题切换而全量重渲染 */
+function ThemedMiniMap() {
+  const { theme } = useTheme();
+  return (
+    <div className="hidden md:block">
+      <MiniMap
+        nodeColor={() => (theme === 'dark' ? '#555' : '#eee')}
+        maskColor={theme === 'dark' ? 'rgba(0, 0, 0, 0.7)' : 'rgba(240, 240, 240, 0.6)'}
+        style={{
+          borderRadius: '12px',
+          overflow: 'hidden',
+          border: theme === 'dark' ? '1px solid #333' : '1px solid #e2e2e2',
+          backgroundColor: theme === 'dark' ? '#1a1a1a' : '#fff'
+        }}
+        className="shadow-lg"
+      />
+    </div>
+  );
+}
+
 function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditorProps) {
   /** @type {[Node[], Function, Function]} 画布节点状态管理 */
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
@@ -63,7 +83,6 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
   /** @type {[string | null, Function]} 当前选中的思维导图记录ID */
   const [selectedMindMapId, setSelectedMindMapId] = useState<string | null>(null);
   const { showAlert, showConfirm, showPrompt } = useDialog();
-  const { theme } = useTheme();
   const setFloatingWindowOpen = useAIStore(s => s.setFloatingWindowOpen);
   const setGlobalSessionId = useAIStore(s => s.setGlobalSessionId);
 
@@ -858,22 +877,7 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
             </Panel>
 
             {/* MiniMap - hidden on mobile, top-right on desktop */}
-            <div className="hidden md:block">
-              <MiniMap
-                nodeColor={() => {
-                  if (theme === 'dark') return '#555';
-                  return '#eee';
-                }}
-                maskColor={theme === 'dark' ? 'rgba(0, 0, 0, 0.7)' : 'rgba(240, 240, 240, 0.6)'}
-                style={{
-                  borderRadius: '12px',
-                  overflow: 'hidden',
-                  border: theme === 'dark' ? '1px solid #333' : '1px solid #e2e2e2',
-                  backgroundColor: theme === 'dark' ? '#1a1a1a' : '#fff'
-                }}
-                className="shadow-lg"
-              />
-            </div>
+            <ThemedMiniMap />
             {nodes.length === 0 && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                 <div className="bg-white/50 dark:bg-zinc-900/50 backdrop-blur-sm p-6 rounded-2xl border border-dashed border-zinc-300 dark:border-zinc-700 text-center">

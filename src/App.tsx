@@ -1,16 +1,25 @@
-import { useEffect } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { HashRouter, Routes, Route } from 'react-router-dom';
 import { Layout } from '@/components/Layout';
-import { Dashboard } from '@/pages/Dashboard';
-import { SubjectView } from '@/pages/SubjectView';
-import { Settings } from '@/pages/Settings';
-import { AIChat } from '@/pages/AIChat';
-import { Docs } from '@/pages/Docs';
-import { MobileSubjects } from '@/pages/mobile/MobileSubjects';
 import { DialogProvider } from '@/components/ui/DialogProvider';
 import { SortProvider } from '@/hooks/useSorting';
 import { useStudyLogger } from '@/hooks/useStudyLogger';
 import { initFontSize } from '@/hooks/useFontSize';
+
+// 以下三个 hook 在其模块加载时即写 DOM（主题 class / 背景与强调色 CSS 变量），以避免首屏闪烁。
+// Settings 改为懒加载后，这些模块不再随启动加载，需在入口静态引入以确保刷新时仍随首屏执行。
+import '@/hooks/useTheme';
+import '@/hooks/useBackground';
+import '@/hooks/useAccentTheme';
+
+// 路由级懒加载：首屏只需 Dashboard，其余页面（含思维导图 / 题库 / AI 等）按需加载，
+// 显著减小首屏 bundle，加快新人首次打开速度。
+const Dashboard = lazy(() => import('@/pages/Dashboard').then(m => ({ default: m.Dashboard })));
+const SubjectView = lazy(() => import('@/pages/SubjectView').then(m => ({ default: m.SubjectView })));
+const Settings = lazy(() => import('@/pages/Settings').then(m => ({ default: m.Settings })));
+const AIChat = lazy(() => import('@/pages/AIChat').then(m => ({ default: m.AIChat })));
+const Docs = lazy(() => import('@/pages/Docs').then(m => ({ default: m.Docs })));
+const MobileSubjects = lazy(() => import('@/pages/mobile/MobileSubjects').then(m => ({ default: m.MobileSubjects })));
 
 /**
  * 应用根组件
@@ -33,6 +42,7 @@ function App() {
     <SortProvider>
       <DialogProvider>
         <HashRouter>
+          <Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-zinc-400">加载中…</div>}>
           <Routes>
             <Route path="/" element={<Layout />}>
               <Route index element={<Dashboard />} />
@@ -43,6 +53,7 @@ function App() {
               <Route path="docs" element={<Docs />} />
             </Route>
           </Routes>
+          </Suspense>
         </HashRouter>
       </DialogProvider>
     </SortProvider>

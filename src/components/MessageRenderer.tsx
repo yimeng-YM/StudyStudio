@@ -1,18 +1,58 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, memo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
 import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { PrismLight as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus, prism } from 'react-syntax-highlighter/dist/esm/styles/prism';
+// 按需注册高频语言，避免全量 Prism 打包所有语言（显著减小 bundle 与单代码块渲染成本）
+import jsx from 'react-syntax-highlighter/dist/esm/languages/prism/jsx';
+import javascript from 'react-syntax-highlighter/dist/esm/languages/prism/javascript';
+import typescript from 'react-syntax-highlighter/dist/esm/languages/prism/typescript';
+import tsx from 'react-syntax-highlighter/dist/esm/languages/prism/tsx';
+import json from 'react-syntax-highlighter/dist/esm/languages/prism/json';
+import markup from 'react-syntax-highlighter/dist/esm/languages/prism/markup';
+import css from 'react-syntax-highlighter/dist/esm/languages/prism/css';
+import python from 'react-syntax-highlighter/dist/esm/languages/prism/python';
+import bash from 'react-syntax-highlighter/dist/esm/languages/prism/bash';
+import markdown from 'react-syntax-highlighter/dist/esm/languages/prism/markdown';
+import yaml from 'react-syntax-highlighter/dist/esm/languages/prism/yaml';
+import sql from 'react-syntax-highlighter/dist/esm/languages/prism/sql';
+import diff from 'react-syntax-highlighter/dist/esm/languages/prism/diff';
+import java from 'react-syntax-highlighter/dist/esm/languages/prism/java';
+import go from 'react-syntax-highlighter/dist/esm/languages/prism/go';
+import rust from 'react-syntax-highlighter/dist/esm/languages/prism/rust';
+import c from 'react-syntax-highlighter/dist/esm/languages/prism/c';
+import cpp from 'react-syntax-highlighter/dist/esm/languages/prism/cpp';
+
+SyntaxHighlighter.registerLanguage('jsx', jsx);
+SyntaxHighlighter.registerLanguage('javascript', javascript);
+SyntaxHighlighter.registerLanguage('typescript', typescript);
+SyntaxHighlighter.registerLanguage('tsx', tsx);
+SyntaxHighlighter.registerLanguage('json', json);
+SyntaxHighlighter.registerLanguage('markup', markup);
+SyntaxHighlighter.registerLanguage('html', markup);
+SyntaxHighlighter.registerLanguage('xml', markup);
+SyntaxHighlighter.registerLanguage('css', css);
+SyntaxHighlighter.registerLanguage('python', python);
+SyntaxHighlighter.registerLanguage('bash', bash);
+SyntaxHighlighter.registerLanguage('sh', bash);
+SyntaxHighlighter.registerLanguage('markdown', markdown);
+SyntaxHighlighter.registerLanguage('yaml', yaml);
+SyntaxHighlighter.registerLanguage('sql', sql);
+SyntaxHighlighter.registerLanguage('diff', diff);
+SyntaxHighlighter.registerLanguage('java', java);
+SyntaxHighlighter.registerLanguage('go', go);
+SyntaxHighlighter.registerLanguage('rust', rust);
+SyntaxHighlighter.registerLanguage('c', c);
+SyntaxHighlighter.registerLanguage('cpp', cpp);
 
 import 'katex/dist/katex.min.css';
 import { MessageContentPart, ToolCall } from '@/services/ai';
 import { FileText, FileSpreadsheet, FileCode, FileJson, ChevronDown, ChevronRight, CheckCircle2, Loader2, GitCompare, Eye, Code2, XCircle, Brain } from 'lucide-react';
 import { db } from '@/db';
-import mermaid from 'mermaid';
 import { useTheme } from '@/hooks/useTheme';
 import { parseAIJson } from '@/lib/utils';
 import type { SubAgentState } from '@/hooks/useChatSession';
@@ -47,12 +87,38 @@ function useIsDark() {
   return isDark;
 }
 
-// 初始化 Mermaid 图表引擎
-mermaid.initialize({
-  startOnLoad: false,
-  theme: 'default',
-  securityLevel: 'loose',
-});
+/**
+ * 视口内才挂载子树：用于包裹 Mermaid / 代码块 / HTML 预览等重组件，
+ * 避免大笔记/题库一次性渲染所有重内容导致挂载与主题切换卡顿。
+ * 进入视口后保持挂载（once），不再卸载，避免来回滚动反复重建。
+ */
+function useInViewportOnce() {
+  const ref = useRef<HTMLDivElement>(null);
+  const [inView, setInView] = useState(false);
+  useEffect(() => {
+    if (inView) return;
+    const el = ref.current;
+    if (!el) return;
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (e.isIntersecting) { setInView(true); io.disconnect(); break; }
+      }
+    }, { rootMargin: '200px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [inView]);
+  return { ref, inView };
+}
+
+/** 懒挂载包装：视口外渲染轻量占位，进入视口后才渲染真实 children */
+function LazyMount({ placeholderHeight = 80, className = '', children }: { placeholderHeight?: number; className?: string; children: React.ReactNode }) {
+  const { ref, inView } = useInViewportOnce();
+  if (inView) return <>{children}</>;
+  return <div ref={ref} style={{ minHeight: placeholderHeight }} className={`rounded-md bg-zinc-50 dark:bg-zinc-900/30 ${className}`} />;
+}
+
+/** Mermaid 渲染结果缓存：以「主题 + 图源」为双键，命中则直接复用 svg，避免主题切换时同步重算 */
+const mermaidSvgCache = new Map<string, string>();
 
 // 工具调用名称映射表（中文）
 const TOOL_NAMES: Record<string, string> = {
@@ -1154,25 +1220,34 @@ function AsyncImage(props: any) {
  * 使用 mermaid.js 动态渲染流程图、时序图等
  */
 function Mermaid({ chart }: { chart: string }) {
-  const ref = useRef<HTMLDivElement>(null);
   const [svg, setSvg] = useState('');
   const [error, setError] = useState<string | null>(null);
   const isDark = useIsDark();
+  const cacheKey = `${isDark ? 'd' : 'l'}::${chart}`;
 
   useEffect(() => {
     let mounted = true;
+    let cancelled = false;
 
-    mermaid.initialize({
-      startOnLoad: false,
-      theme: isDark ? 'dark' : 'default',
-      securityLevel: 'loose',
-    });
+    // 命中缓存：直接复用 svg，跳过加载与渲染（主题切换时的关键优化）
+    const cached = mermaidSvgCache.get(cacheKey);
+    if (cached) {
+      setSvg(cached);
+      setError(null);
+      return;
+    }
+    if (!chart) return;
 
-    const renderChart = async () => {
+    // mermaid 按需动态加载，避免其核心代码进入首屏主 bundle
+    (async () => {
       try {
+        const mermaid = (await import('mermaid')).default;
+        if (cancelled) return;
+        mermaid.initialize({ startOnLoad: false, theme: isDark ? 'dark' : 'default', securityLevel: 'loose' });
         const id = `mermaid-${Math.random().toString(36).slice(2, 9)}`;
         const { svg } = await mermaid.render(id, chart);
-        if (mounted) {
+        if (mounted && !cancelled) {
+          mermaidSvgCache.set(cacheKey, svg);
           setSvg(svg);
           setError(null);
         }
@@ -1181,18 +1256,14 @@ function Mermaid({ chart }: { chart: string }) {
         // 失效或缓存损坏时会触发动态 import 失败——此时带缓存破坏参数刷新一次即可恢复
         if (reloadOnChunkError(e)) return;
         console.error("Mermaid Render Fail", e);
-        if (mounted) {
+        if (mounted && !cancelled) {
           setError(e.message || "Invalid Diagram");
         }
       }
-    };
+    })();
 
-    if (chart && mounted) {
-      renderChart();
-    }
-
-    return () => { mounted = false; };
-  }, [chart, isDark]);
+    return () => { mounted = false; cancelled = true; };
+  }, [chart, isDark, cacheKey]);
 
   if (error) {
     return (
@@ -1207,7 +1278,6 @@ function Mermaid({ chart }: { chart: string }) {
 
   return (
     <div
-      ref={ref}
       className="flex justify-center bg-white dark:bg-slate-900 p-4 rounded-lg my-4 overflow-x-auto border border-slate-100 dark:border-slate-800"
       dangerouslySetInnerHTML={{ __html: svg }}
     />
@@ -1265,39 +1335,41 @@ function HtmlCodeBlock({ code }: { code: string }) {
   );
 }
 
-function MarkdownText({ content, isUser }: { content: string; isUser?: boolean }) {
+const MarkdownText = memo(function MarkdownText({ content, isUser }: { content: string; isUser?: boolean }) {
   const [metadata, contentToRender] = extractMetadata(content);
   const [isExpanded, setIsExpanded] = useState(false);
   const isDark = useIsDark();
 
-  // 自定义 Markdown 元素渲染逻辑
-  const markdownComponents = {
+  // 自定义 Markdown 元素渲染逻辑（仅随主题变化重建，避免每次渲染全树重算）
+  const markdownComponents = useMemo(() => ({
     code({ node, inline, className, children, ...props }: any) {
       const match = /language-(\w+)/.exec(className || '');
       const language = match ? match[1] : '';
 
-      // Mermaid 流程图特殊处理
+      // Mermaid 流程图特殊处理（懒挂载：视口外不渲染，避免一次性渲染所有图）
       if (!inline && (language === 'mermaid' || language === 'sequenceDiagram')) {
-        return <Mermaid chart={String(children).replace(/\n$/, '')} />;
+        return <LazyMount placeholderHeight={300}><Mermaid chart={String(children).replace(/\n$/, '')} /></LazyMount>;
       }
 
-      // HTML 代码块：支持预览 / 源码切换
+      // HTML 代码块：支持预览 / 源码切换（懒挂载）
       if (!inline && language === 'html') {
-        return <HtmlCodeBlock code={String(children).replace(/\n$/, '')} />;
+        return <LazyMount placeholderHeight={300}><HtmlCodeBlock code={String(children).replace(/\n$/, '')} /></LazyMount>;
       }
 
-      // 标准代码块高亮
+      // 标准代码块高亮（懒挂载，避免视口外代码块提前 tokenize）
       return !inline && match ? (
-        <SyntaxHighlighter
-          {...props}
-          style={isDark ? vscDarkPlus : prism}
-          language={language}
-          PreTag="div"
-          className="rounded-md !my-2 max-w-full overflow-x-auto"
-          wrapLongLines={true}
-        >
-          {String(children).replace(/\n$/, '')}
-        </SyntaxHighlighter>
+        <LazyMount placeholderHeight={120}>
+          <SyntaxHighlighter
+            {...props}
+            style={isDark ? vscDarkPlus : prism}
+            language={language}
+            PreTag="div"
+            className="rounded-md !my-2 max-w-full overflow-x-auto"
+            wrapLongLines={true}
+          >
+            {String(children).replace(/\n$/, '')}
+          </SyntaxHighlighter>
+        </LazyMount>
       ) : (
         // 行内代码
         <code {...props} className={`${className} bg-slate-200 dark:bg-slate-700 rounded px-1 py-0.5 text-inherit`}>
@@ -1310,10 +1382,10 @@ function MarkdownText({ content, isUser }: { content: string; isUser?: boolean }
     table: ({ node, ...props }: any) => <div className="overflow-x-auto my-4"><table {...props} className="min-w-full divide-y divide-slate-300 dark:divide-slate-700 border border-slate-200 dark:border-slate-700 table-auto" /></div>,
     th: ({ node, ...props }: any) => <th {...props} className="px-3 py-2 text-left font-semibold text-inherit border border-slate-200 dark:border-slate-700 whitespace-nowrap" style={{ fontSize: 'inherit' }} />,
     td: ({ node, ...props }: any) => <td {...props} className="px-3 py-2 text-inherit border border-slate-200 dark:border-slate-700" style={{ fontSize: 'inherit' }} />,
-  };
+  }), [isDark]);
 
   // 始终包含 rehypeRaw，用于渲染内嵌 HTML（callout boxes、colored text 等）
-  const rehypePlugins = [rehypeRaw, [rehypeKatex, { strict: false }]] as any;
+  const rehypePlugins = useMemo(() => [rehypeRaw, [rehypeKatex, { strict: false }]] as any, []);
 
   // 如果包含文件元数据，渲染为可展开的文件预览卡片
   if (metadata) {
@@ -1382,4 +1454,4 @@ function MarkdownText({ content, isUser }: { content: string; isUser?: boolean }
       </ReactMarkdown>
     </div>
   );
-}
+});
