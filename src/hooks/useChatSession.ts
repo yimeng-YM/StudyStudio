@@ -225,42 +225,32 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act') {
     let userMessage: Message = { role: 'user', content };
 
     if (files && files.length > 0) {
-      // 收集所有文件的文本内容（已包含 FILE_METADATA 标记）
-      const fileTexts = files
-        .filter((f: any) => f.content && f.content.trim())
-        .map((f: any) => f.content)
-        .join('\n\n');
-
-      // 检查是否有图片需要多模态处理
-      const allImages: string[] = [];
-      files.forEach((f: any) => {
-        if (f.images) {
-          f.images.forEach((img: string) => allImages.push(img));
-        }
-      });
-
-      if (allImages.length > 0) {
-        // 多模态消息：用户文字 + 文件内容 + 图片
-        const parts: any[] = [];
-        // 用户输入的文字始终作为第一个独立 text part
-        if (content.trim()) {
-          parts.push({ type: 'text', text: content });
-        }
-        // 文件提取的文本内容紧随其后
-        if (fileTexts) {
-          parts.push({ type: 'text', text: fileTexts });
-        }
-        // 图片放在最后
-        allImages.forEach((img: string) => {
-          parts.push({ type: 'image_url', image_url: { url: img } });
-        });
-        userMessage.content = parts;
-      } else if (fileTexts) {
-        // 纯文本文件：用户文字 + 文件内容合并
-        const fullText = [content, fileTexts].filter(Boolean).join('\n\n');
-        userMessage.content = fullText;
+      // 构建多部分消息：用户文字与每个文件各自独立成块。
+      // 这样可避免两个问题：
+      //  ① 多个文件被合并进单个预览卡片（MessageRenderer 仅识别首个 FILE_METADATA 标记）；
+      //  ② 用户输入的文字被混入文件卡片的展开预览中。
+      // 每个文件的文本（已含 FILE_METADATA 头）作为独立 text part，渲染为独立卡片；
+      // 其图片作为 image_url part 紧随其后并保持文档内顺序，便于 AI 理解图片在原文档的位置。
+      const parts: any[] = [];
+      // 用户输入的文字始终作为第一个独立 text part，与文件内容分离
+      if (content.trim()) {
+        parts.push({ type: 'text', text: content });
       }
-      // 如果没有有效内容也没有图片，保持原始 content（兜底）
+      for (const f of files) {
+        const fileText = (f?.content || '').trim();
+        if (fileText) {
+          parts.push({ type: 'text', text: f.content });
+        }
+        if (Array.isArray(f.images)) {
+          for (const img of f.images) {
+            parts.push({ type: 'image_url', image_url: { url: img } });
+          }
+        }
+      }
+      if (parts.length > 0) {
+        userMessage.content = parts;
+      }
+      // 无有效内容时保持原始 content（兜底）
     }
 
     const newMessages = [...messages, userMessage];

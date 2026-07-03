@@ -66,29 +66,66 @@ function readFileAsDataURL(file: File): Promise<string> {
 
 /**
  * 处理 DOCX 格式的 Word 文档。
- * 使用 mammoth 库将 DOCX 转换为 HTML，然后提取纯文本并尝试从中解析出内嵌的图片。
+ * 使用 mammoth 库将 DOCX 转换为 HTML，再按文档顺序遍历 DOM 提取纯文本，
+ * 并在每张内嵌图片的原始位置插入编号占位符 `[图片 N]`，同时按顺序收集图片数据。
+ *
+ * 这样保留图片在原文档中的相对位置，使 AI 能将后续 image_url 部分与正文中的
+ * `[图片 N]` 占位符按顺序对应，理解每张图片出现在文档的哪个位置。
  *
  * @param file - DOCX 格式的 File 对象
- * @returns 解析后的 ProcessedFile，包含提取出的文档文本以及可能的 Base64 图片数组
+ * @returns 解析后的 ProcessedFile，包含文档文本（含图片位置占位符）及按顺序的 Base64 图片数组
  */
 async function processDocx(file: File): Promise<ProcessedFile> {
   const arrayBuffer = await file.arrayBuffer();
   try {
     const result = await mammoth.convertToHtml({ arrayBuffer });
-    const text = result.value.replace(/<[^>]*>/g, '\n'); 
-    
-    const images: string[] = [];
-    const imgRegex = /<img[^>]+src="([^">]+)"/g;
-    let match;
-    while ((match = imgRegex.exec(result.value)) !== null) {
-      if (match[1].startsWith('data:image')) {
-        images.push(match[1]);
-      }
-    }
+    const doc = new DOMParser().parseFromString(result.value, 'text/html');
 
-    return { 
-        text: `--- DOCX: ${file.name} ---\n${text}\n--- End DOCX ---`, 
-        images: images.length > 0 ? images : undefined 
+    const images: string[] = [];
+    const pieces: string[] = [];
+    let imgCounter = 0;
+
+    // 视为块级元素：遍历其子节点前后各补一个换行，保留段落结构
+    const BLOCK_TAGS = new Set([
+      'p', 'div', 'section', 'article', 'header', 'footer',
+      'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'tr', 'table',
+      'ul', 'ol', 'blockquote', 'pre', 'figure',
+    ]);
+
+    const walk = (node: Node): void => {
+      node.childNodes.forEach((child) => {
+        if (child.nodeType === Node.TEXT_NODE) {
+          pieces.push(child.textContent || '');
+        } else if (child.nodeType === Node.ELEMENT_NODE) {
+          const el = child as Element;
+          const tag = el.tagName.toLowerCase();
+          if (tag === 'img') {
+            const src = el.getAttribute('src') || '';
+            if (src.startsWith('data:image')) {
+              imgCounter++;
+              images.push(src);
+              // 在图片原始位置插入编号占位符，便于 AI 定位
+              pieces.push(`\n[图片 ${imgCounter}]\n`);
+            }
+          } else if (tag === 'br') {
+            pieces.push('\n');
+          } else {
+            const isBlock = BLOCK_TAGS.has(tag);
+            if (isBlock) pieces.push('\n');
+            walk(el);
+            if (isBlock) pieces.push('\n');
+          }
+        }
+      });
+    };
+    walk(doc.body);
+
+    // 合并片段并规整连续空行
+    const text = pieces.join('').replace(/\n{3,}/g, '\n\n').trim();
+
+    return {
+      text: `--- DOCX: ${file.name} ---\n${text}\n--- End DOCX ---`,
+      images: images.length > 0 ? images : undefined,
     };
   } catch (e) {
     console.error("Docx parsing error", e);
