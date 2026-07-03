@@ -81,38 +81,49 @@ export interface AIRequestOptions {
 }
 
 /**
+ * 规范化 OpenAI 兼容接口的基础地址。
+ * 去除末尾斜杠；若路径中已含版本段（形如 `/vN`，N 为数字，如 /v1、/v3、/v4）则原样使用，
+ * 否则按 OpenAI 惯例补 `/v1`。兼容 OpenAI、KouriChat、DeepSeek、智谱(/v4)、字节豆包(/v3) 等不同版本段。
+ *
+ * @param url - 用户配置的基础地址
+ * @returns 规范化后可直接拼接 `/models`、`/chat/completions` 的地址
+ */
+export function normalizeBaseUrl(url: string): string {
+  let u = (url || '').trim();
+  if (!u) return u;
+  u = u.replace(/\/+$/, '');
+  if (!/\/v\d+(\/|$)/.test(u)) {
+    u = `${u}/v1`;
+  }
+  return u;
+}
+
+/**
  * 获取当前 AI 配置下所有可用的模型列表。
  * 通过向配置的 API 地址发送 GET 请求，拉取服务器端支持的模型。
- * 
- * @param settings - 包含 API 密钥及 baseUrl 等配置的实体对象
+ *
+ * @param provider - 包含 baseUrl 及 apiKey 的供应商配置（Provider 形态）
  * @returns 包含各模型详情的列表数据
  * @throws 当鉴权失败或网络不通时抛出异常
  */
-export async function getModels(settings: AISettings): Promise<Model[]> {
-  if (!settings.apiKey) throw new Error("未配置 API Key");
-  
-  let url = settings.baseUrl;
-  // 规范化 url 处理，移除末尾斜杠
-  if (url.endsWith('/')) url = url.slice(0, -1);
-  
-  // 兼容性处理：若使用 OpenAI 提供商且基础 URL 未包含 API 版本路径，则自动补全 /v1
-  if (!url.includes('/v1') && settings.provider === 'openai') {
-      url = `${url}/v1`;
-  }
-  
+export async function getModels(provider: { baseUrl: string; apiKey: string }): Promise<Model[]> {
+  if (!provider.apiKey) throw new Error("未配置 API Key");
+
+  const url = normalizeBaseUrl(provider.baseUrl);
+
   try {
     const response = await fetch(`${url}/models`, {
       headers: {
-        'Authorization': `Bearer ${settings.apiKey}`
+        'Authorization': `Bearer ${provider.apiKey}`
       }
     });
-    
+
     if (!response.ok) {
         throw new Error(`获取模型列表失败: ${response.statusText}`);
     }
-    
+
     const data = await response.json();
-    return data.data || []; 
+    return data.data || [];
   } catch (e) {
     console.error(e);
     throw e;
@@ -135,12 +146,7 @@ export async function getAICompletion(
 ): Promise<string> {
    if (!settings.apiKey) throw new Error("未配置 API Key");
 
-   let url = settings.baseUrl;
-   if (url.endsWith('/')) url = url.slice(0, -1);
-   
-   if (!url.endsWith('/v1') && !url.includes('/v1/') && settings.provider === 'openai') {
-        url = `${url}/v1`;
-   }
+   const url = normalizeBaseUrl(settings.baseUrl);
 
    const maxTokens = options?.maxTokens ?? settings.maxTokens ?? DEFAULT_MAX_TOKENS;
    const temperature = options?.temperature ?? settings.temperature ?? TEMPERATURE.balanced;
@@ -204,12 +210,7 @@ export async function streamAICompletion(
 ): Promise<void> {
   if (!settings.apiKey) throw new Error("未配置 API Key");
 
-  let url = settings.baseUrl;
-  if (url.endsWith('/')) url = url.slice(0, -1);
-  
-  if (!url.endsWith('/v1') && !url.includes('/v1/') && settings.provider === 'openai') {
-       url = `${url}/v1`;
-  }
+  const url = normalizeBaseUrl(settings.baseUrl);
 
   const maxTokens = options?.maxTokens ?? settings.maxTokens ?? DEFAULT_MAX_TOKENS;
   const temperature = options?.temperature ?? settings.temperature ?? TEMPERATURE.balanced;

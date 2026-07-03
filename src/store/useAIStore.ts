@@ -1,5 +1,7 @@
 import { create } from 'zustand';
-import { db, AISettings } from '@/db';
+import { db, AISettings, Provider, AIConfig } from '@/db';
+import { getModels } from '@/services/ai';
+import { DEFAULT_PROVIDER_BASE_URL, DEFAULT_PROVIDER_NAME } from '@/lib/providerTemplates';
 
 /**
  * 界面位置类型
@@ -42,13 +44,44 @@ export interface AIContext {
 
 /**
  * AI 状态管理 Store 接口
- * 集中管理 AI 的系统配置、悬浮对话窗状态、以及全局会话和上下文数据
+ * 集中管理 AI 的供应商预设、运行时配置、解析后有效配置、悬浮对话窗状态以及全局会话和上下文数据
  */
 interface AIStore {
+  /** 全部供应商预设列表 */
+  providers: Provider[];
+  /** 全局运行时配置（单例原始记录，id=1） */
+  config: AIConfig | null;
+  /** 解析后的有效配置（合并激活供应商 + config + 命名供应商），供 AI 服务直接消费 */
   settings: AISettings | null;
   isLoading: boolean;
+
+  /** 加载供应商与配置，首次运行时初始化默认供应商，并解析出有效配置 */
   loadSettings: () => Promise<void>;
-  updateSettings: (settings: Partial<AISettings>) => Promise<void>;
+  /** 新增供应商，返回新 id */
+  addProvider: (data: {
+    name: string;
+    baseUrl: string;
+    apiKey?: string;
+    modelList?: string[];
+    modelListUpdatedAt?: number;
+    order?: number;
+  }) => Promise<string>;
+  /** 更新指定供应商的字段 */
+  updateProvider: (id: string, patch: Partial<Provider>) => Promise<void>;
+  /** 删除供应商；若删的是当前激活项则自动切换到其他项 */
+  deleteProvider: (id: string) => Promise<void>;
+  /** 设为当前激活供应商；若当前模型不在新供应商清单内则置空或选首个 */
+  setActiveProvider: (id: string) => Promise<void>;
+  /** 更新运行时配置（模型、命名、参数等） */
+  updateConfig: (patch: Partial<AIConfig>) => Promise<void>;
+  /** 整体替换某供应商的模型清单 */
+  setProviderModels: (id: string, modelList: string[]) => Promise<void>;
+  /** 向某供应商清单去重追加模型 */
+  addProviderModels: (id: string, models: string[]) => Promise<void>;
+  /** 从某供应商清单移除一个模型 */
+  removeProviderModel: (id: string, model: string) => Promise<void>;
+  /** 拉取某供应商的 API 全量模型 id 列表，供 UI 筛选添加（不直接落库） */
+  fetchAvailableModels: (provider: { baseUrl: string; apiKey: string }) => Promise<string[]>;
 
   isFloatingWindowOpen: boolean;
   isFloatingWindowMinimized: boolean;
@@ -151,7 +184,47 @@ export function getFullContextPrompt(context: AIContext | null): string {
  * 全局 AI 状态管理的 Zustand Store
  * 负责维护持久化设置、悬浮窗的交互状态以及跨组件的会话流转逻辑
  */
+/**
+ * 由「全局配置 + 供应商列表」解析出运行时有效配置（AISettings）。
+ * 主供应商 = config.activeProviderId 指向的供应商（缺失则回退首个）；
+ * 命名供应商 = config.namingProviderId 指向的供应商（缺失则回退主供应商）。
+ */
+function resolveSettings(config: AIConfig | null, providers: Provider[]): AISettings | null {
+  if (!config || providers.length === 0) return null;
+  const active = providers.find(p => p.id === config.activeProviderId) || providers[0];
+  const naming = (config.namingProviderId ? providers.find(p => p.id === config.namingProviderId) : undefined) || active;
+  return {
+    id: config.id,
+    providerId: active.id,
+    providerName: active.name,
+    baseUrl: active.baseUrl,
+    apiKey: active.apiKey,
+    model: config.model,
+    modelList: active.modelList,
+    modelListUpdatedAt: active.modelListUpdatedAt,
+    namingProviderId: config.namingProviderId,
+    namingProviderName: naming.name,
+    namingBaseUrl: naming.baseUrl,
+    namingApiKey: naming.apiKey,
+    namingModel: config.namingModel,
+    maxTokens: config.maxTokens,
+    temperature: config.temperature,
+  };
+}
+
+/** 生成一个新的供应商 id（优先 crypto.randomUUID，回退时间戳+随机串） */
+function newProviderId(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  return `prov_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/**
+ * 全局 AI 状态管理的 Zustand Store
+ * 负责维护供应商预设、运行时配置、解析后有效配置、悬浮窗交互状态以及跨组件会话流转逻辑
+ */
 export const useAIStore = create<AIStore>((set, get) => ({
+  providers: [],
+  config: null,
   settings: null,
   isLoading: true,
 
@@ -162,32 +235,146 @@ export const useAIStore = create<AIStore>((set, get) => ({
 
   loadSettings: async () => {
     try {
-      let settings = await db.settings.get(1);
-      if (!settings) {
-        settings = {
-          id: 1,
-          provider: 'openai',
+      let providers = await db.providers.toArray();
+      let config = await db.settings.get(1) as AIConfig | undefined;
+      if (providers.length === 0) {
+        // 首次运行：创建默认供应商 + 默认配置指向它
+        const now = Date.now();
+        const defaultProvider: Provider = {
+          id: newProviderId(),
+          name: DEFAULT_PROVIDER_NAME,
+          baseUrl: DEFAULT_PROVIDER_BASE_URL,
           apiKey: '',
-          baseUrl: 'https://api.kourichat.com/v1',
-          model: '',
-          maxTokens: 10240,
-          temperature: 0.7
+          createdAt: now,
+          order: now,
         };
-        await db.settings.put(settings);
+        await db.providers.add(defaultProvider);
+        providers = [defaultProvider];
+        config = { id: 1, activeProviderId: defaultProvider.id, model: '' };
+        await db.settings.put(config);
+      } else if (!config) {
+        // 有供应商但无配置（异常兜底）：默认指向首个供应商
+        config = { id: 1, activeProviderId: providers[0].id, model: '' };
+        await db.settings.put(config);
       }
-      set({ settings, isLoading: false });
+      set({ providers, config: config ?? null, settings: resolveSettings(config ?? null, providers), isLoading: false });
     } catch (error) {
       console.error("Failed to load AI settings", error);
       set({ isLoading: false });
     }
   },
 
-  updateSettings: async (newSettings) => {
-    const current = get().settings;
+  addProvider: async (data) => {
+    const now = Date.now();
+    const provider: Provider = {
+      id: newProviderId(),
+      name: data.name,
+      baseUrl: data.baseUrl,
+      apiKey: data.apiKey || '',
+      modelList: data.modelList,
+      modelListUpdatedAt: data.modelListUpdatedAt,
+      createdAt: now,
+      order: data.order ?? now,
+    };
+    await db.providers.add(provider);
+    const providers = await db.providers.toArray();
+    set({ providers, settings: resolveSettings(get().config, providers) });
+    return provider.id;
+  },
+
+  updateProvider: async (id, patch) => {
+    await db.providers.update(id, patch);
+    const providers = await db.providers.toArray();
+    set({ providers, settings: resolveSettings(get().config, providers) });
+  },
+
+  deleteProvider: async (id) => {
+    const config = get().config;
+    await db.providers.delete(id);
+    const remaining = await db.providers.toArray();
+    if (!config) {
+      set({ providers: remaining, settings: resolveSettings(null, remaining) });
+      return;
+    }
+    // 清理被删供应商的模型记忆
+    const memory = { ...(config.modelByProvider || {}) };
+    delete memory[id];
+    let newConfig: AIConfig = { ...config, modelByProvider: memory };
+    if (config.activeProviderId === id) {
+      // 删的是当前供应商：切到其余首个，并恢复其记忆模型（无记忆则取清单首项）
+      const newActive = remaining[0]?.id || '';
+      const target = remaining[0];
+      let restored = memory[newActive];
+      if (restored === undefined) {
+        restored = (target?.modelList?.length ? target.modelList[0] : '') || '';
+        if (newActive) memory[newActive] = restored;
+      }
+      newConfig = { ...newConfig, activeProviderId: newActive, model: restored, modelByProvider: memory };
+    }
+    await db.settings.put(newConfig);
+    set({ providers: remaining, config: newConfig, settings: resolveSettings(newConfig, remaining) });
+  },
+
+  setActiveProvider: async (id) => {
+    const config = get().config;
+    if (!config) return;
+    const providers = get().providers;
+    const target = providers.find(p => p.id === id);
+    // 恢复该供应商上次选择的模型；无记忆则取清单首项，无清单则置空，并写入记忆以便下次切回仍是它
+    const memory = { ...(config.modelByProvider || {}) };
+    let model = memory[id];
+    if (model === undefined) {
+      model = (target?.modelList?.length ? target.modelList[0] : '') || '';
+      memory[id] = model;
+    }
+    const newConfig: AIConfig = { ...config, activeProviderId: id, model, modelByProvider: memory };
+    await db.settings.put(newConfig);
+    set({ config: newConfig, settings: resolveSettings(newConfig, providers) });
+  },
+
+  updateConfig: async (patch) => {
+    const current = get().config;
     if (!current) return;
-    const updated = { ...current, ...newSettings, id: 1 } as AISettings;
-    await db.settings.put(updated);
-    set({ settings: updated });
+    const newConfig: AIConfig = { ...current, ...patch, id: 1 };
+    // 选择主模型时，同时记到该供应商的记忆表，切换走再切回可恢复
+    if (patch.model !== undefined) {
+      newConfig.modelByProvider = {
+        ...(current.modelByProvider || {}),
+        [current.activeProviderId]: patch.model,
+      };
+    }
+    await db.settings.put(newConfig);
+    set({ config: newConfig, settings: resolveSettings(newConfig, get().providers) });
+  },
+
+  setProviderModels: async (id, modelList) => {
+    await db.providers.update(id, { modelList, modelListUpdatedAt: Date.now() });
+    const providers = await db.providers.toArray();
+    set({ providers, settings: resolveSettings(get().config, providers) });
+  },
+
+  addProviderModels: async (id, models) => {
+    const provider = await db.providers.get(id);
+    if (!provider) return;
+    const existing = provider.modelList || [];
+    const merged = Array.from(new Set([...existing, ...models.filter(Boolean)]));
+    await db.providers.update(id, { modelList: merged, modelListUpdatedAt: Date.now() });
+    const providers = await db.providers.toArray();
+    set({ providers, settings: resolveSettings(get().config, providers) });
+  },
+
+  removeProviderModel: async (id, model) => {
+    const provider = await db.providers.get(id);
+    if (!provider) return;
+    const merged = (provider.modelList || []).filter(m => m !== model);
+    await db.providers.update(id, { modelList: merged, modelListUpdatedAt: Date.now() });
+    const providers = await db.providers.toArray();
+    set({ providers, settings: resolveSettings(get().config, providers) });
+  },
+
+  fetchAvailableModels: async (provider) => {
+    const models = await getModels({ baseUrl: provider.baseUrl, apiKey: provider.apiKey });
+    return models.map(m => m.id);
   },
 
   setFloatingWindowOpen: (open) => set({ isFloatingWindowOpen: open }),

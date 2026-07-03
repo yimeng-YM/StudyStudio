@@ -300,8 +300,14 @@ export async function generateSessionTitle(
 ): Promise<string> {
   const prompt = TITLE_GENERATION_PROMPT(firstUserMessage, firstAssistantReply);
 
-  // namingModel 为空则回退主模型；temperature 固定低值(0.3)保证标题稳定，
+  // 命名可使用独立于主对话的供应商：优先用 namingBaseUrl/namingApiKey（解析时已回退为主供应商），
+  // 模型用 namingModel（留空回退主模型）；temperature 固定低值(0.3)保证标题稳定，
   // max_tokens 跟随用户全局设置，避免推理型模型(reasoning_content 占用 token 预算)因预算过小被截断导致标题内容为空
+  const namingSettings: AISettings = {
+    ...settings,
+    baseUrl: settings.namingBaseUrl || settings.baseUrl,
+    apiKey: settings.namingApiKey || settings.apiKey,
+  };
   const apiOptions: AIRequestOptions = {
     model: settings.namingModel || settings.model,
     temperature: TEMPERATURE.precise,
@@ -310,7 +316,7 @@ export async function generateSessionTitle(
 
   const response = await getAICompletion(
     [{ role: 'user', content: prompt }],
-    settings,
+    namingSettings,
     apiOptions
   );
 

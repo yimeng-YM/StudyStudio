@@ -6,6 +6,7 @@ import { processFile } from '@/lib/fileProcessor';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useChatSession } from '@/hooks/useChatSession';
+import { ModelSwitcher } from './ModelSwitcher';
 
 /**
  * 格式化文件大小为易读字符串
@@ -415,6 +416,9 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
             <span>{status}</span>
           </div>
         )}
+        <div className="flex justify-end mb-2 pr-1">
+          <ModelSwitcher />
+        </div>
         <div className="flex gap-2 bg-white/70 dark:bg-zinc-900/80 backdrop-blur-xl p-2 rounded-[1.5rem] shadow-lg border border-zinc-200/50 dark:border-zinc-800/50 ring-1 ring-black/5 dark:ring-white/5 items-end transition-all focus-within:ring-primary/20 focus-within:border-primary/30">
           <button onClick={() => fileInputRef.current?.click()} className="p-3 text-zinc-400 hover:text-primary hover:bg-primary/10 rounded-full transition-all duration-300 mb-0.5" title="上传文件">
             <Paperclip size={20} />

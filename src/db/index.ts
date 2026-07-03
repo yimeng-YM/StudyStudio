@@ -82,30 +82,92 @@ export interface Relation {
 }
 
 /**
- * AI 服务配置数据结构。
- * 存储不同大语言模型供应商的 API 鉴权和模型生成参数。
+ * AI 供应商配置（预设）。
+ * 每条记录代表一个可独立连接的大语言模型供应商（或自建代理），
+ * 统一采用 OpenAI 兼容的 chat/completions 请求格式，不再区分 openai/custom。
  */
-export interface AISettings {
-  /** 本地记录 ID（通常单例存储，ID 固定） */
-  id: number;
-  /** 供应商类型，目前支持 openai、gemini 以及自建服务 custom */
-  provider: 'openai' | 'gemini' | 'custom';
+export interface Provider {
+  /** 唯一标识符，采用 UUID 格式 */
+  id: string;
+  /** 供应商显示名称，如「DeepSeek」「我的代理」 */
+  name: string;
+  /** OpenAI 兼容接口基础地址，可含版本段（如 /v1、/v3、/v4） */
+  baseUrl: string;
   /** 访问凭证（密钥） */
   apiKey: string;
-  /** 接口基础地址，方便支持 API 代理或私有化部署的兼容 */
-  baseUrl: string;
-  /** 用于核心业务推理或生成的模型标识（如 gpt-4） */
+  /** 用户挑选维护的可用模型清单（非 API 全量缓存，可为空）；用户可手动添加或从 /models 拉取筛选后加入 */
+  modelList?: string[];
+  /** 模型清单最近更新时间戳 */
+  modelListUpdatedAt?: number;
+  /** 创建时间戳（毫秒） */
+  createdAt: number;
+  /** 自定义排序权重，用于调整供应商列表顺序 */
+  order?: number;
+}
+
+/**
+ * 全局 AI 运行时配置（单例，id=1）。
+ * 仅保存「当前选择」与「生成参数」；连接信息（baseUrl/apiKey/模型清单）都在 Provider 上。
+ */
+export interface AIConfig {
+  /** 固定单例 ID = 1 */
+  id: number;
+  /** 当前激活的供应商 ID（主对话使用） */
+  activeProviderId: string;
+  /** 主对话使用的模型标识（始终对应当前激活供应商的选择） */
   model: string;
-  /** 专用于实体命名的轻量级模型，用于节约成本及提升速度 */
+  /** 各供应商上次选择的模型记忆：providerId -> 模型名。切换供应商时据此恢复，切换走再切回仍是之前的模型 */
+  modelByProvider?: Record<string, string>;
+  /** 命名（会话标题）使用的供应商 ID；留空则使用主供应商 */
+  namingProviderId?: string;
+  /** 命名使用的模型标识；留空则回退主模型 */
   namingModel?: string;
   /** 单次请求生成的最大上下文 Token 限制 */
   maxTokens?: number;
   /** 生成的随机性控制参数（0.0 ~ 2.0，数值越高越具发散性） */
   temperature?: number;
-  /** 缓存的可用模型列表，避免频繁请求 API */
+}
+
+/**
+ * 解析后的有效 AI 配置（仅运行时，不直接落库）。
+ * 由 store 合并「激活 Provider + AIConfig + 命名 Provider」得到，
+ * 供 ai.ts / aiGenerator.ts / runSubAgent.ts / useChatSession.ts 直接消费，
+ * 保持与旧 AISettings 字段（baseUrl/apiKey/model/namingModel/maxTokens/temperature）兼容。
+ */
+export interface AISettings {
+  /** 固定单例 ID（沿用 config.id） */
+  id: number;
+  // —— 主供应商连接 ——
+  /** 当前激活供应商 ID */
+  providerId: string;
+  /** 当前激活供应商名称 */
+  providerName: string;
+  /** 主供应商接口基础地址 */
+  baseUrl: string;
+  /** 主供应商访问凭证 */
+  apiKey: string;
+  /** 主对话使用的模型标识 */
+  model: string;
+  /** 主供应商的模型清单（用于下拉展示） */
   modelList?: string[];
-  /** 模型列表缓存时间戳 */
+  /** 主供应商模型清单更新时间戳 */
   modelListUpdatedAt?: number;
+  // —— 命名供应商连接（可不同于主供应商）——
+  /** 命名供应商 ID（留空表示与主供应商相同） */
+  namingProviderId?: string;
+  /** 命名供应商名称 */
+  namingProviderName?: string;
+  /** 命名供应商接口基础地址 */
+  namingBaseUrl?: string;
+  /** 命名供应商访问凭证 */
+  namingApiKey?: string;
+  /** 命名使用的模型标识，留空回退主模型 */
+  namingModel?: string;
+  // —— 生成参数 ——
+  /** 单次请求生成的最大上下文 Token 限制 */
+  maxTokens?: number;
+  /** 生成的随机性控制参数（0.0 ~ 2.0） */
+  temperature?: number;
 }
 
 /**
@@ -213,7 +275,8 @@ export class StudyStudioDB extends Dexie {
   subjects!: Table<Subject>;
   entities!: Table<Entity>;
   relations!: Table<Relation>;
-  settings!: Table<AISettings>;
+  settings!: Table<AIConfig>;
+  providers!: Table<Provider>;
   chatSessions!: Table<ChatSession>;
   chatMessages!: Table<ChatMessage>;
   attachments!: Table<Attachment>;
@@ -286,6 +349,41 @@ export class StudyStudioDB extends Dexie {
     // 版本10：新增题库练习记录表
     this.version(10).stores({
       quizRecords: 'id, quizId, questionId, attemptedAt'
+    });
+
+    // 版本11：拆分 AI 配置——新增 providers 表，settings 由单份连接配置重构为运行时选择（AIConfig）
+    // 旧的单例 settings（含 baseUrl/apiKey/modelList/provider）在升级时迁移为一条 provider + 新 config
+    this.version(11).stores({
+      providers: 'id, name, createdAt, order'
+    }).upgrade(async tx => {
+      const old = await tx.table('settings').get(1) as any;
+      // 仅当旧记录存在连接信息且尚未迁移（无 activeProviderId）时执行迁移
+      if (old && old.baseUrl && !old.activeProviderId) {
+        const providerId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+          ? crypto.randomUUID()
+          : `prov_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const now = Date.now();
+        await tx.table('providers').add({
+          id: providerId,
+          name: old.provider === 'custom' ? '自定义供应商' : '默认供应商',
+          baseUrl: old.baseUrl,
+          apiKey: old.apiKey || '',
+          modelList: old.modelList,
+          modelListUpdatedAt: old.modelListUpdatedAt,
+          createdAt: now,
+          order: now
+        });
+        await tx.table('settings').put({
+          id: 1,
+          activeProviderId: providerId,
+          model: old.model || '',
+          modelByProvider: { [providerId]: old.model || '' },
+          namingProviderId: undefined,
+          namingModel: old.namingModel,
+          maxTokens: old.maxTokens,
+          temperature: old.temperature
+        });
+      }
     });
   }
 }

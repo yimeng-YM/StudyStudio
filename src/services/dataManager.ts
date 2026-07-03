@@ -24,8 +24,10 @@ export interface StudyStudioData {
   attachments: any[];
   /** 题库练习记录 */
   quizRecords?: any[];
-  /** AI 配置（接口地址、密钥、模型等） */
+  /** AI 配置（运行时选择：激活供应商、模型、命名、参数等） */
   config?: any[];
+  /** AI 供应商预设列表（名称、接口地址、密钥、模型清单等） */
+  providers?: any[];
 }
 
 /**
@@ -147,8 +149,13 @@ export const DataManager = {
       quizRecords = await db.quizRecords.toArray();
     }
 
-    // 8. 按选项决定是否导出 AI 配置
-    const config = includeConfig ? await db.settings.toArray() : undefined;
+    // 8. 按选项决定是否导出 AI 配置与供应商预设
+    let config: any[] | undefined;
+    let providersExport: any[] | undefined;
+    if (includeConfig) {
+      config = await db.settings.toArray();
+      providersExport = await db.providers.toArray();
+    }
 
     return {
       version: 3,
@@ -160,7 +167,8 @@ export const DataManager = {
       chatMessages,
       attachments,
       quizRecords,
-      ...(config !== undefined && { config })
+      ...(config !== undefined && { config }),
+      ...(providersExport !== undefined && providersExport.length > 0 && { providers: providersExport })
     };
   },
 
@@ -228,7 +236,7 @@ export const DataManager = {
   async importStudyData(data: StudyStudioData, selection?: ImportSelection): Promise<void> {
     const { includeChatHistory = true, includeConfig = false, overwriteConfig = false } = selection || {};
 
-    await db.transaction('rw', [db.subjects, db.entities, db.relations, db.chatSessions, db.chatMessages, db.attachments, db.settings], async () => {
+    await db.transaction('rw', [db.subjects, db.entities, db.relations, db.chatSessions, db.chatMessages, db.attachments, db.settings, db.providers], async () => {
       const idMap = new Map<string, string>();
       const timestamp = Date.now();
       const generateNewId = (oldId: string) => `${oldId}_imported_${timestamp}_${Math.random().toString(36).slice(2, 7)}`;
@@ -335,17 +343,57 @@ export const DataManager = {
         await db.attachments.bulkAdd(newAttachments);
       }
 
-      // 6. 按选项决定是否导入 AI 配置
-      if (includeConfig && data.config && data.config.length > 0) {
-        if (overwriteConfig) {
-          // 覆盖模式：直接 put（新增或替换）
-          await db.settings.bulkPut(data.config);
-        } else {
-          // 跳过模式：仅在对应记录不存在时才写入
-          for (const item of data.config) {
-            const existing = await db.settings.get(item.id);
-            if (!existing) {
-              await db.settings.add(item);
+      // 6. 按选项决定是否导入 AI 配置与供应商预设
+      if (includeConfig) {
+        if (data.providers && data.providers.length > 0) {
+          // 新格式：导入供应商预设（id 冲突则生成新 id 并改名）
+          for (const item of data.providers) {
+            const existing = await db.providers.get(item.id);
+            if (existing) {
+              item.id = generateNewId(item.id);
+              item.name = `${item.name} (导入)`;
+            }
+          }
+          await db.providers.bulkAdd(data.providers);
+
+          // 导入运行时配置（settings）
+          if (data.config && data.config.length > 0) {
+            if (overwriteConfig) {
+              await db.settings.bulkPut(data.config);
+            } else {
+              for (const item of data.config) {
+                const existing = await db.settings.get(item.id);
+                if (!existing) await db.settings.add(item);
+              }
+            }
+          }
+        } else if (data.config && data.config.length > 0) {
+          // 旧格式：config 记录是旧 AISettings（含 baseUrl/apiKey/provider/modelList 等，无 providers）
+          // 把首条旧配置迁移成一条 provider + 指向它的新 config
+          const old = data.config[0] as any;
+          if (old && old.baseUrl) {
+            const providerId = generateNewId('prov');
+            await db.providers.add({
+              id: providerId,
+              name: old.provider === 'custom' ? '自定义供应商 (导入)' : '默认供应商 (导入)',
+              baseUrl: old.baseUrl,
+              apiKey: old.apiKey || '',
+              modelList: old.modelList,
+              modelListUpdatedAt: old.modelListUpdatedAt,
+              createdAt: timestamp,
+              order: timestamp,
+            });
+            const newConfig = {
+              id: 1,
+              activeProviderId: providerId,
+              model: old.model || '',
+              modelByProvider: { [providerId]: old.model || '' },
+              namingModel: old.namingModel,
+              maxTokens: old.maxTokens,
+              temperature: old.temperature,
+            };
+            if (overwriteConfig || !(await db.settings.get(1))) {
+              await db.settings.put(newConfig);
             }
           }
         }
