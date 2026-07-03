@@ -10,7 +10,7 @@ import { vscDarkPlus, prism } from 'react-syntax-highlighter/dist/esm/styles/pri
 
 import 'katex/dist/katex.min.css';
 import { MessageContentPart, ToolCall } from '@/services/ai';
-import { FileText, FileSpreadsheet, FileCode, ChevronDown, ChevronRight, CheckCircle2, Loader2, GitCompare, Eye, Code2, XCircle } from 'lucide-react';
+import { FileText, FileSpreadsheet, FileCode, FileJson, ChevronDown, ChevronRight, CheckCircle2, Loader2, GitCompare, Eye, Code2, XCircle } from 'lucide-react';
 import { db } from '@/db';
 import mermaid from 'mermaid';
 import { useTheme } from '@/hooks/useTheme';
@@ -919,6 +919,48 @@ function extractMetadata(text: string): [any | null, string] {
 }
 
 /**
+ * 文件类型 → 预览卡片样式映射（图标 + 主题色调）
+ * 为每种受支持的文件格式提供可区分的预览卡片样式；未列出的格式回退到默认文本样式。
+ * metadata.type 即文件扩展名（见 fileProcessor.ts）。
+ */
+const FILE_TYPE_STYLES: Record<string, { Icon: any; tone: 'blue' | 'green' | 'violet' | 'amber' | 'red' | 'orange' }> = {
+  // PDF
+  pdf: { Icon: FileText, tone: 'red' },
+  // PowerPoint
+  pptx: { Icon: FileText, tone: 'orange' },
+  // 文档 / 纯文本 / Markdown
+  docx: { Icon: FileText, tone: 'blue' },
+  txt: { Icon: FileText, tone: 'blue' },
+  md: { Icon: FileText, tone: 'blue' },
+  // 表格 / 数据
+  xlsx: { Icon: FileSpreadsheet, tone: 'green' },
+  xls: { Icon: FileSpreadsheet, tone: 'green' },
+  csv: { Icon: FileSpreadsheet, tone: 'green' },
+  // JSON 数据
+  json: { Icon: FileJson, tone: 'amber' },
+  // 代码
+  js: { Icon: FileCode, tone: 'violet' },
+  ts: { Icon: FileCode, tone: 'violet' },
+  tsx: { Icon: FileCode, tone: 'violet' },
+  css: { Icon: FileCode, tone: 'violet' },
+  py: { Icon: FileCode, tone: 'violet' },
+  html: { Icon: FileCode, tone: 'violet' },
+};
+
+/**
+ * 主题色调 → 具体 Tailwind 类（图标颜色 + 图标底色）。
+ * 类名以完整字面量出现，确保 Tailwind JIT 能采集到，不会被 PurgeCSS 移除。
+ */
+const TONE_CLASSES: Record<'blue' | 'green' | 'violet' | 'amber' | 'red' | 'orange', { color: string; bg: string }> = {
+  blue: { color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-900/30' },
+  green: { color: 'text-green-600 dark:text-green-400', bg: 'bg-green-50 dark:bg-green-900/30' },
+  violet: { color: 'text-violet-500 dark:text-violet-400', bg: 'bg-violet-50 dark:bg-violet-900/30' },
+  amber: { color: 'text-amber-500 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-900/30' },
+  red: { color: 'text-red-500 dark:text-red-400', bg: 'bg-red-50 dark:bg-red-900/30' },
+  orange: { color: 'text-orange-500 dark:text-orange-400', bg: 'bg-orange-50 dark:bg-orange-900/30' },
+};
+
+/**
  * 异步图片组件
  * 支持从 Dexie (IndexedDB) 加载 attachment: 协议的本地图片数据
  */
@@ -1137,9 +1179,9 @@ function MarkdownText({ content, isUser }: { content: string; isUser?: boolean }
 
   // 如果包含文件元数据，渲染为可展开的文件预览卡片
   if (metadata) {
-    let Icon = FileText;
-    if (metadata.type === 'xlsx' || metadata.type === 'xls') Icon = FileSpreadsheet;
-    if (['js', 'ts', 'tsx', 'html', 'css', 'py', 'json'].includes(metadata.type)) Icon = FileCode;
+    const fileStyle = FILE_TYPE_STYLES[metadata.type as string] ?? { Icon: FileText, tone: 'blue' as const };
+    const Icon = fileStyle.Icon;
+    const toneClass = TONE_CLASSES[fileStyle.tone] ?? TONE_CLASSES.blue;
 
     return (
       <div className="my-2 select-none">
@@ -1147,8 +1189,8 @@ function MarkdownText({ content, isUser }: { content: string; isUser?: boolean }
           className="flex items-center gap-3 p-3 bg-slate-100 dark:bg-slate-800 rounded-lg border dark:border-slate-700 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
           onClick={() => setIsExpanded(!isExpanded)}
         >
-          <div className="p-2 bg-white dark:bg-slate-900 rounded border dark:border-slate-700">
-            <Icon size={24} className="text-blue-500" />
+          <div className={`p-2 rounded border border-slate-200 dark:border-slate-700 ${toneClass.bg}`}>
+            <Icon size={24} className={toneClass.color} />
           </div>
           <div className="flex-1 min-w-0">
             <div className="font-medium text-slate-800 dark:text-slate-200 truncate">{metadata.name}</div>
