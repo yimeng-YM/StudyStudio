@@ -354,6 +354,11 @@ export function Settings() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // 下拉关闭时清空搜索词，下次打开默认展示全部模型
+  useEffect(() => {
+    if (!showModelDropdown) setModelSearch('');
+  }, [showModelDropdown]);
+
   const handleSave = async () => {
     if (localSettings) {
       const settingsToSave = {
@@ -611,27 +616,32 @@ export function Settings() {
               <label className="block text-sm font-medium mb-1.5 text-zinc-700 dark:text-zinc-300">
                 模型
               </label>
-              <div className="flex gap-2">
+              <div className="flex gap-2 items-start">
                 <div ref={modelDropdownRef} className="flex-1 relative">
                   <div
                     className="flex items-center border rounded-lg px-3 py-2 bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 cursor-pointer hover:border-zinc-300 dark:hover:border-zinc-600 transition-colors"
-                    onClick={() => setShowModelDropdown(!showModelDropdown)}
+                    onClick={() => setShowModelDropdown(true)}
                   >
                     <input
-                      className="flex-1 bg-transparent border-0 outline-none text-zinc-900 dark:text-zinc-100 text-sm cursor-pointer"
-                      value={showModelDropdown ? modelSearch : localSettings.model}
+                      className="flex-1 bg-transparent border-0 outline-none text-zinc-900 dark:text-zinc-100 text-sm"
+                      value={localSettings.model || ''}
                       onChange={e => {
-                        setModelSearch(e.target.value);
+                        const v = e.target.value;
+                        setLocalSettings({ ...localSettings, model: v });
+                        setModelSearch(v);
                         if (!showModelDropdown) setShowModelDropdown(true);
                       }}
                       onFocus={() => setShowModelDropdown(true)}
                       placeholder="选择或输入模型名称..."
                     />
-                    <ChevronDown className={cn("w-4 h-4 text-zinc-400 transition-transform duration-200", showModelDropdown && "rotate-180")} />
+                    <ChevronDown
+                      onClick={(e) => { e.stopPropagation(); setShowModelDropdown(!showModelDropdown); }}
+                      className={cn("w-4 h-4 text-zinc-400 transition-transform duration-200 cursor-pointer shrink-0", showModelDropdown && "rotate-180")}
+                    />
                   </div>
 
                   {showModelDropdown && (
-                    <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg max-h-60 overflow-hidden">
+                    <div className="mt-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg max-h-60 overflow-hidden">
                       <div className="p-2 border-b border-zinc-100 dark:border-zinc-800">
                         <div className="relative">
                           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
