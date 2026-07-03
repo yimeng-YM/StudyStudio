@@ -77,7 +77,7 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
    * 使用自定义 Hook 管理聊天会话
    * 包含消息列表、加载状态、流式渲染状态文字以及发送消息等核心逻辑
    */
-  const { messages, loading, status, currentSessionId, sendMessage, clearSession, retry, stop } = useChatSession(sessionId || null, mode);
+  const { messages, loading, status, currentSessionId, sendMessage, clearSession, retry, stop, subAgentStates } = useChatSession(sessionId || null, mode);
 
   /**
    * 实时查询所有历史会话
@@ -340,7 +340,7 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
             <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
               {m.role === 'assistant' && m.tool_calls && m.tool_calls.length > 0 ? (
                 <div className="flex flex-col gap-2 max-w-[90%] md:max-w-[80%]">
-                  <ToolCallRenderer toolCalls={m.tool_calls} results={toolResults} />
+                  <ToolCallRenderer toolCalls={m.tool_calls} results={toolResults} subAgentStates={subAgentStates} />
                   {m.content && (
                     <div className="bg-white/70 dark:bg-zinc-800/80 backdrop-blur-sm shadow-sm rounded-2xl rounded-tl-sm ring-1 ring-zinc-900/5 dark:ring-zinc-100/10 p-4">
                       <MessageRenderer content={m.content as any} isUser={false} />

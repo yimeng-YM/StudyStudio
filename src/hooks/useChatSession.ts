@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { db } from '@/db';
-import { generateUUID, isJsonComplete } from '@/lib/utils';
+import { generateUUID, isJsonComplete, parseToolArguments } from '@/lib/utils';
 import { Message, ToolCall, streamAICompletion } from '@/services/ai';
 import { useAIStore, getFullContextPrompt } from '@/store/useAIStore';
 import { ToolDefinitions, executeTool } from '@/services/agent/ToolRegistry';
+import { runSubAgent, SubAgentCallbacks } from '@/services/agent/runSubAgent';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { getSystemPromptWithContext } from '@/services/promptConfig';
 import { generateSessionTitle } from '@/services/aiGenerator';
@@ -24,6 +25,23 @@ export interface PlanInfo {
   status: PlanStatus;
   content: string;
   steps: string[];
+}
+
+/**
+ * 子 Agent（delegate_task）的实时执行状态，用于在 UI 渲染子任务卡片。
+ * 按 toolCall.id 索引存储，供 ToolCallRenderer 展示进度 / 折叠流式 / 完成摘要。
+ */
+export interface SubAgentState {
+  /** 当前状态文案，如「子任务思考中…」「子任务执行工具: create_quiz」 */
+  status: string;
+  /** 子 Agent 的流式输出累积文本（折叠可查看） */
+  streamText: string;
+  /** 子 Agent 内部发起的工具调用列表 */
+  toolCalls: { name: string; args: string }[];
+  /** 是否已结束（完成 / 失败 / 停止） */
+  done: boolean;
+  /** 失败时的错误信息 */
+  error?: string;
 }
 
 /**
@@ -53,6 +71,21 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act') {
 
   // 记录本轮流式的结束原因，'length' 表示输出被 max_tokens 截断
   const finishReasonRef = useRef<string | null>(null);
+
+  // 子 Agent（delegate_task）的实时状态，按 toolCall.id 索引，供 UI 渲染子任务卡片
+  const [subAgentStates, setSubAgentStates] = useState<Record<string, SubAgentState>>({});
+
+  // 安全合并更新某个子 Agent 的状态（处理尚未初始化的 id）
+  const updateSubAgent = (
+    id: string,
+    patch: Partial<SubAgentState> | ((s: SubAgentState) => Partial<SubAgentState>)
+  ) => {
+    setSubAgentStates((prev) => {
+      const cur = prev[id] ?? { status: '', streamText: '', toolCalls: [], done: false };
+      const p = typeof patch === 'function' ? patch(cur) : patch;
+      return { ...prev, [id]: { ...cur, ...p } };
+    });
+  };
 
   useEffect(() => {
     if (sessionId) {
@@ -428,6 +461,8 @@ IMPORTANT: Always respond in Chinese.
 
     if (aiMessage.tool_calls && aiMessage.tool_calls.length > 0) {
       const toolMessages: Message[] = [];
+      // delegate_task 收集到此队列，待普通工具串行执行完后并行启动子 Agent
+      const delegateCalls: ToolCall[] = [];
       
       for (const toolCall of aiMessage.tool_calls) {
         if (toolCall.function.name === 'present_plan') {
@@ -448,6 +483,12 @@ IMPORTANT: Always respond in Chinese.
           setPlanStatus('confirmed');
           awaitingConfirmation.current = false;
           skipPlanning = true;
+        }
+
+        // delegate_task：委派给独立子 Agent，不在此串行执行，收集到并行队列
+        if (toolCall.function.name === 'delegate_task') {
+          delegateCalls.push(toolCall);
+          continue;
         }
 
         // 截断检测：当 finish_reason 为 'length' 且参数 JSON 结构不完整时，判定为被
@@ -482,6 +523,46 @@ IMPORTANT: Always respond in Chinese.
             tool_call_id: toolCall.id,
             name: toolCall.function.name,
             content: JSON.stringify({ error: error.message })
+          });
+        }
+      }
+
+      // 并行执行所有 delegate_task：每个子 Agent 独立循环，互不阻塞
+      if (delegateCalls.length > 0) {
+        setStatus(`正在并行执行 ${delegateCalls.length} 个子任务…`);
+        const delegateResults = await Promise.all(
+          delegateCalls.map(async (tc) => {
+            updateSubAgent(tc.id, { status: '启动子任务…', streamText: '', toolCalls: [], done: false });
+            let args: any = {};
+            try { args = parseToolArguments(tc.function.arguments || '{}'); } catch { /* 宽容解析失败则用空参数 */ }
+            const callbacks: SubAgentCallbacks = {
+              onStatus: (s) => updateSubAgent(tc.id, { status: s }),
+              onChunk: (c) => updateSubAgent(tc.id, (s) => ({ streamText: s.streamText + c })),
+              onToolCall: (n, a) => updateSubAgent(tc.id, (s) => ({ toolCalls: [...s.toolCalls, { name: n, args: a }] })),
+            };
+            try {
+              const summary = await runSubAgent({
+                task: args.task || '(未提供任务)',
+                context: args.context,
+                settings,
+                signal: abortController.signal,
+                callbacks,
+              });
+              updateSubAgent(tc.id, { done: true });
+              return { toolCall: tc, content: summary };
+            } catch (error: any) {
+              updateSubAgent(tc.id, { done: true, status: '失败', error: error.message });
+              return { toolCall: tc, content: `子任务失败: ${error.message || error}` };
+            }
+          })
+        );
+        setStatus('');
+        for (const { toolCall, content } of delegateResults) {
+          toolMessages.push({
+            role: 'tool',
+            tool_call_id: toolCall.id,
+            name: 'delegate_task',
+            content,
           });
         }
       }
@@ -644,5 +725,6 @@ IMPORTANT: Always respond in Chinese.
     confirmPlan,
     rejectPlan,
     stop,
+    subAgentStates,
   };
 }

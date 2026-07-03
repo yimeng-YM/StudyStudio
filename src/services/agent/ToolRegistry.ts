@@ -2,6 +2,7 @@ import * as readTools from './tools/readTools';
 import * as writeTools from './tools/writeTools';
 import { ToolCall } from '@/services/ai';
 import { parseToolArguments } from '@/lib/utils';
+import { DELEGATE_TASK_DESCRIPTION } from '@/services/promptConfig';
 
 /**
  * 集中注册和管理 AI 可调用的所有前端本地工具。
@@ -843,6 +844,27 @@ Call this tool as the very first step of your execution phase.`,
         type: 'object',
         properties: {},
         required: []
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'delegate_task',
+      description: DELEGATE_TASK_DESCRIPTION,
+      parameters: {
+        type: 'object',
+        properties: {
+          task: {
+            type: 'string',
+            description: '自包含的子任务描述：目标、约束、内容规格（如题目数量/题型、笔记大纲、导图层级）。子 Agent 看不到对话历史，必须在此写全。'
+          },
+          context: {
+            type: 'string',
+            description: '可选上下文，通常是实体 ID。例如 "subjectId: s1" 或 "entityId: e2"。子 Agent 据此操作具体实体。'
+          }
+        },
+        required: ['task']
       }
     }
   }

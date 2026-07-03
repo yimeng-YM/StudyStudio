@@ -10,11 +10,12 @@ import { vscDarkPlus, prism } from 'react-syntax-highlighter/dist/esm/styles/pri
 
 import 'katex/dist/katex.min.css';
 import { MessageContentPart, ToolCall } from '@/services/ai';
-import { FileText, FileSpreadsheet, FileCode, ChevronDown, ChevronRight, CheckCircle2, Loader2, GitCompare, Eye, Code2 } from 'lucide-react';
+import { FileText, FileSpreadsheet, FileCode, ChevronDown, ChevronRight, CheckCircle2, Loader2, GitCompare, Eye, Code2, XCircle } from 'lucide-react';
 import { db } from '@/db';
 import mermaid from 'mermaid';
 import { useTheme } from '@/hooks/useTheme';
 import { parseAIJson } from '@/lib/utils';
+import type { SubAgentState } from '@/hooks/useChatSession';
 import { reloadOnChunkError } from '@/lib/chunkLoadError';
 import { Modal } from './ui/Modal';
 
@@ -350,10 +351,105 @@ function getToolResultSummary(name: string, result: string): string {
 }
 
 /**
+ * 子任务（delegate_task）卡片：展示子 Agent 的实时状态、可折叠的流式输出与内部工具调用列表。
+ */
+function SubAgentCard({ tc, state, summary }: {
+  tc: ToolCall;
+  state?: SubAgentState;
+  summary?: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  // 完成态判定：优先看子 Agent 内存状态；若无状态但已有结果摘要（tool 消息已回传/已落库），
+  // 也视为完成。修复：主 Agent 收尾（如新会话触发 onSessionChange 导致 Hook 重载）后
+  // subAgentStates 可能丢失，但 delegate 的 tool 消息已持久化，据此仍应显示完成（打勾）而非转圈。
+  const done = !!state?.done || !!summary;
+  const failed = !!state?.error;
+  const status = state?.status || (summary ? '已完成' : '等待中…');
+  const streamText = state?.streamText || '';
+  const subTools = state?.toolCalls || [];
+
+  // 解析主 Agent 分配给本子 Agent 的完整任务与上下文，供展开后完整查看
+  let taskFull = '';
+  let contextFull = '';
+  try {
+    const a = JSON.parse(tc.function.arguments || '{}');
+    taskFull = String(a.task || '');
+    contextFull = String(a.context || '');
+  } catch { /* 参数非标准 JSON 时静默 */ }
+  const taskPreview = taskFull.slice(0, 50);
+
+  return (
+    <div className="flex flex-col my-1 text-[11px] animate-in fade-in slide-in-from-left-1 duration-200">
+      <div
+        onClick={() => setExpanded(v => !v)}
+        className="flex items-center gap-1.5 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800/50 rounded px-0.5 -mx-0.5 py-0.5 select-none"
+        title="点击查看子任务过程"
+      >
+        {done
+          ? (failed
+            ? <XCircle size={12} className="text-red-500 dark:text-red-400 shrink-0" />
+            : <CheckCircle2 size={12} className="text-green-500 dark:text-green-400 shrink-0" />)
+          : <Loader2 size={12} className="animate-spin text-blue-500 shrink-0" />}
+        <span className="font-medium text-zinc-400 dark:text-zinc-500 whitespace-nowrap">子任务</span>
+        <span className="text-zinc-300 dark:text-zinc-600 select-none">·</span>
+        <span className="text-zinc-500 dark:text-zinc-400 truncate flex-1 min-w-0">
+          {taskPreview || status}
+        </span>
+        {!done && taskPreview && (
+          <span className="text-zinc-400 dark:text-zinc-500 truncate">{status}</span>
+        )}
+        <span className="text-zinc-400 transition-transform shrink-0 ml-0.5" style={{ transform: expanded ? 'rotate(90deg)' : 'none' }}>
+          <ChevronRight size={13} />
+        </span>
+      </div>
+      {expanded && (
+        <div className="mt-1 ml-4 space-y-1.5 border-l border-zinc-200 dark:border-zinc-700 pl-2">
+          {/* 主 Agent 分配给本子 Agent 的完整任务详情 */}
+          <div className="space-y-0.5">
+            <div className="text-[10px] text-zinc-400">分配的任务：</div>
+            <div className="text-zinc-600 dark:text-zinc-300 whitespace-pre-wrap break-words">{taskFull || '（未提供任务描述）'}</div>
+            {contextFull && (
+              <>
+                <div className="text-[10px] text-zinc-400 mt-1">上下文：</div>
+                <div className="text-zinc-500 dark:text-zinc-400 font-mono text-[10px] whitespace-pre-wrap break-words">{contextFull}</div>
+              </>
+            )}
+          </div>
+          {subTools.length > 0 && (
+            <div className="space-y-0.5">
+              <div className="text-[10px] text-zinc-400">子工具调用（{subTools.length}）：</div>
+              {subTools.map((t, i) => (
+                <div key={i} className="text-zinc-500 dark:text-zinc-400 flex items-center gap-1">
+                  <CheckCircle2 size={10} className="text-green-500/70 shrink-0" />
+                  <span className="font-medium text-zinc-400 dark:text-zinc-500 whitespace-nowrap">{TOOL_NAMES[t.name] || t.name}</span>
+                  <span className="text-zinc-300 dark:text-zinc-600">·</span>
+                  <span className="truncate">{getToolDescription(t.name, t.args)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {streamText && (
+            <div className="space-y-0.5">
+              <div className="text-[10px] text-zinc-400">子 Agent 输出：</div>
+              <div className="font-mono text-[10px] text-zinc-600 dark:text-zinc-300 whitespace-pre-wrap max-h-40 overflow-y-auto bg-zinc-50 dark:bg-zinc-900/50 rounded p-1.5">{streamText}</div>
+            </div>
+          )}
+          {done && summary && (
+            <div className="text-[10px] text-zinc-500 dark:text-zinc-400">
+              <span className="text-zinc-400">摘要：</span>{summary}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
  * 工具调用渲染组件
  * 以紧凑内联方式展示 AI 执行的工具操作，点击 > 可展开详情
  */
-export function ToolCallRenderer({ toolCalls, results = {} }: { toolCalls: ToolCall[], results?: Record<string, string> }) {
+export function ToolCallRenderer({ toolCalls, results = {}, subAgentStates }: { toolCalls: ToolCall[], results?: Record<string, string>, subAgentStates?: Record<string, SubAgentState> }) {
   const [selectedToolCall, setSelectedToolCall] = useState<ToolCall | null>(null);
   const [modalTab, setModalTab] = useState<'content' | 'diff' | 'result'>('content');
   const isDark = useIsDark();
@@ -385,6 +481,11 @@ export function ToolCallRenderer({ toolCalls, results = {} }: { toolCalls: ToolC
         const isComplete = !!result;
         const canExpand = isExpandable(tc.id);
         const resultSummary = isComplete ? getToolResultSummary(tc.function.name, result) : '';
+
+        // delegate_task 渲染为子任务卡片（实时状态 + 折叠流式 + 子工具列表 + 完成摘要）
+        if (tc.function.name === 'delegate_task') {
+          return <SubAgentCard key={tc.id || idx} tc={tc} state={subAgentStates?.[tc.id]} summary={result} />;
+        }
 
         return (
           <div
