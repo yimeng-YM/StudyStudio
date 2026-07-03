@@ -36,7 +36,19 @@ const MobileSubjects = lazy(() => import('@/pages/mobile/MobileSubjects').then(m
  */
 function App() {
   useStudyLogger();
-  useEffect(() => { initFontSize(); }, []); // 初始化全局字体 CSS 变量
+  useEffect(() => {
+    initFontSize();
+    // 当 App 渲染完成，或者首屏主要组件加载完成后，淡出并移除开屏动画
+    const splash = document.getElementById('splash-screen');
+    if (splash) {
+      splash.style.opacity = '0';
+      splash.style.visibility = 'hidden';
+      // 动画结束后从 DOM 彻底移除，释放内存
+      setTimeout(() => {
+        splash.remove();
+      }, 300);
+    }
+  }, []); // 初始化全局字体 CSS 变量并移除开屏
 
   return (
     <SortProvider>

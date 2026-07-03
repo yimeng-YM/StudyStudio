@@ -12,7 +12,126 @@
     <title>StudyStudio</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- 首次加载的开屏动画与加载提示 -->
+      <style>
+        .splash-screen {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100vw;
+          height: 100vh;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          background-color: #ffffff;
+          z-index: 9999;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+          transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+
+        /* 暗色模式适配 */
+        @media (prefers-color-scheme: dark) {
+          .splash-screen {
+            background-color: #09090b; /* 对应 zinc-950 */
+          }
+          .splash-title {
+            color: #f4f4f5 !important;
+          }
+          .splash-subtitle {
+            color: #a1a1aa !important;
+          }
+        }
+
+        .splash-container {
+          text-align: center;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 24px;
+        }
+
+        .splash-logo-wrapper {
+          position: relative;
+          width: 96px;
+          height: 96px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        /* 改为单环外圈旋转 + 整体温和呼吸 */
+        .splash-ring {
+          position: absolute;
+          width: 100%;
+          height: 100%;
+          border: 3px solid rgba(59, 130, 246, 0.1); /* blue-500 的淡背景环 */
+          border-top-color: #3b82f6; /* blue-500 旋转指示段 */
+          border-radius: 50%;
+          animation: splash-spin 1s linear infinite;
+          box-sizing: border-box;
+        }
+
+        .splash-logo {
+          width: 52px;
+          height: 52px;
+          object-fit: contain;
+          border-radius: 12px;
+          animation: splash-logo-pulse 2s ease-in-out infinite;
+          z-index: 2;
+        }
+
+        .splash-text {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+
+        .splash-title {
+          font-size: 22px;
+          font-weight: 600;
+          color: #09090b;
+          letter-spacing: 0.05em;
+          margin: 0;
+        }
+
+        .splash-subtitle {
+          font-size: 13px;
+          color: #71717a;
+          margin: 0;
+        }
+
+        @keyframes splash-spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+
+        /* 呼吸效果调整：只对中间的 Logo 采用极其柔和的大小缩放与投影呼吸 */
+        @keyframes splash-logo-pulse {
+          0%, 100% {
+            transform: scale(0.96);
+            filter: drop-shadow(0 0 0px rgba(59, 130, 246, 0));
+          }
+          50% {
+            transform: scale(1.04);
+            filter: drop-shadow(0 0 12px rgba(59, 130, 246, 0.24));
+          }
+        }
+      </style>
+      <div class="splash-screen" id="splash-screen">
+        <div class="splash-container">
+          <div class="splash-logo-wrapper">
+            <div class="splash-ring"></div>
+            <img class="splash-logo" src="/logos.png" alt="Logo" onerror="this.style.display='none'" />
+          </div>
+          <div class="splash-text">
+            <h1 class="splash-title">StudyStudio</h1>
+            <p class="splash-subtitle">加载专属学习空间中...</p>
+          </div>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
