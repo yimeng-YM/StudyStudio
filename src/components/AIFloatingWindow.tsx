@@ -40,6 +40,14 @@ export function AIFloatingWindow() {
 
     const isMobile = useIsMobile();
 
+    // 视口尺寸：侧边栏模式用 left/height 数值定位（贴右贴底），需监听 resize 实时更新
+    const [viewport, setViewport] = useState({ w: window.innerWidth, h: window.innerHeight });
+    useEffect(() => {
+        const onResize = () => setViewport({ w: window.innerWidth, h: window.innerHeight });
+        window.addEventListener('resize', onResize);
+        return () => window.removeEventListener('resize', onResize);
+    }, []);
+
     // --- 交互状态 ---
     const [isDragging, setIsDragging] = useState(false);
     const [isPreparingDrag, setIsPreparingDrag] = useState(false);
@@ -221,6 +229,19 @@ export function AIFloatingWindow() {
     /** 标题栏是否可拖拽（仅悬浮窗模式桌面端） */
     const titleDraggable = !isMobile && aiWindowMode === 'floating';
 
+    /** 拖拽 / 调整大小 / 调整侧边栏宽度等交互进行中（期间定位属性实时跟手，不参与过渡） */
+    const isInteracting = isDragging || isResizing || isResizingSidebar;
+    /**
+     * 窗口目标位置与尺寸（统一用 left/top/width/height）。
+     * 模式切换时由 CSS transition 平滑过渡真实数值（内容 reflow 重排，而非 scale 拉伸变形），
+     * 与占位条用相同时长/缓动，移动与让位同步；交互期间 transition 置 none 实时跟手。
+     */
+    const target = isMobile
+        ? { left: 0, top: 0, width: viewport.w, height: viewport.h }
+        : isSidebar
+            ? { left: viewport.w - aiSidebarWidth, top: 0, width: aiSidebarWidth, height: viewport.h }
+            : { left: aiWindowPosition.x, top: aiWindowPosition.y, width: floatingWindowSize.width, height: floatingWindowSize.height };
+
     // 标题栏：模式切换 + 收起按钮
     // 两种模式的顶栏配色统一为原悬浮窗配色（bg-zinc-50 / dark:bg-zinc-900）；
     // 侧边栏模式下内边距与学科界面顶栏对齐（宽度/高度），悬浮窗维持紧凑内边距
@@ -314,34 +335,52 @@ export function AIFloatingWindow() {
                 </div>
             )}
 
+            {/* 侧边栏占位条：sidebar 模式开启时占据布局空间，推动 main 平滑收缩/扩展。
+                始终挂载，宽度在 0 ↔ aiSidebarWidth 间用 transition 过渡；main 为 flex-1，
+                会随占位条宽度每帧重算而平滑跟随。拖拽调整侧边栏宽度时禁用 transition 保证跟手。 */}
+            <div
+                className="shrink-0 h-full"
+                style={{
+                    width: isSidebar && isFloatingWindowOpen ? aiSidebarWidth : 0,
+                    transition: isResizingSidebar ? 'none' : 'width 0.28s cubic-bezier(0.22, 1, 0.36, 1)',
+                }}
+            />
+
             {/* AI 对话窗口：同一容器随模式切换样式，避免重挂载 ChatWindow */}
             <AnimatePresence>
                 {isFloatingWindowOpen && (
                     <motion.div
                         key="ai-window"
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: 8 }}
-                        transition={{ duration: 0.2, ease: 'easeOut' }}
+                        // 开/关动画用 transform（x/scale/y）+ opacity；模式切换的位移与缩放由下方
+                        // style 的 left/top/width/height + CSS transition 平滑过渡（真实数值 reflow，
+                        // 不用 scale 拉伸内容变形），与占位条相同时长/缓动同步。
+                        initial={isSidebar
+                            ? { opacity: 0, x: '100%' }
+                            : { opacity: 0, scale: 0.94, y: 14 }}
+                        animate={{ opacity: 1, x: 0, scale: 1, y: 0 }}
+                        exit={isSidebar
+                            ? { opacity: 0, x: '100%' }
+                            : { opacity: 0, scale: 0.96, y: 14 }}
+                        transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
                         className={cn(
-                            "border dark:border-zinc-800 shadow-2xl overflow-hidden flex flex-col z-[60]",
+                            "fixed border dark:border-zinc-800 shadow-2xl overflow-hidden flex flex-col z-[60]",
                             isMobile
-                                ? "fixed inset-0 rounded-none bg-white dark:bg-zinc-950"
+                                ? "rounded-none bg-white dark:bg-zinc-950"
                                 : isSidebar
-                                    // 侧边栏：半透明毛玻璃 + 左侧小圆角，弱化与主内容的分界
-                                    ? "h-full border-l shrink-0 relative rounded-l-xl bg-white/70 dark:bg-zinc-950/70 backdrop-blur-xl"
-                                    : "fixed rounded-xl bg-white dark:bg-zinc-950"
+                                    // 侧边栏：半透明毛玻璃 + 左侧圆角（贴右，右侧靠视口边缘）
+                                    ? "border-l rounded-l-xl bg-white/70 dark:bg-zinc-950/70 backdrop-blur-xl"
+                                    : "rounded-xl bg-white dark:bg-zinc-950"
                         )}
-                        style={isMobile
-                            ? undefined
-                            : isSidebar
-                                ? { width: aiSidebarWidth }
-                                : {
-                                    left: aiWindowPosition.x,
-                                    top: aiWindowPosition.y,
-                                    width: floatingWindowSize.width,
-                                    height: floatingWindowSize.height,
-                                }}
+                        style={{
+                            left: target.left,
+                            top: target.top,
+                            width: target.width,
+                            height: target.height,
+                            // 交互期间禁用过渡实时跟手；否则模式切换用与占位条一致的 0.28s ease 平滑过渡
+                            transition: isInteracting
+                                ? 'none'
+                                : 'left 0.28s cubic-bezier(0.22,1,0.36,1), top 0.28s cubic-bezier(0.22,1,0.36,1), width 0.28s cubic-bezier(0.22,1,0.36,1), height 0.28s cubic-bezier(0.22,1,0.36,1)',
+                        }}
                     >
                         {titleBar}
                         {chatContent}
