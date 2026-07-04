@@ -588,7 +588,7 @@ function QuizEditor({ quiz, isEditingTitle, setIsEditingTitle, editTitle, setEdi
       <div ref={questionListRef} className={cn("flex-1 overflow-y-auto py-2 md:py-4", (sidebarCollapsed || sidebarWidth < 250) ? "grid grid-cols-2 gap-4 items-start" : "space-y-6")} style={{ overscrollBehavior: 'contain' }}>
         {questions.length === 0 ? <div className="text-center py-20 text-zinc-400"><div className="mb-2">开始添加题目</div><div className="text-sm">点击下方按钮添加不同类型的题目</div></div>
           : questions.map((q, index) => (
-            <div key={q.id} data-question-index={index} className="relative group/item bg-white/70 dark:bg-zinc-900/50 rounded-xl border border-zinc-200 dark:border-zinc-800/50 p-4 transition-all hover:border-zinc-300 dark:hover:border-zinc-700" style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 120px' }}>
+            <div key={q.id} data-question-index={index} className="relative group/item bg-white/70 dark:bg-zinc-900/50 rounded-xl border border-zinc-200 dark:border-zinc-800/50 p-4 transition-all hover:border-zinc-300 dark:hover:border-zinc-700">
               {editingQuestionId === q.id ? <QuestionEditor question={q} onSave={(updates) => updateQuestion(q.id, updates)} onCancel={() => setEditingQuestionId(null)} />
                 : <QuestionViewer question={q} index={index} quizId={quiz.id} existingRecord={recordMap.get(q.id) || null} onEdit={() => setEditingQuestionId(q.id)} onDelete={() => deleteQuestion(q.id)} onRecordSaved={handleRecordSaved} />}
             </div>
