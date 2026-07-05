@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { db } from '@/db';
-import { generateUUID, isJsonComplete, parseToolArguments } from '@/lib/utils';
+import { generateUUID, isJsonComplete, parseToolArguments, AI_ONLY_HINT_PREFIX } from '@/lib/utils';
 import { Message, ToolCall, streamAICompletion } from '@/services/ai';
 import { useAIStore, getFullContextPrompt } from '@/store/useAIStore';
 import { ToolDefinitions, executeTool } from '@/services/agent/ToolRegistry';
@@ -8,7 +8,7 @@ import { runSubAgent, SubAgentCallbacks } from '@/services/agent/runSubAgent';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { getSystemPromptWithContext } from '@/services/promptConfig';
 import { generateSessionTitle } from '@/services/aiGenerator';
-import { isWebSearchUsable, isWikipediaOn, buildWebToolsStatus } from '@/lib/toolConfig';
+import { isWebSearchUsable, isWebUsable, isWikipediaOn, buildWebToolsStatus } from '@/lib/toolConfig';
 
 /**
  * 任务执行计划状态
@@ -249,9 +249,20 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act') {
           parts.push({ type: 'text', text: f.content });
         }
         if (Array.isArray(f.images)) {
-          for (const img of f.images) {
+          f.images.forEach((img: string, idx: number) => {
             parts.push({ type: 'image_url', image_url: { url: img } });
-          }
+            // 该图片已同步存入 db.attachments（见 ChatWindow.handleFileSelect），
+            // 附带 attachment id 提示，使 AI 可通过 insert_image_into_note 引用到笔记中。
+            const attachmentId = f.imageAttachmentIds?.[idx];
+            if (attachmentId) {
+              // AI_ONLY_HINT_PREFIX 标记此 part 仅供模型阅读——随消息一起发给 AI，
+              // 但 MessageRenderer 会跳过渲染，不在聊天 UI 中显示给用户。
+              parts.push({
+                type: 'text',
+                text: `${AI_ONLY_HINT_PREFIX}[上图已保存为附件，attachment id: ${attachmentId}。如需将此图插入笔记，请调用 insert_image_into_note 工具，image_source 参数传入 "attachment:${attachmentId}"]`,
+              });
+            }
+          });
         }
       }
       if (parts.length > 0) {
@@ -330,7 +341,7 @@ IMPORTANT: Always respond in Chinese.
 `;
     }
 
-    // 注入联网工具的可用性状态：告诉模型本轮 web_search / search_wikipedia 是否可用（read_url 始终可用）
+    // 注入联网工具的可用性状态：告诉模型本轮 web_search / read_url / 各百科工具是否可用（受总开关与各独立开关联动控制）
     systemPrompt += '\n\n' + buildWebToolsStatus(config);
 
     const messagesWithSystem = [
@@ -398,14 +409,16 @@ IMPORTANT: Always respond in Chinese.
 
     // 工具可用性过滤：
     //   - present_plan / start_execution 仅 plan 模式可见（act 模式过滤掉）
-    //   - web_search 需「开关打开 + 当前后端 Key 已配置」才注入（见 toolConfig.ts）
-    //   - search_wikipedia 按 wikipediaEnabled 开关注入（默认开）
-    //   - read_url 始终注入，不受任何开关控制
+    //   - 「联网搜索 + 网页读取」为同一总开关：web_search 与 read_url 均需总开关开 + 后端 Key 已配置（isWebUsable）
+    //   - 维基百科站内搜（search_wikipedia_web）无独立开关——联网可用即自带；原站 API 受独立开关 + 总开关联动约束
     const activeTools = ToolDefinitions.filter(t => {
       const n = t.function.name;
       if (n === 'present_plan' || n === 'start_execution') return mode === 'plan';
       if (n === 'web_search') return isWebSearchUsable(config);
+      if (n === 'read_url') return isWebUsable(config);
+      if (n === 'search_wikipedia_web') return isWebUsable(config);
       if (n === 'search_wikipedia') return isWikipediaOn(config);
+      if (n === 'image_search') return isWebUsable(config);
       return true;
     });
 

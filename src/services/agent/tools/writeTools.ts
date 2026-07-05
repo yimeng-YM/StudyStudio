@@ -460,6 +460,88 @@ export const patch_note_content = async ({
 };
 
 /**
+ * 将一张图片（网络图片 URL 或已上传的本地附件）以 Markdown 语法插入指定笔记。
+ *
+ * 图片来源支持两种形式：
+ *  - 网络图片 URL（http/https），通常来自 image_search 或 read_url 返回的 images 字段。
+ *  - `attachment:<id>` 形式，指向用户在聊天中上传并已存入 db.attachments 的本地图片。
+ *
+ * @param args.entityId - 笔记实体 ID
+ * @param args.image_source - 图片来源：http(s) URL 或 `attachment:<id>`
+ * @param args.alt_text - 图片替代文本（可选，默认 "Image"）
+ * @param args.anchor_text - 锚点文本（可选）。提供时，图片插入到该文本之后；要求在笔记中唯一出现（同 patch_note_content 的匹配规则）。
+ *   不提供时，图片追加到笔记末尾。
+ *
+ * @throws 当实体不存在、不是笔记、附件不存在，或 anchor_text 未找到/出现多次时抛出错误
+ */
+export const insert_image_into_note = async ({
+  entityId,
+  image_source,
+  alt_text,
+  anchor_text,
+}: {
+  entityId: string;
+  image_source: string;
+  alt_text?: string;
+  anchor_text?: string;
+}) => {
+  const entity = await db.entities.get(entityId);
+  if (!entity) throw new Error(`未找到实体 ${entityId}`);
+  if (entity.type !== 'note') throw new Error(`实体 ${entityId} 不是笔记`);
+
+  const src = (image_source || '').trim();
+  if (!src) throw new Error('缺少图片来源 image_source');
+
+  if (src.startsWith('attachment:')) {
+    const attachmentId = src.slice('attachment:'.length);
+    const attachment = await db.attachments.get(attachmentId);
+    if (!attachment) throw new Error(`未找到附件 ${attachmentId}，请确认图片已上传成功`);
+  } else if (!/^https?:\/\//i.test(src)) {
+    throw new Error('image_source 必须是 http(s) 网络图片链接，或 attachment:<id> 形式的本地附件引用');
+  }
+
+  const imageMarkdown = `![${alt_text || 'Image'}](${src})`;
+  const content = typeof entity.content === 'string' ? entity.content : '';
+
+  let newContent: string;
+  let before: string;
+  let after: string;
+
+  if (anchor_text) {
+    if (!content.includes(anchor_text)) {
+      throw new Error(
+        `未在笔记中找到指定的锚点文本 anchor_text。请通过 get_entity_content 重新读取最新内容，` +
+        `确保 anchor_text 与原文完全一致（含空格、标点、换行）。`
+      );
+    }
+    const occurrences = content.split(anchor_text).length - 1;
+    if (occurrences > 1) {
+      throw new Error(
+        `锚点文本在笔记中出现了 ${occurrences} 次，无法唯一定位。` +
+        `请在 anchor_text 参数中包含更多上下文（如前后各多加一行）以确保唯一性。`
+      );
+    }
+    before = anchor_text;
+    after = `${anchor_text}\n${imageMarkdown}`;
+    newContent = content.replace(anchor_text, after);
+  } else {
+    before = '';
+    after = imageMarkdown;
+    newContent = content.length > 0 ? `${content}\n${imageMarkdown}\n` : `${imageMarkdown}\n`;
+  }
+
+  entity.content = newContent;
+  entity.updatedAt = Date.now();
+  await db.entities.put(entity);
+
+  return {
+    id: entity.id,
+    title: entity.title,
+    _diff: { before, after },
+  };
+};
+
+/**
  * 对题库中的题目进行精细化增删改操作，无需重写全部题目。
  * 每个操作项可独立指定类型（add / update / delete）及目标题目。
  *

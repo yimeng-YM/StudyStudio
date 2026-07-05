@@ -1,24 +1,27 @@
 import { db } from '@/db';
 
 /**
- * 联网工具集（web_search / read_url / search_wikipedia）。
+ * 联网工具集（web_search / read_url / search_wikipedia / search_wikipedia_web）。
  *
  * 本项目是纯浏览器端 SPA，没有后端，无法直接 fetch 任意网页（CORS）。
- * 这里经「CORS 友好」的端点访问网络：
- *   - 搜索 web_search：可选后端
- *       · Jina  —— https://s.jina.ai/<query>        需 Jina API Key（免费注册 https://jina.ai/）
- *       · Serper —— https://google.serper.dev/search 需 Serper API Key（https://serper.dev/，Google 搜索结果）
- *   - 读网页 read_url：https://r.jina.ai/<url>       把指定网页转为干净 Markdown 正文，免 Key，始终可用
- *   - 维基百科 search_wikipedia：{lang}.wikipedia.org/w/api.php?origin=*  免 Key，权威百科，CORS 原生支持
+ * 联网搜索与网页读取共用同一后端与同一 Key（见 AIConfig.webSearchBackend）：
+ *   - 'serper'（默认）：搜索 POST https://google.serper.dev/search，读取 POST https://scrape.serper.dev
+ *       两者均需 Serper API Key（X-API-KEY，https://serper.dev/）
+ *   - 'jina'：搜索 GET https://s.jina.ai/<query>（需 Jina Key，免注册有限额度），读取 GET https://r.jina.ai/<url>（免 Key）
  *
- * 搜索后端与各 API Key 存于 AIConfig（db.settings id=1），由「设置 → 高级参数」配置；
- * 是否启用 web_search / search_wikipedia 由 AI 对话界面的「工具」按钮开关控制（见 toolConfig.ts）。
- * read_url 不受开关控制，始终可用。所有错误以 { error } 形式回传给模型，便于其自适应。
+ * 两个维基来源（多重信息交叉）：
+ *   - search_wikipedia：原站 {lang}.wikipedia.org/w/api.php?origin=*，免 Key、CORS 原生支持（原站被墙，默认关闭，挂 VPN 时可用）
+ *   - search_wikipedia_web：经 Serper 对 wikipedia.org 做站内搜索（query site:wikipedia.org），国内可用、默认开启；复用 web_search 的 Serper 逻辑
+ *
+ * 后端、各 Key 均存于 AIConfig（db.settings id=1），由「设置 → 高级参数」配置；
+ * 是否启用各工具由 AI 对话界面的「工具」按钮开关控制（见 toolConfig.ts 的联动规则）。所有错误以 { error } 形式回传给模型，便于其自适应。
  */
 
 const SEARCH_ENDPOINT = 'https://s.jina.ai/';
 const READER_ENDPOINT = 'https://r.jina.ai/';
 const SERPER_ENDPOINT = 'https://google.serper.dev/search';
+const SCRAPE_SERPER_ENDPOINT = 'https://scrape.serper.dev';
+const SERPER_IMAGES_ENDPOINT = 'https://google.serper.dev/images';
 
 /** 单个网页正文的最大字符预算，防止超大页面灌进上下文撑爆 token */
 const READ_DEFAULT_MAX_CHARS = 16000;
@@ -30,6 +33,11 @@ const WIKIPEDIA_EXTRACT_MAX_CHARS = 1200;
 /** 搜索默认 / 上限条数 */
 const SEARCH_DEFAULT_RESULTS = 5;
 const SEARCH_MAX_RESULTS = 10;
+/** 图片搜索默认 / 上限条数 */
+const IMAGE_SEARCH_DEFAULT_RESULTS = 6;
+const IMAGE_SEARCH_MAX_RESULTS = 10;
+/** read_url 页内提取图片的最大数量，避免图文混排页面撑爆返回体 */
+const READ_URL_MAX_IMAGES = 20;
 /** 维基百科默认 / 上限条数 */
 const WIKIPEDIA_DEFAULT_LIMIT = 5;
 const WIKIPEDIA_MAX_LIMIT = 10;
@@ -38,7 +46,7 @@ const REQUEST_TIMEOUT_MS = 20000;
 
 /** 搜索后端未配置对应 Key 时返回给模型的提示文案 */
 const NO_JINA_KEY_HINT = 'Jina 联网服务需要 API Key（HTTP 401）。请在「设置 → 高级参数」填写 Jina API Key，免费注册：https://jina.ai/';
-const NO_SERPER_KEY_HINT = '当前搜索后端为 Serper，但未配置 Serper API Key。请在「设置 → 高级参数」填写 Serper API Key。';
+const NO_SERPER_KEY_HINT = 'Serper 联网服务（搜索 / 网页读取）需要 API Key。请在「设置 → 高级参数」填写 Serper API Key（https://serper.dev/）。';
 
 /**
  * 带超时的 fetch 封装。超时触发 AbortController，避免请求无限挂起。
@@ -55,7 +63,7 @@ async function fetchWithTimeout(url: string, init: RequestInit, ms = REQUEST_TIM
 
 /**
  * 读取用户配置的 Jina API Key（存于 AIConfig.jinaApiKey），组装 Jina 请求头。
- * 无 Key 时仅带 Accept 头，read_url 仍可免 Key 工作；web_search（Jina）若 401 会转为提示文案。
+ * 无 Key 时仅带 Accept 头，read_url（Jina Reader）仍可免 Key 工作；web_search（Jina）若 401 会转为提示文案。
  */
 async function jinaHeaders(): Promise<Record<string, string>> {
   const headers: Record<string, string> = { Accept: 'application/json' };
@@ -70,16 +78,16 @@ async function jinaHeaders(): Promise<Record<string, string>> {
 }
 
 /**
- * 读取搜索后端与各 Key（存于 AIConfig），供 web_search 分发使用。
+ * 读取搜索/读取后端与 Serper Key（存于 AIConfig），供 web_search / read_url 分发使用。
  */
 async function readWebSearchConfig(): Promise<{ backend: 'jina' | 'serper'; serperKey: string }> {
   try {
     const cfg = await db.settings.get(1) as any;
-    const backend: 'jina' | 'serper' = cfg?.webSearchBackend === 'serper' ? 'serper' : 'jina';
+    const backend: 'jina' | 'serper' = cfg?.webSearchBackend === 'jina' ? 'jina' : 'serper';
     const serperKey = typeof cfg?.serperApiKey === 'string' ? cfg.serperApiKey.trim() : '';
     return { backend, serperKey };
   } catch {
-    return { backend: 'jina', serperKey: '' };
+    return { backend: 'serper', serperKey: '' };
   }
 }
 
@@ -87,6 +95,26 @@ async function readWebSearchConfig(): Promise<{ backend: 'jina' | 'serper'; serp
 function clip(s: string, max: number): string {
   const t = (s || '').trim().replace(/\s+/g, ' ');
   return t.length > max ? t.slice(0, max) + '…' : t;
+}
+
+/**
+ * 从 Markdown 正文中提取图片链接（`![alt](url)` 语法），用于 read_url 附带页内图片。
+ * 按出现顺序去重，最多返回 max 张，避免图文混排页面把返回体撑爆。
+ */
+function extractImageUrls(markdown: string, max: number): string[] {
+  if (!markdown) return [];
+  const seen = new Set<string>();
+  const urls: string[] = [];
+  const re = /!\[[^\]]*\]\((https?:\/\/[^\s)]+)\)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(markdown)) && urls.length < max) {
+    const url = m[1];
+    if (!seen.has(url)) {
+      seen.add(url);
+      urls.push(url);
+    }
+  }
+  return urls;
 }
 
 /**
@@ -125,8 +153,8 @@ function parseMarkdownSearchResults(md: string): { title?: string; url?: string;
  * 在网络上搜索关键词，返回若干结果的标题、URL 与短摘要。
  *
  * 后端由 AIConfig.webSearchBackend 决定：
- *   - 'jina'（默认）：GET https://s.jina.ai/<query>，Authorization: Bearer <jinaKey>
- *   - 'serper'：POST https://google.serper.dev/search，X-API-KEY: <serperKey>，body { q, num }
+ *   - 'serper'（默认）：POST https://google.serper.dev/search，X-API-KEY: <serperKey>，body { q, num }
+ *   - 'jina'：GET https://s.jina.ai/<query>，Authorization: Bearer <jinaKey>
  *
  * @param args.query - 搜索关键词（必填）
  * @param args.max_results - 返回结果上限（可选，默认 5，上限 10）
@@ -140,7 +168,7 @@ export const web_search = async ({ query, max_results }: { query: string; max_re
   const q = query.trim();
   const { backend, serperKey } = await readWebSearchConfig();
 
-  // ── Serper 后端 ──
+  // ── Serper 后端（默认） ──
   if (backend === 'serper') {
     if (!serperKey) return { error: NO_SERPER_KEY_HINT, query: q };
     try {
@@ -162,20 +190,53 @@ export const web_search = async ({ query, max_results }: { query: string; max_re
       const organic: any[] = Array.isArray(data?.organic) ? data.organic : [];
       const results = organic
         .slice(0, limit)
-        .map((it) => ({
-          title: (it.title || '').trim() || '(无标题)',
-          url: (it.link || '').trim(),
-          snippet: clip(it.snippet || '', SEARCH_SNIPPET_MAX_CHARS),
-        }))
+        .map((it) => {
+          const r: { title: string; url: string; snippet: string; date?: string } = {
+            title: (it.title || '').trim() || '(无标题)',
+            url: (it.link || '').trim(),
+            snippet: clip(it.snippet || '', SEARCH_SNIPPET_MAX_CHARS),
+          };
+          if (it.date) r.date = String(it.date).trim();
+          return r;
+        })
         .filter((r) => r.url);
 
       const out: any = { query: q, count: results.length, results };
-      if (data?.knowledgeGraph && (data.knowledgeGraph.title || data.knowledgeGraph.description)) {
-        out.knowledgeGraph = {
-          title: (data.knowledgeGraph.title || '').trim(),
-          description: clip(data.knowledgeGraph.description || '', SEARCH_SNIPPET_MAX_CHARS),
+
+      // 知识图谱：含标题/描述 + attributes 事实盒（权威结构化信息，高价值）+ 来源引用
+      const kg = data?.knowledgeGraph;
+      if (kg && (kg.title || kg.description)) {
+        const kgOut: { title: string; description: string; attributes?: Record<string, string>; website?: string; source?: string } = {
+          title: (kg.title || '').trim(),
+          description: clip(kg.description || '', SEARCH_SNIPPET_MAX_CHARS * 2),
         };
+        if (kg.attributes && typeof kg.attributes === 'object') {
+          // 折叠过长属性值，避免事实盒撑爆上下文
+          const attrs: Record<string, string> = {};
+          for (const [k, v] of Object.entries(kg.attributes)) {
+            attrs[k] = clip(String(v ?? ''), 200);
+          }
+          kgOut.attributes = attrs;
+        }
+        if (kg.website) kgOut.website = String(kg.website).trim();
+        if (kg.descriptionLink || kg.descriptionSource) kgOut.source = (kg.descriptionLink || kg.descriptionSource || '').trim();
+        out.knowledgeGraph = kgOut;
       }
+
+      // 人们也问：提供相关问题 + 摘要，便于模型理解意图与发现后续线索（取前 4 条）
+      const paa: any[] = Array.isArray(data?.peopleAlsoAsk) ? data.peopleAlsoAsk : [];
+      if (paa.length > 0) {
+        const qa = paa
+          .slice(0, 4)
+          .map((p) => ({
+            question: (p.question || '').trim(),
+            snippet: clip(p.snippet || '', SEARCH_SNIPPET_MAX_CHARS),
+            url: (p.link || '').trim(),
+          }))
+          .filter((p) => p.question);
+        if (qa.length > 0) out.peopleAlsoAsk = qa;
+      }
+
       if (results.length === 0 && !out.knowledgeGraph) {
         out.message = '未找到相关结果。可尝试更换关键词，或用 read_url 读取已知权威链接。';
       }
@@ -187,7 +248,7 @@ export const web_search = async ({ query, max_results }: { query: string; max_re
     }
   }
 
-  // ── Jina 后端（默认） ──
+  // ── Jina 后端 ──
   try {
     const resp = await fetchWithTimeout(`${SEARCH_ENDPOINT}${encodeURIComponent(q)}`, { headers: await jinaHeaders() });
     if (resp.status === 401) {
@@ -235,14 +296,81 @@ export const web_search = async ({ query, max_results }: { query: string; max_re
 };
 
 /**
- * 抓取指定网页并返回其正文（干净 Markdown），供模型读取完整信息后纳入上下文。
- * 经 Jina Reader（r.jina.ai），免 Key，始终可用（不受联网搜索开关控制）。
+ * 在网络上搜索图片，返回若干候选图片的直链、来源页面与标题。
+ * 仅支持 Serper 后端（google.serper.dev/images）——Jina 无对等的通用图片搜索接口。
+ * 用途：AI 找到合适的图片后，可直接将 imageUrl 写入笔记 Markdown（`![]()`），
+ * 或调用 insert_image_into_note 工具插入指定笔记。
  *
- * 典型用法：web_search / search_wikipedia 得到候选 URL → 挑选权威来源 → read_url 读取全文 → 据此回答并引用来源。
+ * @param args.query - 搜索关键词（必填）
+ * @param args.max_results - 返回结果上限（可选，默认 6，上限 10）
+ * @returns { query, count, results: [{ title, imageUrl, sourceUrl }] }；失败时返回 { error, query }
+ */
+export const image_search = async ({ query, max_results }: { query: string; max_results?: number }) => {
+  if (!query || !query.trim()) {
+    return { error: '缺少搜索关键词 query' };
+  }
+  const limit = Math.min(Math.max(max_results ?? IMAGE_SEARCH_DEFAULT_RESULTS, 1), IMAGE_SEARCH_MAX_RESULTS);
+  const q = query.trim();
+  const { backend, serperKey } = await readWebSearchConfig();
+
+  if (backend !== 'serper') {
+    return { error: '图片搜索目前仅支持 Serper 后端，请在「设置 → 高级参数」中切换联网搜索后端为 Serper。', query: q };
+  }
+  if (!serperKey) return { error: NO_SERPER_KEY_HINT, query: q };
+
+  try {
+    const resp = await fetchWithTimeout(SERPER_IMAGES_ENDPOINT, {
+      method: 'POST',
+      headers: { 'X-API-KEY': serperKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ q, num: limit }),
+    });
+    if (resp.status === 401 || resp.status === 403) {
+      return { error: `Serper API Key 无效或未授权（HTTP ${resp.status}），请在设置中检查 Key。`, query: q };
+    }
+    if (resp.status === 429) {
+      return { error: 'Serper 限流（429），请稍后重试。', query: q };
+    }
+    if (!resp.ok) {
+      return { error: `Serper 图片搜索失败: HTTP ${resp.status}`, query: q };
+    }
+    const data = await resp.json();
+    const images: any[] = Array.isArray(data?.images) ? data.images : [];
+    const results = images
+      .slice(0, limit)
+      .map((it) => ({
+        title: (it.title || '').trim() || '(无标题)',
+        imageUrl: (it.imageUrl || '').trim(),
+        sourceUrl: (it.link || '').trim(),
+      }))
+      .filter((r) => r.imageUrl);
+
+    if (results.length === 0) {
+      return { query: q, count: 0, results: [], message: '未找到相关图片。可尝试更换关键词。' };
+    }
+    return { query: q, count: results.length, results };
+  } catch (e: any) {
+    if (e?.name === 'AbortError') return { error: 'Serper 图片搜索超时（20s）。', query: q };
+    return { error: 'Serper 图片搜索请求失败：可能是网络或 CORS 限制。', query: q };
+  }
+};
+
+/**
+ * 抓取指定网页并返回其正文（干净 Markdown），供模型读取完整信息后纳入上下文。
+ *
+ * 后端与 web_search 共用（AIConfig.webSearchBackend）：
+ *   - 'serper'（默认）：POST https://scrape.serper.dev，X-API-KEY: <serperKey>，body { url, includeMarkdown: true } → 返回 Markdown 正文
+ *   - 'jina'：GET https://r.jina.ai/<url>，免 Key，返回干净 Markdown
+ *
+ * 典型用法：web_search / search_wikipedia(_web) 得到候选 URL → 挑选权威来源 → read_url 读取全文 → 据此回答并引用来源。
+ * 挑选候选 URL 时，优先选择国内网络可直接访问的站点——部分域名（如原版 wikipedia.org、twitter.com/x.com 等）
+ * 在中国大陆网络环境下可能无法被抓取服务正常读取，应优先换用可达的镜像/替代来源。
+ *
+ * 返回内容中若正文包含图片（Markdown `![]()` 语法），会额外提取到 images 字段，
+ * 可直接用于笔记：将 images 中的 URL 写入笔记 Markdown，或调用 insert_image_into_note 工具插入指定笔记。
  *
  * @param args.url - 目标网址（必填）。缺少 http(s):// 前缀时自动补上。
  * @param args.max_chars - 返回正文的字符上限（可选，默认 16000，上限 40000，下限 1000）
- * @returns { url, title, content, chars, full_chars, truncated }；失败时返回 { error, url }
+ * @returns { url, title, content, chars, full_chars, truncated, images }；失败时返回 { error, url }
  */
 export const read_url = async ({ url, max_chars }: { url: string; max_chars?: number }) => {
   if (!url || !url.trim()) {
@@ -253,8 +381,68 @@ export const read_url = async ({ url, max_chars }: { url: string; max_chars?: nu
     target = `https://${target}`;
   }
   const budget = Math.min(Math.max(max_chars ?? READ_DEFAULT_MAX_CHARS, READ_MIN_MAX_CHARS), READ_MAX_MAX_CHARS);
-  const endpoint = `${READER_ENDPOINT}${target}`;
+  const { backend, serperKey } = await readWebSearchConfig();
 
+  // ── Serper scrape 后端（默认） ──
+  if (backend === 'serper') {
+    if (!serperKey) return { error: NO_SERPER_KEY_HINT, url: target };
+    try {
+      const resp = await fetchWithTimeout(SCRAPE_SERPER_ENDPOINT, {
+        method: 'POST',
+        headers: { 'X-API-KEY': serperKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: target, includeMarkdown: true }),
+      });
+      if (resp.status === 401 || resp.status === 403) {
+        return { error: `Serper API Key 无效或未授权（HTTP ${resp.status}），请在设置中检查 Key。`, url: target };
+      }
+      if (resp.status === 429) {
+        return { error: '读取服务限流（429），请稍后重试。', url: target };
+      }
+      if (!resp.ok) {
+        return { error: `读取网页失败: HTTP ${resp.status}`, url: target };
+      }
+      const text = await resp.text();
+      let title = '';
+      let content = '';
+      try {
+        const json = JSON.parse(text);
+        // scrape.serper.dev 响应（includeMarkdown:true）：{ markdown, text, metadata:{ title, description, "og:title", ... }, jsonld, credits }
+        // 默认取 markdown 正文（用户要求默认解析 markdown）；title 取 metadata.title，回退 og:title
+        title = json?.metadata?.title || json?.metadata?.['og:title'] || json?.title || '';
+        content = json?.markdown || json?.text || '';
+      } catch {
+        // 非 JSON 响应：整个响应即正文（Markdown / 纯文本）
+        content = text;
+      }
+
+      content = (content || '').trim();
+      if (!content) {
+        return {
+          error: '页面正文为空，可能是 JS 渲染页 / 付费墙 / 被屏蔽。可尝试换一个链接。',
+          url: target,
+          title: title.trim(),
+        };
+      }
+      const truncated = content.length > budget;
+      const clipped = truncated ? content.slice(0, budget) : content;
+      const images = extractImageUrls(content, READ_URL_MAX_IMAGES);
+      return {
+        url: target,
+        title: title.trim(),
+        content: clipped,
+        chars: clipped.length,
+        full_chars: content.length,
+        truncated,
+        ...(images.length > 0 ? { images } : {}),
+      };
+    } catch (e: any) {
+      if (e?.name === 'AbortError') return { error: '读取网页超时（20s），可稍后重试。', url: target };
+      return { error: `读取网页出错: ${e?.message || e}`, url: target };
+    }
+  }
+
+  // ── Jina Reader 后端 ──
+  const endpoint = `${READER_ENDPOINT}${target}`;
   try {
     const resp = await fetchWithTimeout(endpoint, { headers: await jinaHeaders() });
     if (resp.status === 429) {
@@ -289,6 +477,7 @@ export const read_url = async ({ url, max_chars }: { url: string; max_chars?: nu
 
     const truncated = content.length > budget;
     const clipped = truncated ? content.slice(0, budget) : content;
+    const images = extractImageUrls(content, READ_URL_MAX_IMAGES);
     return {
       url: target,
       title: title.trim(),
@@ -296,6 +485,7 @@ export const read_url = async ({ url, max_chars }: { url: string; max_chars?: nu
       chars: clipped.length,
       full_chars: content.length,
       truncated,
+      ...(images.length > 0 ? { images } : {}),
     };
   } catch (e: any) {
     if (e?.name === 'AbortError') return { error: '读取网页超时（20s），可稍后重试。', url: target };
@@ -317,46 +507,80 @@ export const search_wikipedia = async ({ query, language, limit }: { query: stri
     return { error: '缺少搜索关键词 query' };
   }
   const lang = (language || 'zh').trim().toLowerCase() || 'zh';
+  const base = `https://${lang}.wikipedia.org`;
+  const res = await queryWikipediaLike(base, query, limit);
+  if (res.error) return { error: res.error, query, language: lang };
+  return { query, language: lang, count: res.count, results: res.results };
+};
+
+/**
+ * 在维基百科做**站内搜索**：经已验证国内可用的 Serper web_search 后端，对 wikipedia.org 做 `site:` 搜索，
+ * 返回维基条目链接 + Google 摘要。绕过 wikipedia.org 被墙——浏览器只访问 Serper（国内可达），由 Serper 在境外取 Google 结果。
+ * 默认开启；复用 web_search 的 Serper/Jina 逻辑与错误处理。拿到链接后可用 read_url 读取全文（英文维基较稳，中文维基可能超时，模型可优先读英文维基再翻译）。
+ *
+ * @param args.query - 搜索关键词（必填）
+ * @param args.max_results - 返回结果上限（可选，默认 5，上限 10）
+ * @returns { query, count, results: [{ title, url, snippet, date? }] }（可能附带 knowledgeGraph）；失败时返回 { error, query }
+ */
+export const search_wikipedia_web = async ({ query, max_results }: { query: string; max_results?: number }) => {
+  if (!query || !query.trim()) {
+    return { error: '缺少搜索关键词 query' };
+  }
+  const limit = Math.min(Math.max(max_results ?? WIKIPEDIA_DEFAULT_LIMIT, 1), WIKIPEDIA_MAX_LIMIT);
+  // 用当前后端（默认 Serper/Google，支持 site: 操作符）对 wikipedia.org 做站内搜索
+  const res = await web_search({ query: `${query.trim()} site:wikipedia.org`, max_results: limit });
+  if (res.error) return { error: res.error, query: query.trim() };
+  // 兜底：只保留 wikipedia.org 链接（site: 过滤通常已保证，Jina 等不识别 site: 时由此兜底）
+  const results = (Array.isArray(res.results) ? res.results : []).filter((r: any) => /wikipedia\.org\//i.test(r.url || ''));
+  const out: { query: string; count: number; results: any[]; knowledgeGraph?: any; message?: string } = {
+    query: query.trim(),
+    count: results.length,
+    results,
+  };
+  if (res.knowledgeGraph) out.knowledgeGraph = res.knowledgeGraph;
+  if (results.length === 0 && !out.knowledgeGraph) {
+    out.message = '未在维基百科找到相关条目。可尝试更换关键词，或用 read_url 读取已知维基链接。';
+  }
+  return out;
+};
+
+/**
+ * 维基百科 Action API 的共享查询实现（供 search_wikipedia 原站使用）。
+ * 给定站点根（如 https://zh.wikipedia.org），调用 {base}/w/api.php 搜索并返回导语摘要。
+ */
+async function queryWikipediaLike(
+  base: string,
+  query: string,
+  limit?: number
+): Promise<{ count: number; results: { title: string; url: string; extract: string }[]; error?: string }> {
   const lim = Math.min(Math.max(limit ?? WIKIPEDIA_DEFAULT_LIMIT, 1), WIKIPEDIA_MAX_LIMIT);
-  const url = `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&origin=*&generator=search&gsrsearch=${encodeURIComponent(query.trim())}&gsrlimit=${lim}&prop=extracts|info&exintro=1&explaintext=1&inprop=url`;
+  const baseClean = (base || '').trim().replace(/\/+$/, '');
+  if (!baseClean) return { count: 0, results: [], error: '维基百科查询地址为空。' };
+  const url = `${baseClean}/w/api.php?action=query&format=json&origin=*&generator=search&gsrsearch=${encodeURIComponent(query.trim())}&gsrlimit=${lim}&prop=extracts|info&exintro=1&explaintext=1&inprop=url`;
 
   try {
     const resp = await fetchWithTimeout(url, { headers: { Accept: 'application/json' } });
     if (!resp.ok) {
-      return { error: `维基百科查询失败: HTTP ${resp.status}`, query, language: lang };
+      return { count: 0, results: [], error: `维基百科查询失败: HTTP ${resp.status}` };
     }
     const data = await resp.json();
     const pages = data?.query?.pages;
     if (!pages) {
-      return {
-        query,
-        language: lang,
-        count: 0,
-        results: [],
-        message: '未找到相关条目。可尝试更换关键词，或改用英文（language: "en"）覆盖更广。',
-      };
+      return { count: 0, results: [] };
     }
 
     const arr = Object.values(pages) as any[];
     arr.sort((a, b) => (a.index ?? 999) - (b.index ?? 999));
+    // 用站点根 + /wiki/标题构造 URL（如 https://zh.wikipedia.org/wiki/…），确保返回的 URL 用户可点开。
     const results = arr.slice(0, lim).map((p) => ({
       title: (p.title || '').trim() || '(无标题)',
-      url: p.fullurl || `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(p.title || '')}`,
+      url: `${baseClean}/wiki/${encodeURIComponent(p.title || '')}`,
       extract: clip(p.extract || '', WIKIPEDIA_EXTRACT_MAX_CHARS),
     }));
 
-    if (results.length === 0) {
-      return {
-        query,
-        language: lang,
-        count: 0,
-        results: [],
-        message: '未找到相关条目。可尝试更换关键词，或改用英文（language: "en"）覆盖更广。',
-      };
-    }
-    return { query, language: lang, count: results.length, results };
+    return { count: results.length, results };
   } catch (e: any) {
-    if (e?.name === 'AbortError') return { error: '维基百科查询超时（20s）。', query, language: lang };
-    return { error: `维基百科查询出错: ${e?.message || e}`, query, language: lang };
+    if (e?.name === 'AbortError') return { count: 0, results: [], error: '维基百科查询超时（20s）。' };
+    return { count: 0, results: [], error: `维基百科查询出错: ${e?.message || e}` };
   }
-};
+}

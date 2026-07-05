@@ -3,7 +3,7 @@ import { Message, ToolCall, streamAICompletion } from '@/services/ai';
 import { ToolDefinitions, executeTool } from './ToolRegistry';
 import { isJsonComplete } from '@/lib/utils';
 import { SUB_AGENT_PROMPT, DEFAULT_MAX_TOKENS } from '@/services/promptConfig';
-import { isWebSearchUsable, isWikipediaOn, buildWebToolsStatus } from '@/lib/toolConfig';
+import { isWebSearchUsable, isWebUsable, isWikipediaOn, buildWebToolsStatus } from '@/lib/toolConfig';
 
 /**
  * 子 Agent 执行过程中向 UI 上报的回调集合。
@@ -55,15 +55,20 @@ export async function runSubAgent(params: RunSubAgentParams): Promise<string> {
   const maxRounds = params.maxRounds ?? 10;
 
   // 读取用户的联网工具开关（与主 Agent 共用同一份 AIConfig），按可用性过滤 web 工具。
-  // 子 Agent 始终排除委派/规划工具（避免再委派/触发规划）；read_url 不受开关控制，始终可用。
+  // 子 Agent 始终排除委派/规划工具（避免再委派/触发规划）；
+  // web_search / read_url / search_wikipedia_web 共用总开关（isWebUsable）；search_wikipedia（原站）受独立开关 + 总开关联动约束。
   const cfg = (await db.settings.get(1)) as any;
+  const webUsable = isWebUsable(cfg);
   const webSearchOn = isWebSearchUsable(cfg);
   const wikiOn = isWikipediaOn(cfg);
   const subTools = ToolDefinitions.filter((t) => {
     const n = t.function.name;
     if (['delegate_task', 'present_plan', 'start_execution'].includes(n)) return false;
     if (n === 'web_search') return webSearchOn;
+    if (n === 'read_url') return webUsable;
+    if (n === 'search_wikipedia_web') return webUsable;
     if (n === 'search_wikipedia') return wikiOn;
+    if (n === 'image_search') return webUsable;
     return true;
   });
 

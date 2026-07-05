@@ -54,7 +54,7 @@ import { MessageContentPart, ToolCall } from '@/services/ai';
 import { FileText, FileSpreadsheet, FileCode, FileJson, ChevronDown, ChevronRight, CheckCircle2, Loader2, GitCompare, Eye, Code2, XCircle, Brain } from 'lucide-react';
 import { db } from '@/db';
 import { useTheme } from '@/hooks/useTheme';
-import { parseAIJson } from '@/lib/utils';
+import { parseAIJson, AI_ONLY_HINT_PREFIX } from '@/lib/utils';
 import type { SubAgentState } from '@/hooks/useChatSession';
 import { reloadOnChunkError } from '@/lib/chunkLoadError';
 import { Modal } from './ui/Modal';
@@ -151,6 +151,7 @@ const TOOL_NAMES: Record<string, string> = {
   'web_search': '联网搜索',
   'read_url': '读取网页',
   'search_wikipedia': '维基百科',
+  'search_wikipedia_web': '维基百科(站内搜)',
   'present_plan': '规划建议',
   'start_execution': '进入执行'
 };
@@ -194,6 +195,7 @@ const getToolDescription = (name: string, args: string) => {
       case 'web_search': return `联网搜索: "${parsed.query || ''}"`;
       case 'read_url': return `读取网页: ${(parsed.url || '').replace(/^https?:\/\//, '').slice(0, 40)}`;
       case 'search_wikipedia': return `维基百科: "${parsed.query || ''}"`;
+      case 'search_wikipedia_web': return `维基百科(站内搜): "${parsed.query || ''}"`;
       case 'present_plan': return `规划方案已准备就绪`;
       case 'start_execution': return `正在初始化执行环境`;
       default: return `${TOOL_NAMES[name] || name}`;
@@ -411,6 +413,10 @@ function getToolResultSummary(name: string, result: string): string {
         return parsed.truncated ? `${parsed.chars || 0} 字 (已截断)` : `${parsed.chars || 0} 字`;
       }
       case 'search_wikipedia': {
+        if (parsed.error) return '失败';
+        return `${parsed.count || 0} 条`;
+      }
+      case 'search_wikipedia_web': {
         if (parsed.error) return '失败';
         return `${parsed.count || 0} 条`;
       }
@@ -1086,6 +1092,8 @@ export function MessageRenderer({ content, isUser }: MessageRendererProps) {
       <div className="space-y-2">
         {content.map((part, i) => {
           if (part.type === 'text') {
+            // 仅供 AI 阅读的隐藏提示（如 attachment id 说明）——随消息发给模型，但不在 UI 中显示
+            if (part.text.startsWith(AI_ONLY_HINT_PREFIX)) return null;
             return <MarkdownText key={i} content={part.text} isUser={isUser} />;
           } else if (part.type === 'image_url') {
             return (

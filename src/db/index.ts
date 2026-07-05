@@ -128,14 +128,15 @@ export interface AIConfig {
   temperature?: number;
   /** Jina 联网服务的 API Key（免费注册 https://jina.ai/）；留空时联网工具可能返回 401 */
   jinaApiKey?: string;
-  /** 是否启用联网搜索（仅 web_search；read_url 网页读取始终可用，不受此开关影响） */
+  /** 是否启用联网能力总开关（同时控制 web_search 与 read_url，二者同步开/关）；联网搜索后端需另配 API Key */
   webSearchEnabled?: boolean;
-  /** 联网搜索使用的后端：'jina'（默认）或 'serper'（需 Serper API Key） */
+  /** 联网搜索/读取使用的后端：'serper'（默认，搜索走 google.serper.dev、读取走 scrape.serper.dev）或 'jina'（s.jina.ai 搜索 + r.jina.ai 读取） */
   webSearchBackend?: 'jina' | 'serper';
-  /** Serper（google.serper.dev）API Key，仅当 webSearchBackend 为 'serper' 时使用 */
+  /** Serper（google.serper.dev 搜索 + scrape.serper.dev 读取）API Key，仅当 webSearchBackend 为 'serper' 时使用 */
   serperApiKey?: string;
-  /** 是否启用维基百科权威知识查询（search_wikipedia，免 Key）；默认开启 */
+  /** 是否启用维基百科原站（wikipedia.org）API 查询；免 Key，但原站在部分网络被墙，默认关闭（如挂 VPN 可手动开启），受联网总开关联动约束 */
   wikipediaEnabled?: boolean;
+  // 注：「维基百科站内搜」(search_wikipedia_web) 不设独立开关——联网总开关开启即自带该能力。
 }
 
 /**

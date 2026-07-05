@@ -17,10 +17,12 @@ export const ToolRegistry = {
   get_note_lines: readTools.get_note_lines,
   get_quiz_questions: readTools.get_quiz_questions,
 
-  // 联网工具：经 Jina 公共端点搜索网络并读取网页全文，供模型获取训练数据外的权威/时效信息
+  // 联网工具：搜索网络、读取网页全文、维基百科（原站 API / Serper 站内搜）、图片搜索，供模型获取训练数据外的权威/时效信息
   web_search: webTools.web_search,
   read_url: webTools.read_url,
   search_wikipedia: webTools.search_wikipedia,
+  search_wikipedia_web: webTools.search_wikipedia_web,
+  image_search: webTools.image_search,
 
   // 写入工具
   create_subject: writeTools.create_subject,
@@ -32,6 +34,7 @@ export const ToolRegistry = {
   create_note: writeTools.create_note,
   update_note: writeTools.update_note,
   patch_note_content: writeTools.patch_note_content,
+  insert_image_into_note: writeTools.insert_image_into_note,
   create_quiz: writeTools.create_quiz,
   update_quiz: writeTools.update_quiz,
   patch_quiz_questions: writeTools.patch_quiz_questions,
@@ -144,6 +147,14 @@ Structure Recommendations:
 - Analysis of key and difficult points
 - Practical applications/case studies
 - Summary and key takeaways
+
+### Images in Notes
+Notes render both network image URLs and local attachments via standard Markdown \`![alt](src)\` syntax. Three image sources are available:
+- **image_search** — search the live web for a relevant image; use the returned \`imageUrl\` directly.
+- **read_url** — when the fetched page contains images, they are extracted into the response's \`images\` array (in addition to the Markdown body); reuse those URLs if relevant to the note.
+- **User-uploaded images** (chat attachments) — appear in the conversation as an \`attachment:<id>\` reference; use that exact string as the image source.
+
+To add an image to a note, prefer \`insert_image_into_note(entityId, image_source, alt_text?, anchor_text?)\` — it validates the source and inserts \`![alt](src)\` at the right place (after \`anchor_text\` if given, else appended). You may also embed \`![alt](url)\` directly inside \`content\` when calling create_note/update_note/patch_note_content — both approaches render identically.
 
 ### Task Board Creation (create_taskboard / update_taskboard)
 Requirements: Include a comprehensive list of task blocks. Each block should have multiple specific task items.
@@ -311,12 +322,14 @@ Returns: { query, count, results: [{ title, url, snippet }] }. Snippets are shor
       name: 'read_url',
       description: `Fetch a web page and return its main content as clean Markdown, ready to read into your context.
 Use this tool AFTER web_search to ingest the FULL content of an authoritative URL, or whenever the user gives you a specific link to digest.
+When choosing which candidate URL to read, prefer sites that are directly accessible from mainland China — some domains (e.g. the original wikipedia.org, twitter.com/x.com) may fail to fetch or time out in that network; prefer a reachable alternative source when available.
 
 Parameters:
 - url: The full URL to read (required). The http(s):// prefix is added automatically if missing.
 - max_chars: Optional cap on returned content length (default 16000, max 40000). Increase only if you genuinely need more of a long article.
 
-Returns: { url, title, content, chars, full_chars, truncated }. If truncated is true, the article was longer than what was returned — you may re-call with a larger max_chars, or search for a more focused page. If content is empty, the page may be JS-rendered / paywalled / blocked — try another URL. On 429 (rate limit), wait and retry.
+Returns: { url, title, content, chars, full_chars, truncated, images? }. If truncated is true, the article was longer than what was returned — you may re-call with a larger max_chars, or search for a more focused page. If content is empty, the page may be JS-rendered / paywalled / blocked — try another URL. On 429 (rate limit), wait and retry.
+If the page contains images, their URLs are extracted into the "images" array — reuse them (e.g. via insert_image_into_note) when illustrating a note on this topic.
 
 Always CITE the source URL(s) you actually read when the answer relies on web content. Never fabricate URLs.`,
       parameters: {
@@ -353,6 +366,58 @@ Cite the Wikipedia URL(s) you use. Distill content into your own answer — do n
           query: { type: 'string', description: 'The search query (topic common name)' },
           language: { type: 'string', description: "Wikipedia language edition (default 'zh'; use 'en' for broader coverage on technical/academic topics)" },
           limit: { type: 'number', description: 'Maximum number of entries to return (default 5, max 10)' }
+        },
+        required: ['query']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'search_wikipedia_web',
+      description: `Search Wikipedia via the web-search backend (Serper/Google) restricted to wikipedia.org — the China-accessible Wikipedia lookup.
+Runs a \`site:wikipedia.org\` search through the same backend as web_search, so the browser only talks to Serper (reachable in mainland China), NOT to the blocked wikipedia.org. Returns Wikipedia article links + Google snippets. Available automatically whenever web_search is enabled — no separate toggle.
+
+Use this tool to:
+- Look up definitional, encyclopedic, or factual "authoritative" knowledge when the original wikipedia.org (search_wikipedia) is blocked / disabled.
+- Find the best Wikipedia URL(s), then call read_url on the chosen one to ingest the full article.
+
+Parameters:
+- query: The search query (required). Use the topic's common name; the user's language usually yields better-matched Wikipedia editions.
+- max_results: Max number of results (optional, default 5, max 10).
+
+Returns: { query, count, results: [{ title, url, snippet, date? }] } (may include knowledgeGraph). Snippets are Google's short summaries of Wikipedia pages. For the full article, call read_url on the best URL. Prefer English Wikipedia URLs if Chinese Wikipedia pages time out via read_url, then translate the answer to Chinese.
+
+Cite the source URL(s) you use. Distill content into your own answer — do not dump the raw snippet back to the user.`,
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'The search query (topic common name)' },
+          max_results: { type: 'number', description: 'Maximum number of results to return (default 5, max 10)' }
+        },
+        required: ['query']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'image_search',
+      description: `Search the live web for images matching a query. Only works with the Serper backend (returns an error if the current backend is Jina).
+Use this tool to:
+- Find a relevant, real-world image to illustrate a note (diagram, photo, chart screenshot, etc.).
+- Get a direct image URL you can embed in a note via Markdown \`![]()\` or the insert_image_into_note tool.
+
+Parameters:
+- query: The search query text (required). Be specific about what the image should show.
+- max_results: Maximum number of results to return (optional, default 6, max 10).
+
+Returns: { query, count, results: [{ title, imageUrl, sourceUrl }] }. imageUrl is a direct image link ready to embed; sourceUrl is the page the image was found on (cite it if relevant). On error (e.g. wrong backend, missing key, rate limit), returns { error, query }.`,
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'The image search query (be specific about the desired image content)' },
+          max_results: { type: 'number', description: 'Maximum number of results to return (default 6, max 10)' }
         },
         required: ['query']
       }
@@ -607,6 +672,33 @@ Parameters:
           replace: { type: 'string', description: 'New text to substitute in place of the search text.' }
         },
         required: ['entityId', 'search', 'replace']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'insert_image_into_note',
+      description: `Insert an image into a note using Markdown syntax (![alt](src)).
+
+Use this whenever you have a relevant image to add to a note — from image_search (imageUrl), from read_url's "images" field, or from a user-uploaded chat attachment (referenced as "attachment:<id>").
+
+Parameters:
+- entityId: ID of the note entity (required)
+- image_source: Either a full http(s) image URL, or "attachment:<id>" pointing to an uploaded image (required)
+- alt_text: Alt text for the image (optional, default "Image")
+- anchor_text: Exact text already in the note to insert the image right after (optional, must be verbatim and unique — same rule as patch_note_content). If omitted, the image is appended to the end of the note.
+
+Returns: { id, title, _diff }. Throws if the note/attachment is not found, or if anchor_text is not found or is ambiguous (appears multiple times) — in that case re-read the note with get_entity_content and retry.`,
+      parameters: {
+        type: 'object',
+        properties: {
+          entityId: { type: 'string', description: 'The ID of the note entity' },
+          image_source: { type: 'string', description: 'An http(s) image URL, or "attachment:<id>" for an uploaded image' },
+          alt_text: { type: 'string', description: 'Alt text for the image (default "Image")' },
+          anchor_text: { type: 'string', description: 'Exact, unique text in the note after which to insert the image. Omit to append at the end.' }
+        },
+        required: ['entityId', 'image_source']
       }
     }
   },

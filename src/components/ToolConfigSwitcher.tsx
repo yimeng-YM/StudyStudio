@@ -4,17 +4,17 @@ import { cn } from '@/lib/utils';
 import { ChevronUp, Wrench, Globe, BookOpen } from 'lucide-react';
 import {
   isSearchKeyConfigured,
-  isWebSearchUsable,
+  isWebUsable,
   isWikipediaOn,
 } from '@/lib/toolConfig';
 
 /**
  * AI 对话界面的「工具配置」按钮（与 ModeSwitcher / ModelSwitcher 并排）。
- * 点击向上展开 popover，提供两个开关：
- *   - 联网搜索（web_search）：需先在设置里配置对应后端的 API Key，否则开关灰色不可用，
- *     悬停提示前往设置配置 Key。
- *   - 维基百科（search_wikipedia）：免 Key，默认开启。
- * read_url（网页读取）始终可用，不在此处开关。
+ * 点击向上展开 popover，提供联网工具开关，遵循联动规则（见 toolConfig.ts）：
+ *   - 「联网搜索 + 网页读取」总开关：同步控制 web_search 与 read_url。需先在设置里配置对应后端的 API Key，
+ *     否则开关灰色不可用，悬停提示前往设置配置 Key。
+ *   - 维基百科站内搜（search_wikipedia_web）**无独立开关——总开关开启即自带**该能力（国内可用）。
+ *   - 维基百科原站 API（search_wikipedia）：独立开关，**默认关闭**（被墙，挂 VPN 可开），总开关关时联动关闭。
  * 切换即时写入运行时 config，下一条消息即生效（Agent 循环按可用性注入工具）。
  */
 export function ToolConfigSwitcher() {
@@ -32,9 +32,12 @@ export function ToolConfigSwitcher() {
   }, []);
 
   const keyConfigured = isSearchKeyConfigured(config ?? null);
-  const webSearchOn = isWebSearchUsable(config ?? null);
+  const webUsable = isWebUsable(config ?? null);
   const wikiOn = isWikipediaOn(config ?? null);
-  const anyOn = webSearchOn || wikiOn;
+  const anyOn = webUsable || wikiOn;
+
+  // 总开关关闭（或不可用）时，原站百科开关联动禁用
+  const encDisabled = !webUsable;
 
   return (
     <div ref={ref} className="relative">
@@ -56,31 +59,39 @@ export function ToolConfigSwitcher() {
 
       {/* popover：向上、向右展开。overflow-visible 以便禁用态悬停提示可越界显示 */}
       {open && (
-        <div className="absolute bottom-full left-0 mb-2 w-60 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-xl overflow-visible z-50 animate-in fade-in zoom-in-95 duration-150">
+        <div className="absolute bottom-full left-0 mb-2 w-64 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-xl overflow-visible z-50 animate-in fade-in zoom-in-95 duration-150">
           <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-400 bg-zinc-50/50 dark:bg-zinc-800/30 rounded-t-xl">
             联网工具
           </div>
 
+          {/* 总开关：联网搜索 + 网页读取 */}
           <ToolToggleRow
             icon={<Globe size={14} className="shrink-0 mt-0.5 text-blue-500" />}
-            label="联网搜索"
-            description="搜索网络"
-            checked={webSearchOn}
+            label="联网搜索 + 网页读取"
+            description="搜索网络 + 读取网页正文"
+            checked={webUsable}
             disabled={!keyConfigured}
-            disabledHint="请先在 设置 → 高级参数 中配置搜索 API Key"
+            disabledHint="请先在 设置 → 高级参数 中配置搜索后端 API Key"
             onChange={(v) => updateConfig({ webSearchEnabled: v })}
           />
 
+          <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-400 bg-zinc-50/50 dark:bg-zinc-800/30 border-t border-zinc-100 dark:border-zinc-800">
+            权威百科来源
+          </div>
+
+          {/* 维基百科原站 API（默认关闭，被墙） */}
           <ToolToggleRow
             icon={<BookOpen size={14} className="shrink-0 mt-0.5 text-emerald-500" />}
             label="维基百科"
-            description="权威百科知识"
+            description="原站 API（默认关闭，需 VPN 可达）"
             checked={wikiOn}
+            disabled={encDisabled}
+            disabledHint="请先开启上方「联网搜索 + 网页读取」"
             onChange={(v) => updateConfig({ wikipediaEnabled: v })}
           />
 
           <div className="px-3 py-2 border-t border-zinc-100 dark:border-zinc-800 text-[10px] text-zinc-400 leading-snug">
-            联网搜索工具需先配置对应后端的 API Key，否则无法启用。
+            国内用户优先使用serper并关闭维基百科工具
           </div>
         </div>
       )}
@@ -132,7 +143,7 @@ function ToolToggleRow({ icon, label, description, checked, disabled, disabledHi
         <span className={cn("absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform", checked && "translate-x-4")} />
       </button>
 
-      {/* 禁用态悬停提示：向上越界显示，引导用户前往设置配置 Key */}
+      {/* 禁用态悬停提示：向上越界显示，引导用户前往设置配置 Key / 代理 */}
       {disabled && disabledHint && (
         <div className="absolute bottom-full left-2 mb-1 px-2 py-1 rounded-md bg-zinc-800 dark:bg-zinc-700 text-white text-[10px] leading-snug w-48 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 shadow-lg">
           {disabledHint}

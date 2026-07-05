@@ -2,6 +2,14 @@ import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
 
 /**
+ * 「仅供 AI 阅读」文本片段的标记前缀。
+ * 用于消息 content 数组中那些只需要塞进模型上下文、但不应显示在聊天 UI 里的 text part
+ * （例如：告知模型某张已上传图片对应的 attachment id）。
+ * MessageRenderer 遇到以此前缀开头的 text part 会跳过渲染，但该 part 仍会随消息原样发给 AI。
+ */
+export const AI_ONLY_HINT_PREFIX = '<<<AI_ONLY_HINT>>>';
+
+/**
  * 安全生成 UUID v4，兼容非安全上下文（如局域网 IP HTTP 访问）。
  * crypto.randomUUID() 仅在 https 或 localhost 下可用，
  * 在 http://192.168.x.x 等场景下会报错，此处提供 fallback。
