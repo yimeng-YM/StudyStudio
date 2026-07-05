@@ -30,7 +30,7 @@ export interface RunSubAgentParams {
   settings: AISettings;
   /** 中断信号，通常派生自主 Agent 的 AbortController */
   signal?: AbortSignal;
-  /** 最大工具循环轮数，防止子 Agent 失控不收敛。默认 10 */
+  /** 最大工具循环轮数，防止子 Agent 失控不收敛。默认 30 */
   maxRounds?: number;
   /** UI 回调 */
   callbacks?: SubAgentCallbacks;
@@ -52,7 +52,7 @@ export interface RunSubAgentParams {
  */
 export async function runSubAgent(params: RunSubAgentParams): Promise<string> {
   const { task, context, settings, signal, callbacks: cb } = params;
-  const maxRounds = params.maxRounds ?? 10;
+  const maxRounds = params.maxRounds ?? 30;
 
   // 读取用户的联网工具开关（与主 Agent 共用同一份 AIConfig），按可用性过滤 web 工具。
   // 子 Agent 始终排除委派/规划工具（避免再委派/触发规划）；

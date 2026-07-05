@@ -1,5 +1,5 @@
 import { db, ChatSession } from '@/db';
-import { MessageSquare, Trash2, Brain, Zap } from 'lucide-react';
+import { MessageSquare, Trash2, Brain, Zap, Microscope } from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useAIStore } from '@/store/useAIStore';
 import { useDialog } from '@/components/ui/DialogProvider';
@@ -59,15 +59,15 @@ export function AIChat() {
       onClick={() => handleSessionClick(session)}
       className="flex items-center gap-4 p-4 bg-white/70 dark:bg-zinc-900/70 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 cursor-pointer hover:border-zinc-400 dark:hover:border-zinc-600 hover:shadow-md transition-all group"
     >
-      <div className={`p-3 rounded-lg flex-shrink-0 ${session.mode === 'plan' ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400' : 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400'}`}>
-        {session.mode === 'plan' ? <Brain size={24} /> : <Zap size={24} />}
+      <div className={`p-3 rounded-lg flex-shrink-0 ${session.mode === 'plan' ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400' : session.mode === 'research' ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400'}`}>
+        {session.mode === 'plan' ? <Brain size={24} /> : session.mode === 'research' ? <Microscope size={24} /> : <Zap size={24} />}
       </div>
       <div className="flex-1 min-w-0">
         <div className="font-medium text-lg text-zinc-800 dark:text-zinc-200 truncate">{session.title || '无标题任务'}</div>
         <div className="flex items-center gap-2 mt-1">
           <span className="text-xs text-zinc-500">{new Date(session.updatedAt).toLocaleString()}</span>
-          <span className={`text-[10px] px-1.5 py-0.5 rounded-sm uppercase tracking-wider ${session.mode === 'plan' ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/50 dark:text-indigo-400' : 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400'}`}>
-            {session.mode === 'plan' ? '规划模式' : '执行模式'}
+          <span className={`text-[10px] px-1.5 py-0.5 rounded-sm uppercase tracking-wider ${session.mode === 'plan' ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/50 dark:text-indigo-400' : session.mode === 'research' ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/50 dark:text-emerald-400' : 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400'}`}>
+            {session.mode === 'plan' ? '规划模式' : session.mode === 'research' ? '研究模式' : '执行模式'}
           </span>
         </div>
       </div>

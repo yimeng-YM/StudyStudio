@@ -53,7 +53,7 @@ export interface SubAgentState {
  * @param mode - 会话运行模式：'plan'（带确认的计划模式）或 'act'（直接执行模式）
  * @returns 包含消息列表、加载状态、计划状态及会话控制方法的对象
  */
-export function useChatSession(sessionId: string | null, mode: 'plan' | 'act') {
+export function useChatSession(sessionId: string | null, mode: 'plan' | 'act' | 'research') {
   const settings = useAIStore(s => s.settings);
   const currentContext = useAIStore(s => s.currentContext);
   const config = useAIStore(s => s.config);

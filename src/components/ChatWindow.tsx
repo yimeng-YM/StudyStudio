@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
-import { Send, Paperclip, X, Trash2, Plus, History, Sparkles, Brain, Zap, RotateCw, Loader2, Square } from 'lucide-react';
+import { Send, Paperclip, X, Trash2, Plus, History, Sparkles, Brain, Zap, Microscope, RotateCw, Loader2, Square } from 'lucide-react';
 import { MessageRenderer, ToolCallRenderer, ThinkingBlock } from './MessageRenderer';
 import { db, ChatSession } from '@/db';
 import { processFile } from '@/lib/fileProcessor';
@@ -75,7 +75,7 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
    * 'act': 快速执行模式，直接响应
    * 'plan': 深度规划模式，先思考后执行
    */
-  const [mode, setMode] = useState<'act' | 'plan'>('act');
+  const [mode, setMode] = useState<'act' | 'plan' | 'research'>('act');
   
   /**
    * 使用自定义 Hook 管理聊天会话
@@ -344,8 +344,8 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
                 className={`w-full text-left p-3.5 rounded-xl border dark:border-zinc-800 flex items-center gap-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/80 cursor-pointer group transition-all duration-200 ${currentSessionId === s.id ? 'border-primary/50 bg-primary/5 shadow-sm' : 'bg-white dark:bg-zinc-900'
                   }`}
               >
-                <div className={`p-2 rounded-lg ${s.mode === 'plan' ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400' : 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400'}`}>
-                   {s.mode === 'plan' ? <Brain size={16} /> : <Zap size={16} />}
+                <div className={`p-2 rounded-lg ${s.mode === 'plan' ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400' : s.mode === 'research' ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400'}`}>
+                   {s.mode === 'plan' ? <Brain size={16} /> : s.mode === 'research' ? <Microscope size={16} /> : <Zap size={16} />}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="truncate text-sm font-medium text-zinc-800 dark:text-zinc-200">
@@ -377,15 +377,15 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
       >
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-zinc-400 space-y-4">
-            <div className={`w-16 h-16 rounded-full flex items-center justify-center shadow-inner ${mode === 'plan' ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-500' : 'bg-zinc-50 dark:bg-zinc-800/50 text-primary'}`}>
-              {mode === 'plan' ? <Brain size={32} /> : <Sparkles size={32} />}
+            <div className={`w-16 h-16 rounded-full flex items-center justify-center shadow-inner ${mode === 'plan' ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-500' : mode === 'research' ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-500' : 'bg-zinc-50 dark:bg-zinc-800/50 text-primary'}`}>
+              {mode === 'plan' ? <Brain size={32} /> : mode === 'research' ? <Microscope size={32} /> : <Sparkles size={32} />}
             </div>
             <div className="text-center space-y-1">
               <p className="text-sm font-medium text-zinc-600 dark:text-zinc-300">
-                {mode === 'plan' ? "深度规划模式已开启" : "快速执行模式已开启"}
+                {mode === 'plan' ? "深度规划模式已开启" : mode === 'research' ? "深度研究模式已开启" : "快速执行模式已开启"}
               </p>
               <p className="text-xs text-zinc-400 max-w-[250px]">
-                {mode === 'plan' ? "Agent 将先进行思考规划，再逐步执行复杂任务。" : "Agent 将直接响应请求，快速执行操作。"}
+                {mode === 'plan' ? "Agent 将先进行思考规划，再逐步执行复杂任务。" : mode === 'research' ? "Agent 将多阶段采集资料、委派子Agent并行研究，产出论文级深度报告。" : "Agent 将直接响应请求，快速执行操作。"}
               </p>
             </div>
           </div>

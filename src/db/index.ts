@@ -194,8 +194,9 @@ export interface ChatSession {
    * 会话驱动模式。
    * - 'plan': 偏向于任务拆解和学习计划制定
    * - 'act': 偏向于知识问答和具体行动执行
+   * - 'research': 深度研究模式，多阶段数据采集与综合分析，产出论文级报告
    */
-  mode?: 'plan' | 'act';
+  mode?: 'plan' | 'act' | 'research';
   /** 会话创建的时间戳 */
   createdAt: number;
   /** 会话最后更新时间戳 */
