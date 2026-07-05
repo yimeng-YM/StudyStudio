@@ -52,14 +52,24 @@ export function cn(...inputs: ClassValue[]) {
  * @returns 清理完成的纯净 JSON 字符串
  */
 export function cleanAIJson(jsonString: string): string {
-  let clean = jsonString.replace(/^```[a-z]*\n/i, '').replace(/\n```$/i, '').trim();
-  const match = clean.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-  if (match) {
-    clean = match[1].trim();
+  // 仅移除首尾的 Markdown 代码围栏，绝不触碰 JSON 字符串内容内部的反引号。
+  // 锚定 ^ / $ 确保只匹配包裹整个内容的外层围栏，避免误伤
+  // JSON 字符串值中嵌入的 ```chart / ```kpi / ```mermaid 等代码块。
+  let clean = jsonString.trim();
+
+  // Case 1: 整个字符串被 ```json ... ``` 或 ``` ... ``` 包裹
+  const fenceMatch = clean.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```$/i);
+  if (fenceMatch) {
+    clean = fenceMatch[1].trim();
   } else {
-    clean = clean.replace(/```json/gi, '').replace(/```/g, '').trim();
+    // Case 2: 仅首 / 尾有围栏标记（不成对），逐行处理：只移除独立成行的围栏行
+    clean = clean
+      .replace(/^```[a-z]*\s*\n/i, '')
+      .replace(/\n```\s*$/i, '')
+      .trim();
   }
 
+  // 剥离注释（正则已通过交替分组保护字符串字面量内部）
   clean = clean.replace(/\\.|"(?:\\.|[^"\\])*"|(\/\/.*|\/\*[\s\S]*?\*\/)/g, (m, g1) => {
     if (g1) return "";
     return m;
@@ -100,12 +110,18 @@ export function parseAIJson<T = any>(jsonString: string): T {
  * 作为宽容解析的统一第一步，供 repairJsonString / isJsonComplete 复用。
  */
 function stripCodeFence(jsonString: string): string {
-  let clean = jsonString.replace(/^```[a-z]*\n/i, '').replace(/\n```$/i, '').trim();
-  const match = clean.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-  if (match) {
-    clean = match[1].trim();
+  // 仅移除首尾的 Markdown 代码围栏，绝不触碰 JSON 字符串内容内部的反引号。
+  // 与 cleanAIJson 保持一致的锚定策略：只处理外层包裹，不匹配内容内部的 ``` 对。
+  let clean = jsonString.trim();
+
+  const fenceMatch = clean.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```$/i);
+  if (fenceMatch) {
+    clean = fenceMatch[1].trim();
   } else {
-    clean = clean.replace(/```json/gi, '').replace(/```/g, '').trim();
+    clean = clean
+      .replace(/^```[a-z]*\s*\n/i, '')
+      .replace(/\n```\s*$/i, '')
+      .trim();
   }
   return clean;
 }
