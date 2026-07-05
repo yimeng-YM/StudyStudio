@@ -83,7 +83,21 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act' | 
   // 子 Agent（delegate_task）的实时状态，按 toolCall.id 索引，供 UI 渲染子任务卡片
   const [subAgentStates, setSubAgentStates] = useState<Record<string, SubAgentState>>({});
 
-  // 安全合并更新某个子 Agent 的状态（处理尚未初始化的 id）
+  // 研究任务进度列表，由 update_task_list 工具调用驱动
+  const [todoList, setTodoList] = useState<{ id: string; text: string; status: 'pending' | 'in_progress' | 'completed' }[]>([]);
+
+  // ask_user 交互状态：非 null 表示正在等待用户回答
+  const [askState, setAskState] = useState<{
+    active: boolean;
+    question: string;
+    type: 'single' | 'multi' | 'text';
+    options?: string[];
+    toolCallId: string;
+  } | null>(null);
+
+  // 安全合并更新某个子 Agent 的状态（处理尚未初始化的 id）。
+  // 同时维护 ref 快照，供 delegate 完成时将子工具调用列表嵌入 tool 消息持久化。
+  const subAgentStatesRef = useRef<Record<string, SubAgentState>>({});
   const updateSubAgent = (
     id: string,
     patch: Partial<SubAgentState> | ((s: SubAgentState) => Partial<SubAgentState>)
@@ -91,7 +105,9 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act' | 
     setSubAgentStates((prev) => {
       const cur = prev[id] ?? { status: '', streamText: '', toolCalls: [], done: false };
       const p = typeof patch === 'function' ? patch(cur) : patch;
-      return { ...prev, [id]: { ...cur, ...p } };
+      const next = { ...prev, [id]: { ...cur, ...p } };
+      subAgentStatesRef.current = next;
+      return next;
     });
   };
 
@@ -108,6 +124,33 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act' | 
           reasoning_content: m.reasoning_content,
           reasoningTimeMs: m.reasoningTimeMs
         })));
+        // Rebuild subAgentStates from persisted delegate_task tool messages
+        const rebuilt: Record<string, SubAgentState> = {};
+        for (const m of msgs) {
+          if (m.role === 'tool' && m.name === 'delegate_task' && typeof m.content === 'string') {
+            try {
+              const parsed = JSON.parse(m.content);
+              if (parsed.subToolCalls && Array.isArray(parsed.subToolCalls)) {
+                rebuilt[m.tool_call_id!] = {
+                  status: parsed.error ? '失败' : '已完成',
+                  streamText: '',
+                  toolCalls: parsed.subToolCalls,
+                  done: true,
+                  error: parsed.error,
+                };
+              }
+            } catch {
+              // Old format: plain text summary, no subToolCalls available
+              rebuilt[m.tool_call_id!] = {
+                status: '已完成',
+                streamText: '',
+                toolCalls: [],
+                done: true,
+              };
+            }
+          }
+        }
+        setSubAgentStates(rebuilt);
       });
     } else {
       setCurrentSessionId(null);
@@ -116,6 +159,9 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act' | 
       setCurrentPlan('');
       awaitingConfirmation.current = false;
       planExtractedRef.current = false;
+      setTodoList([]);
+      setAskState(null);
+      setSubAgentStates({});
     }
   }, [sessionId]);
 
@@ -522,6 +568,8 @@ IMPORTANT: Always respond in Chinese.
       const toolMessages: Message[] = [];
       // delegate_task 收集到此队列，待普通工具串行执行完后并行启动子 Agent
       const delegateCalls: ToolCall[] = [];
+      // ask_user 标记：检测到后需提前退出循环等待用户交互
+      let calledAskUser = false;
       
       for (const toolCall of aiMessage.tool_calls) {
         if (toolCall.function.name === 'present_plan') {
@@ -548,6 +596,25 @@ IMPORTANT: Always respond in Chinese.
         if (toolCall.function.name === 'delegate_task') {
           delegateCalls.push(toolCall);
           continue;
+        }
+
+        // ask_user：暂停执行循环，展示交互式提问卡片等待用户回答
+        if (toolCall.function.name === 'ask_user') {
+          calledAskUser = true;
+          try {
+            const args = parseToolArguments(toolCall.function.arguments);
+            setAskState({ active: true, question: args.question, type: args.type || 'text', options: args.options, toolCallId: toolCall.id });
+          } catch { /* parse failure, skip */ }
+          continue;
+        }
+
+        // update_task_list：更新可视化的任务进度卡片
+        if (toolCall.function.name === 'update_task_list') {
+          try {
+            const args = parseToolArguments(toolCall.function.arguments);
+            if (args.items) setTodoList(args.items);
+          } catch { /* ignore */ }
+          // Fall through to executeTool
         }
 
         // 截断检测：当 finish_reason 为 'length' 且参数 JSON 结构不完整时，判定为被
@@ -617,11 +684,19 @@ IMPORTANT: Always respond in Chinese.
         );
         setStatus('');
         for (const { toolCall, content } of delegateResults) {
+          // Persist sub-agent internal tool calls alongside the summary,
+          // so they remain visible after page reload.
+          const state = subAgentStatesRef.current[toolCall.id];
+          const persisted = JSON.stringify({
+            summary: content,
+            subToolCalls: state?.toolCalls || [],
+            error: state?.error || undefined,
+          });
           toolMessages.push({
             role: 'tool',
             tool_call_id: toolCall.id,
             name: 'delegate_task',
-            content,
+            content: persisted,
           });
         }
       }
@@ -634,12 +709,19 @@ IMPORTANT: Always respond in Chinese.
 
       const calledPresent = aiMessage.tool_calls.some(tc => tc.function.name === 'present_plan');
       if (calledPresent) return;
+      if (calledAskUser) return;
 
-      // 去除 _diff 字段后再回传给 AI，避免无效 token 消耗
+      // 回传给 AI 前做两层清洗：
+      //   1. delegate_task 结果中提取纯摘要（subToolCalls 是给 UI 用的，AI 不需要）
+      //   2. 去除 _diff 字段（增量 diff 是给 UI 看的，AI 应基于 apply_diff 返回的最终状态理解变化）
       const toolMessagesForAI = toolMessages.map(m => {
         if (m.role === 'tool' && typeof m.content === 'string') {
           try {
             const parsed = JSON.parse(m.content);
+            // delegate_task: extract summary string for the AI
+            if (m.name === 'delegate_task' && parsed.summary !== undefined) {
+              return { ...m, content: parsed.summary };
+            }
             if (parsed._diff !== undefined) {
               const { _diff: _removed, ...rest } = parsed;
               return { ...m, content: JSON.stringify(rest) };
@@ -665,6 +747,9 @@ IMPORTANT: Always respond in Chinese.
     setCurrentPlan('');
     awaitingConfirmation.current = false;
     planExtractedRef.current = false;
+    setTodoList([]);
+    setAskState(null);
+    setSubAgentStates({});
   };
 
   /**
@@ -702,6 +787,50 @@ IMPORTANT: Always respond in Chinese.
     if (mode === 'plan' && planStatus === 'pending') {
       setPlanStatus('rejected');
       awaitingConfirmation.current = false;
+    }
+  };
+
+  /**
+   * 回答 AI 通过 ask_user 工具提出的问题。
+   * 将用户的选择/输入作为工具结果回传给 AI，并继续 Agent 循环。
+   *
+   * @param answer - 用户回答内容（单选/文本为 string，多选为 string[]）
+   */
+  const answerAsk = async (answer: string | string[]) => {
+    if (!askState?.active || !currentSessionId) return;
+
+    const resolvedAnswer = Array.isArray(answer) ? answer.join(', ') : answer;
+    const toolMsg: Message = {
+      role: 'tool',
+      tool_call_id: askState.toolCallId,
+      name: 'ask_user',
+      content: JSON.stringify({ answer: resolvedAnswer }),
+    };
+
+    setAskState(null);
+
+    // Reconstruct the assistant message that contained ask_user
+    const currentMsgs = [...messages];
+    const lastAssistant = currentMsgs[currentMsgs.length - 1];
+    if (lastAssistant?.role !== 'assistant') {
+      // Safety: if the last message isn't the assistant, treat answer as user chat
+      const userMsg: Message = { role: 'user', content: resolvedAnswer };
+      setMessages(prev => [...prev, userMsg, toolMsg]);
+      await saveMessage(userMsg, currentSessionId);
+      await saveMessage(toolMsg, currentSessionId);
+    } else {
+      setMessages(prev => [...prev, toolMsg]);
+      await saveMessage(toolMsg, currentSessionId);
+    }
+
+    setLoading(true);
+    try {
+      await processAgentLoop([...currentMsgs, toolMsg], currentSessionId, false);
+    } catch (error: any) {
+      console.error("Agent Loop Error:", error);
+      showAlert(error.message, { title: 'AI 助手出错了' });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -796,5 +925,8 @@ IMPORTANT: Always respond in Chinese.
     rejectPlan,
     stop,
     subAgentStates,
+    todoList,
+    askState,
+    answerAsk,
   };
 }

@@ -653,11 +653,29 @@ export const update_taskboard = async ({ entityId, title, content }: { entityId:
   const entity = await db.entities.get(entityId);
   if (!entity) throw new Error(`找不到实体 ${entityId}`);
   if (entity.type !== 'task_board') throw new Error(`实体 ${entityId} 不是任务板`);
-  
+
   if (title) entity.title = title;
   if (content !== undefined) entity.content = robustParseContent(content);
   entity.updatedAt = Date.now();
-  
+
   await db.entities.put(entity);
   return { id: entity.id, title: entity.title };
+};
+
+/**
+ * Delete an entity (note, quiz, mindmap, or taskboard) by its ID.
+ * Use with caution — this is irreversible. The entity and all its content are permanently removed.
+ *
+ * For safety, prefer to ask the user before deleting any entity the user created.
+ * Cache notes created by sub-agents during research are safe to delete without asking.
+ *
+ * @param args.entityId - ID of the entity to delete
+ * @returns Confirmation with the entity title that was deleted
+ */
+export const delete_entity = async ({ entityId }: { entityId: string }) => {
+  const entity = await db.entities.get(entityId);
+  if (!entity) throw new Error(`Entity ${entityId} not found`);
+  const title = entity.title;
+  await db.entities.delete(entityId);
+  return { deleted: true, id: entityId, title };
 };

@@ -139,3 +139,45 @@ export const get_quiz_questions = async ({
     })),
   };
 };
+
+/**
+ * Extract the Markdown heading outline from a note.
+ * Parses all lines starting with # and returns a tree of headings with their line numbers,
+ * allowing the AI to quickly locate sections without reading the full note.
+ *
+ * @param args.entityId - ID of the note entity
+ * @param args.max_depth - Maximum heading depth to include (default 3, i.e. #/##/###)
+ * @returns Title, total line count, and an ordered list of headings with level/text/line
+ */
+export const get_note_outline = async ({
+  entityId,
+  max_depth = 3,
+}: {
+  entityId: string;
+  max_depth?: number;
+}) => {
+  const entity = await db.entities.get(entityId);
+  if (!entity) throw new Error(`Entity ${entityId} not found`);
+  if (entity.type !== 'note') throw new Error(`Entity ${entityId} is not a note`);
+
+  const raw = typeof entity.content === 'string' ? entity.content : '';
+  const lines = raw.split('\n');
+  const headings: { level: number; text: string; line: number }[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const match = lines[i].match(/^(#{1,6})\s+(.+)/);
+    if (match) {
+      const level = match[1].length;
+      if (level <= max_depth) {
+        headings.push({ level, text: match[2].trim(), line: i + 1 });
+      }
+    }
+  }
+
+  return {
+    entityId,
+    title: entity.title,
+    totalLines: lines.length,
+    headings,
+  };
+};

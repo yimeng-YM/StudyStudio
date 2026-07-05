@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { Send, Paperclip, X, Trash2, Plus, History, Sparkles, Brain, Zap, Microscope, RotateCw, Loader2, Square } from 'lucide-react';
-import { MessageRenderer, ToolCallRenderer, ThinkingBlock } from './MessageRenderer';
+import { MessageRenderer, ToolCallRenderer, ThinkingBlock, TodoCard, AskCard } from './MessageRenderer';
 import { db, ChatSession } from '@/db';
 import { processFile } from '@/lib/fileProcessor';
 import { generateUUID } from '@/lib/utils';
@@ -81,7 +81,7 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
    * 使用自定义 Hook 管理聊天会话
    * 包含消息列表、加载状态、流式渲染状态文字以及发送消息等核心逻辑
    */
-  const { messages, loading, status, currentSessionId, sendMessage, clearSession, retry, stop, subAgentStates } = useChatSession(sessionId || null, mode);
+  const { messages, loading, status, currentSessionId, sendMessage, clearSession, retry, stop, subAgentStates, todoList, askState, answerAsk } = useChatSession(sessionId || null, mode);
 
   /**
    * 实时查询所有历史会话
@@ -375,6 +375,7 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
         onScroll={handleScroll}
         className="flex-1 min-h-0 overflow-y-auto p-4 space-y-6 pt-16 scroll-smooth"
       >
+        {todoList.length > 0 && <TodoCard items={todoList} />}
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-zinc-400 space-y-4">
             <div className={`w-16 h-16 rounded-full flex items-center justify-center shadow-inner ${mode === 'plan' ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-500' : mode === 'research' ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-500' : 'bg-zinc-50 dark:bg-zinc-800/50 text-primary'}`}>
@@ -458,6 +459,15 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
         )}
         <div ref={messagesEndRef} />
       </div>
+
+      {askState?.active && (
+        <AskCard
+          question={askState.question}
+          type={askState.type}
+          options={askState.options}
+          onSubmit={answerAsk}
+        />
+      )}
 
       {selectedFiles.length > 0 && (
         <div className="px-4 pb-2 flex gap-2 overflow-x-auto">

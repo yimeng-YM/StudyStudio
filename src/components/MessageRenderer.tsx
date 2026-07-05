@@ -51,7 +51,7 @@ SyntaxHighlighter.registerLanguage('cpp', cpp);
 
 import 'katex/dist/katex.min.css';
 import { MessageContentPart, ToolCall } from '@/services/ai';
-import { FileText, FileSpreadsheet, FileCode, FileJson, ChevronDown, ChevronRight, CheckCircle2, Loader2, GitCompare, Eye, Code2, XCircle, Brain } from 'lucide-react';
+import { FileText, FileSpreadsheet, FileCode, FileJson, ChevronDown, ChevronRight, CheckCircle2, Check, Loader2, GitCompare, Eye, Code2, XCircle, Brain } from 'lucide-react';
 import { db } from '@/db';
 import { useTheme } from '@/hooks/useTheme';
 import { parseAIJson, AI_ONLY_HINT_PREFIX } from '@/lib/utils';
@@ -493,32 +493,44 @@ function SubAgentCard({ tc, state, summary }: {
   summary?: string;
 }) {
   const [expanded, setExpanded] = useState(false);
-  // 「分配的任务」详情默认收缩，用户点击展开后才显示完整任务
   const [taskExpanded, setTaskExpanded] = useState(false);
-  // UUID → 实体名 映射，异步从 db 解析后回填，用于把任务/摘要里的 UUID 渲染为实体名
   const [nameMap, setNameMap] = useState<Record<string, string>>({});
   const resolvedRef = useRef<Set<string>>(new Set());
-  // 完成态判定：优先看子 Agent 内存状态；若无状态但已有结果摘要（tool 消息已回传/已落库），
-  // 也视为完成。修复：主 Agent 收尾（如新会话触发 onSessionChange 导致 Hook 重载）后
-  // subAgentStates 可能丢失，但 delegate 的 tool 消息已持久化，据此仍应显示完成（打勾）而非转圈。
-  const done = !!state?.done || !!summary;
-  const failed = !!state?.error;
-  const status = state?.status || (summary ? '已完成' : '等待中…');
-  const subTools = state?.toolCalls || [];
 
-  // 仅解析分配的任务（上下文不再展示，故不解析）
+  // Parse the persisted delegate_task result: new format is JSON {summary, subToolCalls, error},
+  // old format is plain text. Extracted values used below for rendering.
+  let summaryText = '';
+  let persistedSubTools: { name: string; args: string }[] = [];
+  let persistedError: string | undefined;
+  try {
+    const parsed = JSON.parse(summary || '{}');
+    if (typeof parsed.summary === 'string') {
+      summaryText = parsed.summary;
+      if (Array.isArray(parsed.subToolCalls)) persistedSubTools = parsed.subToolCalls;
+      persistedError = parsed.error;
+    } else {
+      summaryText = summary || '';
+    }
+  } catch {
+    summaryText = summary || '';
+  }
+
+  const done = !!state?.done || !!summary;
+  const failed = !!state?.error || !!persistedError;
+  const status = state?.status || (summary ? (persistedError ? '失败' : '已完成') : '等待中…');
+  // Merge: live tool calls take priority; persisted ones used after page reload
+  const subTools = (state?.toolCalls && state.toolCalls.length > 0) ? state.toolCalls : persistedSubTools;
+
   let taskFull = '';
   try {
     const a = JSON.parse(tc.function.arguments || '{}');
     taskFull = String(a.task || '');
-  } catch { /* 参数非标准 JSON 时静默 */ }
-  // 展示用：把任务文本中的实体 ID / UUID 替换为实体名（nameMap 异步解析前先删除，命中后回填为「`name`」）
+  } catch { /* ignore */ }
   const taskDisplay = renderIds(taskFull, nameMap);
   const taskPreview = taskDisplay.slice(0, 50);
 
-  // 异步解析任务/摘要中出现的 UUID → 实体名，命中后回填 nameMap 触发重渲染
   useEffect(() => {
-    const uuids = extractUuids(`${taskFull}\n${summary || ''}`);
+    const uuids = extractUuids(`${taskFull}\n${summaryText || ''}`);
     const missing = uuids.filter(u => !resolvedRef.current.has(u));
     if (missing.length === 0) return;
     missing.forEach(u => resolvedRef.current.add(u));
@@ -589,9 +601,9 @@ function SubAgentCard({ tc, state, summary }: {
               ))}
             </div>
           )}
-          {done && summary && (
+          {done && summaryText && (
             <div className="text-[10px] text-zinc-500 dark:text-zinc-400">
-              <span className="text-zinc-400">摘要：</span>{renderIds(summary, nameMap)}
+              <span className="text-zinc-400">摘要：</span>{renderIds(summaryText, nameMap)}
             </div>
           )}
         </div>
@@ -1463,3 +1475,153 @@ const MarkdownText = memo(function MarkdownText({ content, isUser }: { content: 
     </div>
   );
 });
+
+// ─── TodoCard & AskCard ────────────────────────────────────────────────────────
+
+export interface TodoItem {
+  id: string;
+  text: string;
+  status: 'pending' | 'in_progress' | 'completed';
+}
+
+/**
+ * Research task progress card. Renders a structured todo list with status indicators
+ * and a completion progress bar.
+ */
+export function TodoCard({ items }: { items: TodoItem[] }) {
+  if (!items || items.length === 0) return null;
+  const completed = items.filter(i => i.status === 'completed').length;
+  const pct = Math.round((completed / items.length) * 100);
+
+  return (
+    <div className="mx-4 my-3 p-4 bg-white/80 dark:bg-zinc-800/80 backdrop-blur-sm rounded-2xl border border-zinc-200/60 dark:border-zinc-700/60 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Research Progress</span>
+        <span className="text-xs text-zinc-400">{completed}/{items.length} &middot; {pct}%</span>
+      </div>
+      <div className="w-full h-1.5 bg-zinc-100 dark:bg-zinc-700 rounded-full mb-3 overflow-hidden">
+        <div
+          className="h-full bg-emerald-500 rounded-full transition-all duration-500 ease-out"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <div className="space-y-1.5">
+        {items.map(item => {
+          const icon =
+            item.status === 'completed' ? <CheckCircle2 size={14} className="text-emerald-500 shrink-0 mt-0.5" /> :
+            item.status === 'in_progress' ? <Loader2 size={14} className="animate-spin text-blue-500 shrink-0 mt-0.5" /> :
+            <div className="w-3.5 h-3.5 rounded-full border-2 border-zinc-300 dark:border-zinc-600 shrink-0 mt-0.5" />;
+          return (
+            <div key={item.id} className="flex items-start gap-2 text-xs">
+              {icon}
+              <span className={item.status === 'completed' ? 'text-zinc-400 line-through' : 'text-zinc-700 dark:text-zinc-200'}>
+                {item.text}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Interactive question card shown when the AI calls ask_user.
+ * Supports single-choice, multi-choice, and free-text input.
+ */
+export function AskCard({
+  question,
+  type,
+  options,
+  onSubmit,
+}: {
+  question: string;
+  type: 'single' | 'multi' | 'text';
+  options?: string[];
+  onSubmit: (answer: string | string[]) => void;
+}) {
+  const [selected, setSelected] = useState<string[]>([]);
+  const [textInput, setTextInput] = useState('');
+
+  const handleSubmit = () => {
+    if (type === 'text') {
+      if (textInput.trim()) onSubmit(textInput.trim());
+    } else {
+      if (selected.length > 0) onSubmit(type === 'single' ? selected[0] : selected);
+    }
+  };
+
+  const toggleOption = (opt: string) => {
+    if (type === 'single') {
+      setSelected([opt]);
+    } else {
+      setSelected(prev => prev.includes(opt) ? prev.filter(o => o !== opt) : [...prev, opt]);
+    }
+  };
+
+  const canSubmit = type === 'text' ? textInput.trim().length > 0 : selected.length > 0;
+
+  return (
+    <div className="mx-4 my-3 p-4 bg-amber-50/80 dark:bg-amber-900/20 backdrop-blur-sm rounded-2xl border border-amber-200/60 dark:border-amber-700/60 shadow-sm animate-in fade-in slide-in-from-bottom-2 duration-300">
+      <p className="text-sm font-medium text-zinc-800 dark:text-zinc-100 mb-3">{question}</p>
+
+      {type !== 'text' && options && (
+        <div className="space-y-1.5 mb-3">
+          {options.map((opt, i) => {
+            const isSelected = selected.includes(opt);
+            return (
+              <label
+                key={i}
+                onClick={() => toggleOption(opt)}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer text-xs transition-colors border ${
+                  isSelected
+                    ? 'bg-amber-100 dark:bg-amber-800/40 border-amber-400 dark:border-amber-600 text-amber-900 dark:text-amber-100'
+                    : 'bg-white dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:border-amber-300'
+                }`}
+              >
+                {type === 'single' ? (
+                  <div className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                    isSelected ? 'border-amber-500' : 'border-zinc-300 dark:border-zinc-600'
+                  }`}>
+                    {isSelected && <div className="w-2 h-2 rounded-full bg-amber-500" />}
+                  </div>
+                ) : (
+                  <div className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center shrink-0 ${
+                    isSelected ? 'border-amber-500 bg-amber-500' : 'border-zinc-300 dark:border-zinc-600'
+                  }`}>
+                    {isSelected && <Check size={10} className="text-white" />}
+                  </div>
+                )}
+                <span>{opt}</span>
+              </label>
+            );
+          })}
+        </div>
+      )}
+
+      {type === 'text' && (
+        <textarea
+          className="w-full bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg p-2.5 text-xs text-zinc-800 dark:text-zinc-100 placeholder:text-zinc-400 resize-none min-h-[60px] mb-3 focus:outline-none focus:border-amber-400"
+          placeholder="Type your answer..."
+          value={textInput}
+          onChange={e => setTextInput(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(); }
+          }}
+        />
+      )}
+
+      <button
+        onClick={handleSubmit}
+        disabled={!canSubmit}
+        className={`w-full py-2 rounded-lg text-xs font-medium transition-colors ${
+          canSubmit
+            ? 'bg-amber-500 text-white hover:bg-amber-600 active:scale-[0.98]'
+            : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-400 cursor-not-allowed'
+        }`}
+      >
+        {type === 'text' ? 'Submit' : type === 'single' ? 'Confirm Selection' : 'Confirm Selections'}
+      </button>
+    </div>
+  );
+}

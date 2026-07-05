@@ -44,6 +44,12 @@ export const ToolRegistry = {
   // 流程控制工具，用于在对话中辅助 AI 管理任务流状态
   present_plan: async (_args: { plan_summary: string }) => ({ status: 'success', message: 'Plan presented to user, awaiting confirmation.' }),
   start_execution: async () => ({ status: 'success', message: 'Execution started.' }),
+
+  // 新增工具
+  delete_entity: writeTools.delete_entity,
+  get_note_outline: readTools.get_note_outline,
+  update_task_list: async (args: { items?: any[] }) => ({ status: 'ok', itemCount: args.items?.length || 0 }),
+  ask_user: async (_args: any) => ({ status: 'pending', message: 'Waiting for user response.' }),
 };
 
 /**
@@ -1043,6 +1049,127 @@ Call this tool as the very first step of your execution phase.`,
           }
         },
         required: ['task']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_note_outline',
+      description: `Extract the Markdown heading outline from a note. Returns all headings (# through ###) with their line numbers.
+Use this tool to:
+- Quickly locate sections in a long note without reading the full content
+- Identify which line ranges to target with get_note_lines for detailed reading
+- Orient yourself in research cache notes or large documents
+
+Parameters:
+- entityId: ID of the note entity (required)
+- max_depth: Maximum heading depth to include, defaults to 3 (optional)
+
+Returns: The note title, total line count, and an ordered array of {level, text, line} for each heading.`,
+      parameters: {
+        type: 'object',
+        properties: {
+          entityId: { type: 'string', description: 'The ID of the note entity' },
+          max_depth: { type: 'number', description: 'Maximum heading depth (1-6), defaults to 3' }
+        },
+        required: ['entityId']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'delete_entity',
+      description: `Delete an entity (note, quiz, mindmap, or taskboard) permanently.
+Use this tool to:
+- Clean up cache notes after consolidating research findings
+- Remove unwanted or duplicate content
+- Tidy up the workspace after a research session
+
+WARNING: This is irreversible. Always ask the user before deleting content they created. Cache notes created by sub-agents during research may be deleted without asking.
+
+Parameters:
+- entityId: ID of the entity to delete (required)
+
+Returns: Confirmation with the deleted entity's title.`,
+      parameters: {
+        type: 'object',
+        properties: {
+          entityId: { type: 'string', description: 'The ID of the entity to delete' }
+        },
+        required: ['entityId']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'update_task_list',
+      description: `Update the research task list visible to the user. This tracks progress through multi-phase research.
+Use this tool to:
+- Define the initial task breakdown at the start of research
+- Mark tasks as in_progress when you begin working on them
+- Mark tasks as completed when finished
+- Add new tasks discovered during research
+
+The task list is displayed as a visual progress card in the chat UI.
+
+Parameters:
+- items: Array of task items, each with:
+  - id: Unique identifier string (e.g. "s1", "s2")
+  - text: Task description in Chinese
+  - status: "pending", "in_progress", or "completed"`,
+      parameters: {
+        type: 'object',
+        properties: {
+          items: {
+            type: 'array',
+            description: 'Complete task list with updated statuses',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string', description: 'Unique task identifier' },
+                text: { type: 'string', description: 'Task description' },
+                status: { type: 'string', enum: ['pending', 'in_progress', 'completed'], description: 'Current task status' }
+              },
+              required: ['id', 'text', 'status']
+            }
+          }
+        },
+        required: ['items']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'ask_user',
+      description: `Ask the user a question to clarify requirements, confirm direction, or resolve ambiguity.
+Use this tool when:
+- The research scope is ambiguous and you need clarification
+- You need to confirm a design choice before proceeding
+- You want the user to select from multiple valid approaches
+- You need additional details to improve research quality
+
+The question is displayed as an interactive card in the chat UI. The user's answer will be returned as this tool's result.
+
+Parameters:
+- question: The question to ask the user, in Chinese (required)
+- type: "single" (single choice from options), "multi" (multiple choices), or "text" (free text input)
+- options: Array of option strings (required for "single" and "multi" types, omit for "text")`,
+      parameters: {
+        type: 'object',
+        properties: {
+          question: { type: 'string', description: 'The question to ask the user, in Chinese' },
+          type: { type: 'string', enum: ['single', 'multi', 'text'], description: 'Type of question: single choice, multiple choice, or free text' },
+          options: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'List of options (required for single/multi type)'
+          }
+        },
+        required: ['question', 'type']
       }
     }
   }
