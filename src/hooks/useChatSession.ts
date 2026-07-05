@@ -71,6 +71,9 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act' | 
   // 用于取消请求的 AbortController
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  // 用户是否已请求停止整个 Agent 循环（含工具执行和递归调用）
+  const stoppedRef = useRef(false);
+
   // 记录本轮流式的结束原因，'length' 表示输出被 max_tokens 截断
   const finishReasonRef = useRef<string | null>(null);
 
@@ -201,7 +204,10 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act' | 
       showAlert("请在设置中配置 AI 服务的 API Key 和请求地址。", { title: '缺少配置' });
       return;
     }
-    
+
+    // 重置停止标记，开始新一轮对话
+    stoppedRef.current = false;
+
     let activeSessionId = currentSessionId;
     const wasNewSession = !activeSessionId;
     if (!activeSessionId) {
@@ -450,7 +456,6 @@ IMPORTANT: Always respond in Chinese.
       }
       throw error;
     } finally {
-      abortControllerRef.current = null;
       // 思考已开始但未因正文/工具调用结束计时（如仅产出推理、被截断或用户停止）时，补全耗时
       if (reasoningStartRef.current !== null && aiMessage.reasoningTimeMs === undefined) {
         aiMessage.reasoningTimeMs = Date.now() - reasoningStartRef.current;
@@ -466,6 +471,9 @@ IMPORTANT: Always respond in Chinese.
     }
     
     setStatus('');
+
+    // 用户已点击停止：立即中断，不再执行工具或递归
+    if (stoppedRef.current) return;
 
     // 清理 tool_calls 中的稀疏空洞：部分 OpenAI 兼容供应商在流式工具调用时
     // index 缺失或跳跃，会导致数组出现 undefined 空洞，后续 for..of 遍历会抛
@@ -641,7 +649,9 @@ IMPORTANT: Always respond in Chinese.
         return m;
       });
 
-      await processAgentLoop([...currentMessages, aiMessage, ...toolMessagesForAI], activeSessionId, skipPlanning);
+      if (!stoppedRef.current) {
+        await processAgentLoop([...currentMessages, aiMessage, ...toolMessagesForAI], activeSessionId, skipPlanning);
+      }
     }
   };
 
@@ -697,9 +707,10 @@ IMPORTANT: Always respond in Chinese.
 
   /**
    * 停止当前的 AI 生成任务
-   * 会取消正在进行的请求并重置加载状态
+   * 会取消正在进行的请求、阻止后续递归调用并重置加载状态
    */
   const stop = () => {
+    stoppedRef.current = true;
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
@@ -716,6 +727,14 @@ IMPORTANT: Always respond in Chinese.
    */
   const retry = async (index?: number) => {
     if (!currentSessionId || loading) return;
+
+    // 确保任何残留的 Agent 循环被终止，重置停止标记
+    stoppedRef.current = true;
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    stoppedRef.current = false;
 
     let targetIndex = index;
     
