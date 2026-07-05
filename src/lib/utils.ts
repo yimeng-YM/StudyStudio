@@ -273,3 +273,89 @@ export function parseToolArguments(jsonString: string): any {
   if (!jsonString || !jsonString.trim()) return {};
   return parseAIJson(jsonString);
 }
+
+/**
+ * 处理剪贴板粘贴图片到 Markdown 编辑器。
+ * 从剪贴板中提取图片 Blob → 存 db.attachments → 在光标位置插入 `![Image](attachment:<id>)`。
+ * 供 NotesModule / QuizModule 等编辑器的 textarea onPaste 复用。
+ *
+ * 若无图片数据，不阻止默认行为（走文本粘贴）。
+ *
+ * @param e - 粘贴事件
+ * @param textarea - 目标 textarea DOM 元素（用于获取光标位置）
+ * @param getContent - 当前编辑器内容
+ * @param setContent - 更新编辑器内容的 setter
+ */
+export async function handleEditorPasteImage(
+  e: React.ClipboardEvent<HTMLTextAreaElement>,
+  textarea: HTMLTextAreaElement | null,
+  getContent: string,
+  setContent: (val: string) => void
+): Promise<void> {
+  const items = e.clipboardData?.items;
+  if (!items) return;
+
+  const imageBlobs: { blob: Blob; mimeType: string }[] = [];
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    if (item.type.startsWith('image/')) {
+      const blob = item.getAsFile();
+      if (blob) imageBlobs.push({ blob, mimeType: item.type });
+    }
+  }
+  if (imageBlobs.length === 0) return; // 走默认文本粘贴
+
+  e.preventDefault();
+
+  try {
+    // db 动态导入避免循环依赖（lib/utils 不直接依赖 @/db）
+    const { db } = await import('@/db');
+    const insertions: string[] = [];
+
+    for (const { blob, mimeType } of imageBlobs) {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+
+      const id = generateUUID();
+      const ext = mimeType.split('/')[1] || 'png';
+      await db.attachments.add({
+        id,
+        data: base64,
+        mimeType,
+        fileName: `clipboard.${ext}`,
+        createdAt: Date.now(),
+      });
+      insertions.push(`![Image](attachment:${id})`);
+    }
+
+    // 将图片 markdown 插入光标位置
+    const start = textarea?.selectionStart ?? getContent.length;
+    const end = textarea?.selectionEnd ?? getContent.length;
+    const scrollTop = textarea?.scrollTop ?? 0;
+    const before = getContent.substring(0, start);
+    const after = getContent.substring(end);
+    let insertion = insertions.join('\n');
+    // 在光标两端补换行，保证图片在新行
+    if (start > 0 && getContent[start - 1] !== '\n') insertion = '\n' + insertion;
+    if (end < getContent.length && getContent[end] !== '\n') insertion = insertion + '\n';
+
+    const newContent = before + insertion + after;
+    setContent(newContent);
+
+    // 恢复光标到插入内容之后
+    setTimeout(() => {
+      if (textarea) {
+        textarea.focus();
+        const newPos = start + insertion.length;
+        textarea.setSelectionRange(newPos, newPos);
+        textarea.scrollTop = scrollTop;
+      }
+    }, 0);
+  } catch (err) {
+    console.error('粘贴图片处理失败:', err);
+  }
+}

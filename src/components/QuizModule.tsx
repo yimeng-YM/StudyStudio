@@ -13,7 +13,7 @@ import { useManualReorder } from '@/hooks/useManualReorder';
 import { SortControls } from '@/components/ui/SortControls';
 import { motion, AnimatePresence } from 'framer-motion';
 import { DataManager } from '@/services/dataManager';
-import { cn, generateUUID } from '@/lib/utils';
+import { cn, generateUUID, handleEditorPasteImage } from '@/lib/utils';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { MessageRenderer } from '@/components/MessageRenderer';
 import { useUIContext } from '@/hooks/useUIContext';
@@ -235,7 +235,7 @@ function MarkdownEditor({ value, onChange, placeholder, minHeight = "80px", auto
         <div className="w-px h-4 bg-zinc-300 dark:bg-zinc-600 mx-1" />
         <ImageUploadButton onUpload={handleImageUpload} className="p-1.5 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400" />
       </div>
-      <textarea ref={textAreaRef} value={value} onChange={e => onChange(e.target.value)} className="w-full p-2 bg-transparent border-0 focus:ring-0 text-sm resize-y outline-none block" style={{ minHeight }} placeholder={placeholder} autoFocus={autoFocus} />
+      <textarea ref={textAreaRef} value={value} onChange={e => onChange(e.target.value)} onPaste={e => handleEditorPasteImage(e, textAreaRef.current, value, onChange)} className="w-full p-2 bg-transparent border-0 focus:ring-0 text-sm resize-y outline-none block" style={{ minHeight }} placeholder={placeholder} autoFocus={autoFocus} />
     </div>
   );
 }

@@ -13,7 +13,7 @@ import { useManualReorder } from '@/hooks/useManualReorder';
 import { SortControls } from '@/components/ui/SortControls';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MessageRenderer, isHtmlContent, HtmlPreview } from './MessageRenderer';
-import { cn, generateUUID } from '@/lib/utils';
+import { cn, generateUUID, handleEditorPasteImage } from '@/lib/utils';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useHistory } from '@/hooks/useHistory';
 import { useResizable } from '@/hooks/useResizable';
@@ -756,6 +756,7 @@ function NoteDetail({
               style={{ fontSize: 'var(--app-font-size, 14px)' }}
               value={editContent}
               onChange={e => setEditContent(e.target.value)}
+              onPaste={e => handleEditorPasteImage(e, textAreaRef.current, editContent, setEditContent)}
               placeholder="开始写作..."
             />
           </div>
