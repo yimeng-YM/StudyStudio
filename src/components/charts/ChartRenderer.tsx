@@ -15,6 +15,13 @@ import { AlertTriangle } from 'lucide-react';
  *   "series": [{"name":"小时","data":[2,3,1.5]}] }
  * ```
  *
+ * @example 雷达图
+ * ```json
+ * { "type": "radar", "title": "能力评估",
+ *   "xAxis": ["理解力","记忆力","应用力"],
+ *   "series": [{"name":"当前","data":[80,70,85]}, {"name":"目标","data":[90,85,95]}] }
+ * ```
+ *
  * @example 高级模式
  * ```json
  * { "option": { "xAxis": {...}, "yAxis": {...}, "series": [...] } }
@@ -29,8 +36,10 @@ interface ChartConfig {
   width?: string;
   /** 容器高度 (px)，默认 400 */
   height?: number;
-  /** X 轴数据（简化模式） */
+  /** X 轴数据（简化模式）。雷达图可省略，改用 indicator 指定维度名和 max */
   xAxis?: string[] | { data: string[]; name?: string };
+  /** 雷达图专用：维度定义，优先级高于 xAxis。每个维度可独立指定 max */
+  indicator?: Array<{ name: string; max: number }>;
   /** 系列数据（简化模式） */
   series?: Array<{
     name?: string;
@@ -77,7 +86,6 @@ function buildEChartsOption(config: ChartConfig, isDark: boolean): Record<string
   // 解析 series
   const series: Record<string, unknown>[] = [];
   const legendData: string[] = [];
-  const yAxisNames: string[] = [];
 
   for (const s of config.series || []) {
     const sType = chartType === 'area' ? 'line' : chartType;
@@ -94,7 +102,6 @@ function buildEChartsOption(config: ChartConfig, isDark: boolean): Record<string
     if (chartType === 'pie') {
       // 饼图：data 为 [{ name, value }]
       seriesItem.data = s.data;
-      // 如果 data 是简单数值数组，转为 { name, value } 对象
       if (s.data.length > 0 && typeof s.data[0] === 'number') {
         seriesItem.data = (s.data as number[]).map((v, i) => {
           const name = xData[i] || `项目${i + 1}`;
@@ -105,10 +112,9 @@ function buildEChartsOption(config: ChartConfig, isDark: boolean): Record<string
 
     series.push(seriesItem);
     if (s.name) legendData.push(s.name);
-    if (s.name && chartType !== 'pie') yAxisNames.push(s.name);
   }
 
-  // pie chart doesn't need xAxis/yAxis in the same way
+  // 饼图直接返回
   if (chartType === 'pie') {
     return {
       color: colors,
@@ -126,7 +132,64 @@ function buildEChartsOption(config: ChartConfig, isDark: boolean): Record<string
     };
   }
 
-  // 笛卡尔坐标系图表
+  // 雷达图：独立构建，数据结构与笛卡尔坐标系不同
+  if (chartType === 'radar') {
+    // indicator：优先使用用户指定的完整定义（含 max），否则从 xAxis 推算
+    const allData = (config.series || []).map(s => (s.data || []) as number[]);
+    let indicator: Array<{ name: string; max: number }>;
+    if (config.indicator && config.indicator.length > 0) {
+      // 用户已提供完整 indicator，直接使用
+      indicator = config.indicator;
+    } else {
+      // 从 xAxis 推算：每维度独立取 max * 1.2
+      indicator = xData.map((name, di) => {
+        const dimMax = Math.max(...allData.map(arr => (typeof arr[di] === 'number' ? arr[di] : 0)), 0);
+        return { name, max: Math.ceil(dimMax * 1.2) || 100 };
+      });
+    }
+
+    // 雷达图 series.data 需要 [{ value: [...], name: "..." }] 结构
+    const radarSeries = (config.series || []).map((s, si) => ({
+      name: s.name || `系列${si + 1}`,
+      type: 'radar' as const,
+      data: [{ value: s.data || [], name: s.name || `系列${si + 1}` }],
+      symbol: 'circle',
+      symbolSize: 5,
+      lineStyle: { width: 2 },
+    }));
+
+    const radarLegend = (config.series || []).map(s => s.name).filter(Boolean);
+
+    return {
+      color: colors,
+      backgroundColor: 'transparent',
+      title: config.title ? {
+        text: config.title,
+        left: 'center',
+        textStyle: { color: textColor, fontSize: 14 },
+      } : undefined,
+      tooltip: {},
+      legend: radarLegend.length > 0
+        ? { bottom: 0, textStyle: { color: textColor, fontSize: 11 } }
+        : undefined,
+      radar: {
+        center: ['50%', '52%'],
+        radius: '60%',
+        indicator,
+        axisName: { color: textColor, fontSize: 11 },
+        splitArea: {
+          areaStyle: {
+            color: isDark
+              ? ['rgba(255,255,255,0.02)', 'rgba(255,255,255,0.05)']
+              : ['rgba(0,0,0,0.02)', 'rgba(0,0,0,0.04)'],
+          },
+        },
+      },
+      series: radarSeries,
+    };
+  }
+
+  // 笛卡尔坐标系图表（bar / line / scatter / area）
   const baseOption: Record<string, unknown> = {
     color: colors,
     backgroundColor: 'transparent',
@@ -163,22 +226,6 @@ function buildEChartsOption(config: ChartConfig, isDark: boolean): Record<string
     },
     series,
   };
-
-  // 雷达图特殊处理
-  if (chartType === 'radar') {
-    baseOption.radar = {
-      indicator: xData.map((name) => ({
-        name,
-        max: Math.max(...(config.series?.flatMap(s => s.data as number[]) || [0])) * 1.2 || 100,
-      })),
-      axisName: { color: textColor, fontSize: 11 },
-      splitArea: { areaStyle: { color: isDark ? ['rgba(255,255,255,0.02)', 'rgba(255,255,255,0.05)'] : ['rgba(0,0,0,0.02)', 'rgba(0,0,0,0.04)'] } },
-    };
-    // Remove xAxis/yAxis for radar
-    delete baseOption.xAxis;
-    delete baseOption.yAxis;
-    if (baseOption.grid) delete baseOption.grid;
-  }
 
   // 漏斗图
   if (chartType === 'funnel') {

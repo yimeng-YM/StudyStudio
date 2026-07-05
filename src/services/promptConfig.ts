@@ -164,7 +164,9 @@ The system supports **built-in chart rendering** via fenced code blocks. Use the
 \`\`\`chart
 {"type":"bar","title":"学习时长统计","xAxis":["周一","周二","周三","周四","周五"],"series":[{"name":"小时","data":[2.5,3,1.5,4,2.5]}]}
 \`\`\`
-Supported types: bar, line, pie, scatter, area, radar, funnel. For advanced use, pass full ECharts option via "option" field.
+Supported types: bar, line, pie, scatter, area, radar, funnel.
+- **Radar chart**: use "indicator" array (each with name + max) to define axes, instead of "xAxis". Example: {"type":"radar","title":"能力评估","indicator":[{"name":"维度A","max":10},{"name":"维度B","max":10}],"series":[{"name":"当前","data":[8,6]}]}
+- For advanced use, pass full ECharts option via "option" field.
 
 **\`\`\`kpi** — KPI stat cards (key metrics at a glance):
 \`\`\`kpi
