@@ -3,6 +3,7 @@ import { Send, Paperclip, X, Trash2, Plus, History, Sparkles, Brain, Zap, Rotate
 import { MessageRenderer, ToolCallRenderer, ThinkingBlock } from './MessageRenderer';
 import { db, ChatSession } from '@/db';
 import { processFile } from '@/lib/fileProcessor';
+import { generateUUID } from '@/lib/utils';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useChatSession } from '@/hooks/useChatSession';
@@ -57,8 +58,8 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
   // --- 状态管理 ---
   /** 用户当前输入的文本内容 */
   const [input, setInput] = useState('');
-  /** 已选择待上传的文件列表，包含处理后的文本内容和图片 */
-  const [selectedFiles, setSelectedFiles] = useState<{ name: string, size: number, content: string, images?: string[] }[]>([]);
+  /** 已选择待上传的文件列表，包含处理后的文本内容和图片；imageAttachmentIds 与 images 按顺序一一对应（已同步存入 db.attachments，供 AI 用 insert_image_into_note 引用） */
+  const [selectedFiles, setSelectedFiles] = useState<{ name: string, size: number, content: string, images?: string[], imageAttachmentIds?: string[] }[]>([]);
   /** 消息列表滚动容器引用，用于实现自动滚动 */
   const messagesEndRef = useRef<HTMLDivElement>(null);
   /** 聊天消息区域的滚动容器引用，用于判断用户是否在底部 */
@@ -142,6 +143,38 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
   };
 
   /**
+   * 处理单个文件对象，执行解析、attachment 入库，返回可加入 selectedFiles 的条目。
+   * 由 handleFileSelect 和 handlePaste 共用，避免重复逻辑。
+   */
+  const processFileEntry = async (file: File | Blob, displayName: string) => {
+    const processed = await processFile(file as File);
+    let imageAttachmentIds: string[] | undefined;
+    if (processed.images && processed.images.length > 0) {
+      imageAttachmentIds = await Promise.all(
+        processed.images.map(async (dataUrl, idx) => {
+          const id = generateUUID();
+          const mimeMatch = dataUrl.match(/^data:([^;]+);/);
+          await db.attachments.add({
+            id,
+            data: dataUrl,
+            mimeType: mimeMatch?.[1] || 'image/png',
+            fileName: processed.images!.length > 1 ? `${displayName} (${idx + 1})` : displayName,
+            createdAt: Date.now(),
+          });
+          return id;
+        })
+      );
+    }
+    return {
+      name: displayName,
+      size: file.size,
+      content: processed.text,
+      images: processed.images,
+      imageAttachmentIds,
+    };
+  };
+
+  /**
    * 处理文件选择事件
    * 调用 processFile 提取文件内容（如 PDF 文本、图片等）并加入待发送列表
    * @param {React.ChangeEvent<HTMLInputElement>} e
@@ -150,15 +183,9 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
     const files = e.target.files;
     if (files && files.length > 0) {
       try {
-        const newFiles: { name: string, size: number, content: string, images?: string[] }[] = [];
+        const newFiles: { name: string, size: number, content: string, images?: string[], imageAttachmentIds?: string[] }[] = [];
         for (let i = 0; i < files.length; i++) {
-          const processed = await processFile(files[i]);
-          newFiles.push({
-            name: files[i].name,
-            size: files[i].size,
-            content: processed.text,
-            images: processed.images
-          });
+          newFiles.push(await processFileEntry(files[i], files[i].name));
         }
         setSelectedFiles(prev => [...prev, ...newFiles]);
       } catch (e) {
@@ -166,6 +193,50 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
         showAlert('文件处理失败');
       }
       if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  /**
+   * 处理剪贴板粘贴事件：检测图片数据并加入待发送列表。
+   * 仅处理剪贴板中的图片项（Blob），文本粘贴交由浏览器默认行为。
+   * @param {React.ClipboardEvent} e
+   */
+  const handlePaste = async (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    const imageItems: { blob: Blob; mimeType: string }[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.startsWith('image/')) {
+        const blob = item.getAsFile();
+        if (blob) {
+          imageItems.push({ blob, mimeType: item.type });
+        }
+      }
+    }
+
+    if (imageItems.length === 0) return; // 无图片，走默认文本粘贴
+
+    // 阻止默认粘贴，图片由 selectedFiles 管理
+    e.preventDefault();
+
+    try {
+      // 生成带时戳的文件名以便区分多次粘贴
+      const now = new Date();
+      const timestamp = `${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}${now.getSeconds().toString().padStart(2, '0')}`;
+      const ext = imageItems[0].mimeType.split('/')[1] || 'png';
+      const newFiles: { name: string, size: number, content: string, images?: string[], imageAttachmentIds?: string[] }[] = [];
+      for (let i = 0; i < imageItems.length; i++) {
+        const displayName = imageItems.length > 1
+          ? `剪贴板图片 ${timestamp} (${i + 1}).${ext}`
+          : `剪贴板图片 ${timestamp}.${ext}`;
+        newFiles.push(await processFileEntry(imageItems[i].blob, displayName));
+      }
+      setSelectedFiles(prev => [...prev, ...newFiles]);
+    } catch (e) {
+      console.error(e);
+      showAlert('图片粘贴处理失败');
     }
   };
 
@@ -433,6 +504,7 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
             className="w-full bg-transparent px-2 pt-2.5 pb-1 text-zinc-900 dark:text-zinc-100 focus:outline-none placeholder:text-zinc-400 disabled:opacity-50 disabled:cursor-not-allowed resize-none max-h-[150px] min-h-[48px]"
             value={input}
             placeholder={placeholder || "告诉 Agent 你想做什么..."}
+            onPaste={handlePaste}
             onChange={e => {
               setInput(e.target.value);
               e.target.style.height = 'auto';
