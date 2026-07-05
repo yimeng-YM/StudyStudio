@@ -1,4 +1,5 @@
-import { useState, useLayoutEffect, useCallback } from 'react';
+import { useState, useLayoutEffect, useCallback, useEffect } from 'react';
+import { useThemeStore } from './useTheme';
 
 /**
  * 自定义网页背景管理
@@ -73,6 +74,24 @@ function toCssUrl(url: string): string {
   return `url("${escaped}")`;
 }
 
+/** 解析 hex 颜色 (#RRGGBB) 为 [r, g, b]（0-255），非法格式返回 null */
+function hexToRgb(hex: string): [number, number, number] | null {
+  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex.trim());
+  if (!m) return null;
+  return [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)];
+}
+
+/** WCAG 2.1 相对亮度：0 为最暗（纯黑），1 为最亮（纯白） */
+function relativeLuminance(hex: string): number | null {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return null;
+  const [r, g, b] = rgb.map(c => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
 /** 根据配置写入 <html> 的背景相关 CSS 变量 */
 function applyBackground(cfg: BackgroundConfig): void {
   const root = document.documentElement;
@@ -83,6 +102,19 @@ function applyBackground(cfg: BackgroundConfig): void {
     root.style.setProperty('--app-bg-blur', '0px');
     root.style.setProperty('--app-bg-overlay-alpha', '0');
     root.setAttribute('data-bg', 'color');
+
+    // 根据背景亮度自动切换主题，确保文字可读
+    const lum = relativeLuminance(cfg.color);
+    if (lum !== null) {
+      const store = useThemeStore.getState();
+      // 比较 DOM 上实际生效的 class（已处理 system → light/dark 解析），而非 store 中的原始值
+      if (lum >= 0.5 && root.classList.contains('dark')) {
+        store.setTheme('light');
+      } else if (lum <= 0.3 && root.classList.contains('light')) {
+        store.setTheme('dark');
+      }
+      // 0.3 < lum < 0.5：中等亮度，保持当前主题不变
+    }
   } else if (cfg.mode === 'image' && cfg.imageUrl.trim()) {
     // 图片模式下沿用主题默认底色，以便图片加载失败时仍有兜底背景
     root.style.removeProperty('--app-bg-color');
@@ -103,6 +135,26 @@ function applyBackground(cfg: BackgroundConfig): void {
 // 模块加载时立即应用，避免首屏背景闪烁
 applyBackground(loadBackground());
 
+/** 监听主题切换：若纯色背景亮度与当前主题冲突则自动重置背景，确保文字可读 */
+useThemeStore.subscribe((state, prevState) => {
+  if (state.theme === prevState.theme) return;
+  const cfg = loadBackground();
+  if (cfg.mode !== 'color') return;
+  const lum = relativeLuminance(cfg.color);
+  if (lum === null) return;
+
+  const root = document.documentElement;
+  const isLightBg = lum >= 0.5;
+  const isDarkBg = lum <= 0.3;
+  const isDarkTheme = root.classList.contains('dark');
+
+  if ((isLightBg && isDarkTheme) || (isDarkBg && !isDarkTheme)) {
+    applyBackground(DEFAULT_BACKGROUND);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_BACKGROUND));
+    window.dispatchEvent(new CustomEvent('studystudio-bg-reset'));
+  }
+});
+
 /**
  * 自定义网页背景管理 Hook（仅在 Settings 页面使用，确保全局单一 React 状态）。
  * @returns 当前背景配置与更新方法
@@ -115,10 +167,19 @@ export function useBackground() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // 响应模块级 subscriber 因主题冲突而触发的背景重置，保持 React 状态同步
+  useEffect(() => {
+    const handler = () => setBackgroundState(DEFAULT_BACKGROUND);
+    window.addEventListener('studystudio-bg-reset', handler);
+    return () => window.removeEventListener('studystudio-bg-reset', handler);
+  }, []);
+
   /** 更新背景配置，立即写入 DOM 并持久化 */
   const setBackground = useCallback((cfg: BackgroundConfig) => {
-    applyBackground(cfg);
+    // 先持久化，再应用到 DOM：避免 applyBackground 内触发的主题切换
+    // 导致 subscriber 从 localStorage 读到旧配置而误判冲突重置
     localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg));
+    applyBackground(cfg);
     setBackgroundState(cfg);
   }, []);
 

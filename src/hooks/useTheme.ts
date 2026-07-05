@@ -21,7 +21,7 @@ interface ThemeStore {
 /**
  * Zustand 创建的内部主题状态 Store
  */
-const useThemeStore = create<ThemeStore>((set) => ({
+export const useThemeStore = create<ThemeStore>((set) => ({
   theme: (localStorage.getItem('theme') as Theme) || 'light',
   setTheme: (theme) => {
     localStorage.setItem('theme', theme);

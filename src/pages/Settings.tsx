@@ -296,6 +296,41 @@ export function Settings() {
     setBackground({ ...background, ...patch });
   };
 
+  /** 带圆形揭示动画的背景色切换（复用 ThemeToggle 的 View Transition 手法） */
+  const changeColorWithAnimation = (color: string, e: React.MouseEvent | React.ChangeEvent) => {
+    // 不支持 View Transition API 则直接切换
+    if (!(document as any).startViewTransition) {
+      updateBg({ color });
+      return;
+    }
+    const target = e.currentTarget as HTMLElement;
+    const rect = target.getBoundingClientRect();
+    const x = rect.left + rect.width / 2;
+    const y = rect.top + rect.height / 2;
+    const endRadius = Math.hypot(window.innerWidth, window.innerHeight);
+
+    requestAnimationFrame(() => {
+      const transition = (document as any).startViewTransition(() => {
+        updateBg({ color });
+      });
+      transition.ready.then(() => {
+        document.documentElement.animate(
+          {
+            clipPath: [
+              `circle(0px at ${x}px ${y}px)`,
+              `circle(${endRadius}px at ${x}px ${y}px)`,
+            ],
+          },
+          {
+            duration: 300,
+            easing: 'ease-in-out',
+            pseudoElement: '::view-transition-new(root)',
+          } as any,
+        );
+      });
+    });
+  };
+
   /** 应用图片 URL（点击/回车触发，避免逐字符重载图片造成闪烁） */
   const applyImageUrl = () => {
     const url = imageUrlInput.trim();
@@ -670,7 +705,7 @@ export function Settings() {
                           <input
                             type="color"
                             value={background.color}
-                            onChange={e => updateBg({ color: e.target.value })}
+                            onChange={e => changeColorWithAnimation(e.target.value, e)}
                             className="w-10 h-10 rounded-lg border border-zinc-200 dark:border-zinc-700 cursor-pointer bg-transparent p-0"
                           />
                           <input
@@ -685,7 +720,7 @@ export function Settings() {
                           {BACKGROUND_COLOR_PRESETS.map(c => (
                             <button
                               key={c}
-                              onClick={() => updateBg({ color: c })}
+                              onClick={(e) => changeColorWithAnimation(c, e)}
                               title={c}
                               className={cn(
                                 'w-7 h-7 rounded-md border transition-transform hover:scale-110',
