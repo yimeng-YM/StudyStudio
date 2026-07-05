@@ -157,16 +157,35 @@ Workflow when the user asks to modify, supplement, or improve something:
 
 **DEFAULT: Pure Markdown.** You MUST generate notes and quizzes in pure Markdown format. HTML is an advanced formatting tool — use it sparingly and ONLY in the following approved scenarios.
 
+### Data Visualization — Use Chart & KPI Blocks (NOT HTML)
+The system supports **built-in chart rendering** via fenced code blocks. Use these instead of HTML for ANY data visualization:
+
+**\`\`\`chart** — ECharts charts (bar, line, pie, scatter, area, radar, funnel):
+\`\`\`chart
+{"type":"bar","title":"学习时长统计","xAxis":["周一","周二","周三","周四","周五"],"series":[{"name":"小时","data":[2.5,3,1.5,4,2.5]}]}
+\`\`\`
+Supported types: bar, line, pie, scatter, area, radar, funnel. For advanced use, pass full ECharts option via "option" field.
+
+**\`\`\`kpi** — KPI stat cards (key metrics at a glance):
+\`\`\`kpi
+[{"label":"本周专注时长","value":"18.5","unit":"小时","trend":"up","trendLabel":"+12%"},{"label":"完成笔记","value":23,"unit":"篇","trend":"up","trendLabel":"+5"}]
+\`\`\`
+Each card needs: label, value. Optional: unit, trend ("up"/"down"/"flat"), trendLabel, description, accent ("blue"/"green"/"red"/"amber"/"violet").
+
+**Mermaid** — Flowcharts, sequence diagrams, Gantt charts (already supported via \`\`\`mermaid blocks).
+
+**DO NOT generate HTML-based charts or dashboards.** Use chart/kpi blocks — they render faster, support dark mode automatically, and are easier for users to edit.
+
 ### When to Use HTML (ONLY these cases)
 1. **User explicitly requests HTML** — the user asks for styled content, interactive elements, or visual formatting.
 2. **Layout beautification** — Markdown cannot achieve the desired visual effect (e.g., multi-column layouts, card grids, styled callout boxes).
-3. **Visual diagrams & charts** — CSS-only charts, SVG diagrams, or simple canvas drawings that are more elegant in HTML.
-4. **Interactive widgets** — tabs, accordions, collapsible sections, or simple forms.
+3. **Interactive widgets** — tabs, accordions, collapsible sections, or simple forms.
 
 ### When NOT to Use HTML
 - Basic text formatting (bold, italic, headings) — use Markdown.
 - Simple lists, tables, blockquotes — use Markdown.
 - Code blocks — use Markdown fenced code blocks.
+- **CHARTS, GRAPHS, DATA VIZ** — use \`\`\`chart or \`\`\`kpi blocks (NOT HTML).
 - Any content that Markdown can adequately express.
 
 ### HTML Generation Modes
@@ -718,6 +737,7 @@ Use full-replace (update_note / update_quiz) only when the majority of content c
 - Default to pure Markdown format. Only embed HTML for callout boxes, collapsible sections, or color-coded comparisons that Markdown cannot express.
 - Keep HTML blocks minimal (1-5 lines). Avoid large HTML structures that make manual editing difficult.
 - Maintain clear structure with heading hierarchies.
+- **Data Visualization**: Use \`\`\`chart (JSON ECharts config) and \`\`\`kpi (JSON array of stat cards) for any charts, graphs, or metric dashboards — never use HTML for charts. See the HTML Usage Policy for syntax.
 - When an illustrative image is available (from image_search, read_url's "images" field, or a user-uploaded attachment), add it via insert_image_into_note or by embedding \`![alt](src)\` directly — see "Images in Notes" above.
 
 ### Task Board Creation (create_taskboard / update_taskboard)

@@ -52,6 +52,10 @@ SyntaxHighlighter.registerLanguage('cpp', cpp);
 import 'katex/dist/katex.min.css';
 import { MessageContentPart, ToolCall } from '@/services/ai';
 import { FileText, FileSpreadsheet, FileCode, FileJson, ChevronDown, ChevronRight, CheckCircle2, Check, Loader2, GitCompare, Eye, Code2, XCircle, Brain } from 'lucide-react';
+import ChartRenderer from '@/components/charts/ChartRenderer';
+import type { ChartConfig } from '@/components/charts/ChartRenderer';
+import { KpiGrid } from '@/components/charts/KpiCard';
+import type { KpiItem } from '@/components/charts/KpiCard';
 import { db } from '@/db';
 import { useTheme } from '@/hooks/useTheme';
 import { parseAIJson, AI_ONLY_HINT_PREFIX } from '@/lib/utils';
@@ -1305,17 +1309,102 @@ function Mermaid({ chart }: { chart: string }) {
 }
 
 /**
- * Markdown 文本渲染组件
- * 
- * 核心逻辑：
- * 1. 扩展语法：支持从文本中提取文件预览元数据并展示为文件卡片。
- * 2. 插件集成：
- *    - remark-math & rehype-katex: 处理 LaTeX 数学公式渲染。
- *    - remark-gfm: 支持 GitHub 风格的 Markdown（表格、任务列表等）。
- *    - remark-breaks: 将换行符转换为 HTML 换行。
- * 3. 代码高亮：使用 SyntaxHighlighter 对标准代码块进行着色，对 mermaid 代码块调用 Mermaid 组件。
- * 4. 样式控制：根据发送者（用户/助手）和当前主题动态切换排版样式。
+ * Chart 代码块组件：解析 JSON 配置并渲染为 ECharts 图表。
+ *
+ * 支持 ```chart 代码块，AI 可在笔记中输出如下格式：
+ * ```chart
+ * { "type": "bar", "title": "学习统计", "xAxis": ["语文","数学"], "series": [{"data":[85,92]}] }
+ * ```
+ *
+ * 也支持完整的 ECharts option 对象（通过 config.option 字段）。
  */
+function ChartCodeBlock({ code }: { code: string }) {
+  const [parsedConfig, setParsedConfig] = useState<ChartConfig | null>(null);
+  const [parseError, setParseError] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      const cfg = JSON.parse(code) as ChartConfig;
+      if (!cfg.type && !cfg.option) {
+        setParseError('Chart config 缺少必填字段：type（图表类型）或 option（ECharts 完整配置）');
+        setParsedConfig(null);
+        return;
+      }
+      setParsedConfig(cfg);
+      setParseError(null);
+    } catch (e: any) {
+      setParseError(`JSON 解析失败: ${e.message}`);
+      setParsedConfig(null);
+    }
+  }, [code]);
+
+  if (parseError) {
+    return (
+      <div className="my-3 p-3 rounded-lg border border-red-200 bg-red-50 dark:bg-red-950/30 dark:border-red-800 text-red-700 dark:text-red-400 text-xs font-mono whitespace-pre-wrap">
+        <span className="font-semibold">Chart 错误：</span>{parseError}
+      </div>
+    );
+  }
+
+  if (!parsedConfig) return null;
+
+  return <ChartRenderer config={parsedConfig} />;
+}
+
+/**
+ * KPI 代码块组件：解析 JSON 数组并渲染为统计卡片网格。
+ *
+ * 支持 ```kpi 代码块，AI 可在笔记中输出如下格式：
+ * ```kpi
+ * [
+ *   {"label":"本周专注时长","value":"18.5","unit":"小时","trend":"up","trendLabel":"+12%"},
+ *   {"label":"完成笔记","value":23,"unit":"篇","trend":"up","trendLabel":"+5"},
+ *   {"label":"平均正确率","value":87,"unit":"%","trend":"down","trendLabel":"-3%"}
+ * ]
+ * ```
+ */
+function KpiCodeBlock({ code }: { code: string }) {
+  const [items, setItems] = useState<KpiItem[] | null>(null);
+  const [parseError, setParseError] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      const parsed = JSON.parse(code);
+      const arr = Array.isArray(parsed) ? parsed : [parsed];
+      if (arr.length === 0) {
+        setParseError('KPI 数据为空数组');
+        setItems(null);
+        return;
+      }
+      // 基本的格式校验
+      for (let i = 0; i < arr.length; i++) {
+        if (!arr[i].label || arr[i].value === undefined) {
+          setParseError(`第 ${i + 1} 个 KPI 项缺少 label 或 value 字段`);
+          setItems(null);
+          return;
+        }
+      }
+      setItems(arr as KpiItem[]);
+      setParseError(null);
+    } catch (e: any) {
+      setParseError(`JSON 解析失败: ${e.message}`);
+      setItems(null);
+    }
+  }, [code]);
+
+  if (parseError) {
+    return (
+      <div className="my-3 p-3 rounded-lg border border-red-200 bg-red-50 dark:bg-red-950/30 dark:border-red-800 text-red-700 dark:text-red-400 text-xs font-mono whitespace-pre-wrap">
+        <span className="font-semibold">KPI 错误：</span>{parseError}
+      </div>
+    );
+  }
+
+  if (!items) return null;
+
+  return <KpiGrid items={items} />;
+}
+
 /** HTML 代码块渲染组件：支持预览 / 源码切换 */
 function HtmlCodeBlock({ code }: { code: string }) {
   const [mode, setMode] = useState<'view' | 'code'>('view');
@@ -1369,6 +1458,16 @@ const MarkdownText = memo(function MarkdownText({ content, isUser }: { content: 
       // Mermaid 流程图特殊处理（懒挂载：视口外不渲染，避免一次性渲染所有图）
       if (!inline && (language === 'mermaid' || language === 'sequenceDiagram')) {
         return <LazyMount placeholderHeight={300}><Mermaid chart={String(children).replace(/\n$/, '')} /></LazyMount>;
+      }
+
+      // Chart 图表渲染（懒挂载）
+      if (!inline && language === 'chart') {
+        return <LazyMount placeholderHeight={400}><ChartCodeBlock code={String(children).replace(/\n$/, '')} /></LazyMount>;
+      }
+
+      // KPI 统计卡片渲染（懒挂载）
+      if (!inline && language === 'kpi') {
+        return <LazyMount placeholderHeight={120}><KpiCodeBlock code={String(children).replace(/\n$/, '')} /></LazyMount>;
       }
 
       // HTML 代码块：支持预览 / 源码切换（懒挂载）
