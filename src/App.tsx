@@ -1,4 +1,5 @@
-import { lazy, Suspense, useEffect } from 'react';
+import { lazy, Suspense, useEffect, Component } from 'react';
+import type { ComponentType, ReactNode, ErrorInfo } from 'react';
 import { HashRouter, Routes, Route } from 'react-router-dom';
 import { Layout } from '@/components/Layout';
 import { DialogProvider } from '@/components/ui/DialogProvider';
@@ -12,14 +13,68 @@ import '@/hooks/useTheme';
 import '@/hooks/useBackground';
 import '@/hooks/useAccentTheme';
 
+/** 可重试的动态导入包装器：
+ *  - Vite dev 模式下磁盘/预构建缓存偶尔损坏会导致 `Failed to fetch dynamically imported module`
+ *  - React.lazy 会缓存失败的 promise 且不重试，导致永久白屏/黑屏
+ *  - 本包装在失败时自动重试（最多 3 次，1s 间隔），给浏览器/Vite 足够时间恢复
+ */
+function retryImport<T>(importFn: () => Promise<T>, maxRetries = 3, delayMs = 1000): Promise<T> {
+  return new Promise((resolve, reject) => {
+    let attempt = 0;
+    const tryLoad = () => {
+      importFn()
+        .then(resolve)
+        .catch(err => {
+          if (++attempt < maxRetries) {
+            console.warn(`[lazy load] 重试 ${attempt}/${maxRetries}…`, String(err).slice(0, 120));
+            setTimeout(tryLoad, delayMs);
+          } else {
+            reject(err);
+          }
+        });
+    };
+    tryLoad();
+  });
+}
+
+/** 页面加载失败时的错误边界：显示提示并提供刷新按钮，避免白屏/黑屏 */
+class PageLoadErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state = { error: null as Error | null };
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('[PageLoadError]', error, info.componentStack);
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full text-sm text-zinc-500 gap-3 p-8">
+          <p>页面加载失败，请刷新后重试</p>
+          <button
+            onClick={() => this.setState({ error: null })}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 transition-colors"
+          >
+            重试
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+/** 创建带重试的 lazy 组件（仅用于页面级路由） */
+function lazyPage<T extends ComponentType<any>>(importFn: () => Promise<{ default: T }>) {
+  return lazy(() => retryImport(importFn));
+}
+
 // 路由级懒加载：首屏只需 Dashboard，其余页面（含思维导图 / 题库 / AI 等）按需加载，
 // 显著减小首屏 bundle，加快新人首次打开速度。
-const Dashboard = lazy(() => import('@/pages/Dashboard').then(m => ({ default: m.Dashboard })));
-const SubjectView = lazy(() => import('@/pages/SubjectView').then(m => ({ default: m.SubjectView })));
-const Settings = lazy(() => import('@/pages/Settings').then(m => ({ default: m.Settings })));
-const AIChat = lazy(() => import('@/pages/AIChat').then(m => ({ default: m.AIChat })));
-const Docs = lazy(() => import('@/pages/Docs').then(m => ({ default: m.Docs })));
-const MobileSubjects = lazy(() => import('@/pages/mobile/MobileSubjects').then(m => ({ default: m.MobileSubjects })));
+const Dashboard = lazyPage(() => import('@/pages/Dashboard').then(m => ({ default: m.Dashboard })));
+const SubjectView = lazyPage(() => import('@/pages/SubjectView').then(m => ({ default: m.SubjectView })));
+const Settings = lazyPage(() => import('@/pages/Settings').then(m => ({ default: m.Settings })));
+const AIChat = lazyPage(() => import('@/pages/AIChat').then(m => ({ default: m.AIChat })));
+const Docs = lazyPage(() => import('@/pages/Docs').then(m => ({ default: m.Docs })));
+const MobileSubjects = lazyPage(() => import('@/pages/mobile/MobileSubjects').then(m => ({ default: m.MobileSubjects })));
 
 /**
  * 应用根组件
@@ -54,6 +109,7 @@ function App() {
     <SortProvider>
       <DialogProvider>
         <HashRouter>
+          <PageLoadErrorBoundary>
           <Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-zinc-400">加载中…</div>}>
           <Routes>
             <Route path="/" element={<Layout />}>
@@ -66,6 +122,7 @@ function App() {
             </Route>
           </Routes>
           </Suspense>
+          </PageLoadErrorBoundary>
         </HashRouter>
       </DialogProvider>
     </SortProvider>
