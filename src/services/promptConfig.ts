@@ -839,6 +839,34 @@ Context information is injected dynamically. Please use it to:
 `;
 
 // ============================================
+// Current Date Injection
+// ============================================
+
+/**
+ * 生成当前日期字符串，用于注入到系统提示词中。
+ * 仅包含日期（不含时分秒），每天只变化一次，避免影响 AI 供应商的提示词缓存命中率。
+ * 格式示例：2026年7月6日 星期一 (2026-07-06)
+ */
+export function getCurrentDateString(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+  const day = now.getDate();
+  const weekdays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
+  const weekday = weekdays[now.getDay()];
+  const isoDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  return `${year}年${month}月${day}日 ${weekday} (${isoDate})`;
+}
+
+/**
+ * 注入当前日期到提示词中的占位符替换函数。
+ * 将 {current_date} 替换为实际的当前日期时间。
+ */
+export function injectCurrentDate(prompt: string): string {
+  return prompt.replace(/\{current_date\}/g, getCurrentDateString());
+}
+
+// ============================================
 // Helper Functions
 // ============================================
 
@@ -867,7 +895,10 @@ export function getSystemPromptWithContext(
   mode: 'plan' | 'act' | 'research',
   contextPrompt?: string
 ): string {
-  let prompt = getSystemPrompt(mode);
+  // 注入当前日期时间信息到提示词最前面
+  const currentDate = getCurrentDateString();
+  let prompt = `**当前时间：${currentDate}**\n\n`;
+  prompt += getSystemPrompt(mode);
 
   // 始终将工具规范指南注入到提示词中
   prompt += `\n\n${TOOL_USAGE_GUIDE}\n`;

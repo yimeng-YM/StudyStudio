@@ -2,7 +2,7 @@ import { AISettings, db } from '@/db';
 import { Message, ToolCall, streamAICompletion } from '@/services/ai';
 import { ToolDefinitions, executeTool } from './ToolRegistry';
 import { isJsonComplete } from '@/lib/utils';
-import { SUB_AGENT_PROMPT, DEFAULT_MAX_TOKENS } from '@/services/promptConfig';
+import { SUB_AGENT_PROMPT, getCurrentDateString, DEFAULT_MAX_TOKENS } from '@/services/promptConfig';
 import { isWebSearchUsable, isWebUsable, isWikipediaOn, buildWebToolsStatus } from '@/lib/toolConfig';
 
 /**
@@ -77,7 +77,7 @@ export async function runSubAgent(params: RunSubAgentParams): Promise<string> {
     : task;
 
   let messages: Message[] = [
-    { role: 'system', content: SUB_AGENT_PROMPT + '\n\n' + buildWebToolsStatus(cfg) },
+    { role: 'system', content: `**当前时间：${getCurrentDateString()}**\n\n${SUB_AGENT_PROMPT}\n\n${buildWebToolsStatus(cfg)}` },
     { role: 'user', content: userContent },
   ];
 
