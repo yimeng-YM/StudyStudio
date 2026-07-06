@@ -51,7 +51,7 @@ SyntaxHighlighter.registerLanguage('cpp', cpp);
 
 import 'katex/dist/katex.min.css';
 import { MessageContentPart, ToolCall } from '@/services/ai';
-import { FileText, FileSpreadsheet, FileCode, FileJson, ChevronDown, ChevronRight, CheckCircle2, Check, Loader2, GitCompare, Eye, Code2, XCircle, Brain } from 'lucide-react';
+import { FileText, FileSpreadsheet, FileCode, FileJson, ChevronDown, ChevronRight, CheckCircle2, Check, Loader2, GitCompare, Eye, Code2, XCircle, Brain, PenLine } from 'lucide-react';
 import ChartRenderer from '@/components/charts/ChartRenderer';
 import type { ChartConfig } from '@/components/charts/ChartRenderer';
 import { KpiGrid } from '@/components/charts/KpiCard';
@@ -1594,7 +1594,8 @@ export interface TodoItem {
 
 /**
  * Research task progress card. Renders a structured todo list with status indicators
- * and a completion progress bar.
+ * and a completion progress bar. Pinned at the top of the chat (see ChatWindow), so it
+ * is kept compact: header + progress bar are always visible, the item list scrolls if long.
  */
 export function TodoCard({ items }: { items: TodoItem[] }) {
   if (!items || items.length === 0) return null;
@@ -1602,27 +1603,27 @@ export function TodoCard({ items }: { items: TodoItem[] }) {
   const pct = Math.round((completed / items.length) * 100);
 
   return (
-    <div className="mx-4 my-3 p-4 bg-white/80 dark:bg-zinc-800/80 backdrop-blur-sm rounded-2xl border border-zinc-200/60 dark:border-zinc-700/60 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Research Progress</span>
-        <span className="text-xs text-zinc-400">{completed}/{items.length} &middot; {pct}%</span>
+    <div className="p-3.5 bg-white/70 dark:bg-zinc-800/80 backdrop-blur-sm rounded-2xl ring-1 ring-zinc-900/5 dark:ring-zinc-100/10 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
+      <div className="flex items-center justify-between mb-2.5">
+        <span className="text-xs font-semibold text-zinc-600 dark:text-zinc-300 tracking-wide">研究进度</span>
+        <span className="text-[11px] text-zinc-400 dark:text-zinc-500">{completed}/{items.length} · {pct}%</span>
       </div>
-      <div className="w-full h-1.5 bg-zinc-100 dark:bg-zinc-700 rounded-full mb-3 overflow-hidden">
+      <div className="w-full h-1.5 bg-zinc-100 dark:bg-zinc-700/70 rounded-full mb-3 overflow-hidden">
         <div
-          className="h-full bg-emerald-500 rounded-full transition-all duration-500 ease-out"
+          className="h-full bg-blue-500 dark:bg-blue-400 rounded-full transition-all duration-500 ease-out"
           style={{ width: `${pct}%` }}
         />
       </div>
-      <div className="space-y-1.5">
+      <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1 -mr-1">
         {items.map(item => {
           const icon =
-            item.status === 'completed' ? <CheckCircle2 size={14} className="text-emerald-500 shrink-0 mt-0.5" /> :
-            item.status === 'in_progress' ? <Loader2 size={14} className="animate-spin text-blue-500 shrink-0 mt-0.5" /> :
+            item.status === 'completed' ? <CheckCircle2 size={14} className="text-green-500 dark:text-green-400 shrink-0 mt-0.5" /> :
+            item.status === 'in_progress' ? <Loader2 size={14} className="animate-spin text-blue-500 dark:text-blue-400 shrink-0 mt-0.5" /> :
             <div className="w-3.5 h-3.5 rounded-full border-2 border-zinc-300 dark:border-zinc-600 shrink-0 mt-0.5" />;
           return (
             <div key={item.id} className="flex items-start gap-2 text-xs">
               {icon}
-              <span className={item.status === 'completed' ? 'text-zinc-400 line-through' : 'text-zinc-700 dark:text-zinc-200'}>
+              <span className={item.status === 'completed' ? 'text-zinc-400 dark:text-zinc-500 line-through' : 'text-zinc-700 dark:text-zinc-200'}>
                 {item.text}
               </span>
             </div>
@@ -1636,6 +1637,8 @@ export function TodoCard({ items }: { items: TodoItem[] }) {
 /**
  * Interactive question card shown when the AI calls ask_user.
  * Supports single-choice, multi-choice, and free-text input.
+ * A manual free-text input is ALWAYS available — for single/multi types it appears as a
+ * toggleable row beneath the preset options, so the user can always supply a custom answer.
  */
 export function AskCard({
   question,
@@ -1650,12 +1653,14 @@ export function AskCard({
 }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [textInput, setTextInput] = useState('');
+  const [showCustom, setShowCustom] = useState(false);
 
   const handleSubmit = () => {
-    if (type === 'text') {
-      if (textInput.trim()) onSubmit(textInput.trim());
-    } else {
-      if (selected.length > 0) onSubmit(type === 'single' ? selected[0] : selected);
+    // Manual text takes priority when present (works for every type).
+    if (textInput.trim()) {
+      onSubmit(textInput.trim());
+    } else if (type !== 'text' && selected.length > 0) {
+      onSubmit(type === 'single' ? selected[0] : selected);
     }
   };
 
@@ -1667,68 +1672,94 @@ export function AskCard({
     }
   };
 
-  const canSubmit = type === 'text' ? textInput.trim().length > 0 : selected.length > 0;
+  const hasText = textInput.trim().length > 0;
+  const canSubmit = type === 'text' ? hasText : (selected.length > 0 || hasText);
+
+  const inputBox = (
+    <textarea
+      className="w-full bg-white dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-700 rounded-lg p-2.5 text-xs text-zinc-800 dark:text-zinc-100 placeholder:text-zinc-400 resize-none min-h-[60px] focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/15 transition-shadow"
+      placeholder="请输入你的回答…"
+      value={textInput}
+      onChange={e => setTextInput(e.target.value)}
+      onKeyDown={e => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(); }
+      }}
+    />
+  );
 
   return (
-    <div className="mx-4 my-3 p-4 bg-amber-50/80 dark:bg-amber-900/20 backdrop-blur-sm rounded-2xl border border-amber-200/60 dark:border-amber-700/60 shadow-sm animate-in fade-in slide-in-from-bottom-2 duration-300">
+    <div className="mx-4 my-3 p-4 bg-white/70 dark:bg-zinc-800/80 backdrop-blur-sm rounded-2xl rounded-tl-sm ring-1 ring-zinc-900/5 dark:ring-zinc-100/10 shadow-sm animate-in fade-in slide-in-from-bottom-2 duration-300">
       <p className="text-sm font-medium text-zinc-800 dark:text-zinc-100 mb-3">{question}</p>
 
-      {type !== 'text' && options && (
-        <div className="space-y-1.5 mb-3">
-          {options.map((opt, i) => {
-            const isSelected = selected.includes(opt);
-            return (
-              <label
-                key={i}
-                onClick={() => toggleOption(opt)}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer text-xs transition-colors border ${
-                  isSelected
-                    ? 'bg-amber-100 dark:bg-amber-800/40 border-amber-400 dark:border-amber-600 text-amber-900 dark:text-amber-100'
-                    : 'bg-white dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:border-amber-300'
-                }`}
-              >
-                {type === 'single' ? (
-                  <div className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                    isSelected ? 'border-amber-500' : 'border-zinc-300 dark:border-zinc-600'
-                  }`}>
-                    {isSelected && <div className="w-2 h-2 rounded-full bg-amber-500" />}
-                  </div>
-                ) : (
-                  <div className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center shrink-0 ${
-                    isSelected ? 'border-amber-500 bg-amber-500' : 'border-zinc-300 dark:border-zinc-600'
-                  }`}>
-                    {isSelected && <Check size={10} className="text-white" />}
-                  </div>
-                )}
-                <span>{opt}</span>
-              </label>
-            );
-          })}
-        </div>
-      )}
+      {type === 'text' ? (
+        <div className="mb-3">{inputBox}</div>
+      ) : (
+        <>
+          {options && options.length > 0 && (
+            <div className="space-y-1.5 mb-2">
+              {options.map((opt, i) => {
+                const isSelected = selected.includes(opt);
+                return (
+                  <label
+                    key={i}
+                    onClick={() => toggleOption(opt)}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer text-xs transition-colors border ${
+                      isSelected
+                        ? 'border-primary bg-primary/10 text-zinc-800 dark:text-zinc-100'
+                        : 'bg-white dark:bg-zinc-900/40 border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:border-primary/40'
+                    }`}
+                  >
+                    {type === 'single' ? (
+                      <div className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                        isSelected ? 'border-primary' : 'border-zinc-300 dark:border-zinc-600'
+                      }`}>
+                        {isSelected && <div className="w-2 h-2 rounded-full bg-primary" />}
+                      </div>
+                    ) : (
+                      <div className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center shrink-0 ${
+                        isSelected ? 'border-primary bg-primary' : 'border-zinc-300 dark:border-zinc-600'
+                      }`}>
+                        {isSelected && <Check size={10} className="text-primary-foreground" />}
+                      </div>
+                    )}
+                    <span>{opt}</span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
 
-      {type === 'text' && (
-        <textarea
-          className="w-full bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg p-2.5 text-xs text-zinc-800 dark:text-zinc-100 placeholder:text-zinc-400 resize-none min-h-[60px] mb-3 focus:outline-none focus:border-amber-400"
-          placeholder="Type your answer..."
-          value={textInput}
-          onChange={e => setTextInput(e.target.value)}
-          onKeyDown={e => {
-            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(); }
-          }}
-        />
+          {/* Manual free-text input toggle — always available */}
+          <div className="mb-3">
+            <button
+              type="button"
+              onClick={() => setShowCustom(v => !v)}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg cursor-pointer text-xs transition-colors border w-full ${
+                showCustom || hasText
+                  ? 'border-primary/50 bg-primary/5 text-primary'
+                  : 'border-dashed border-zinc-300 dark:border-zinc-600 text-zinc-500 dark:text-zinc-400 hover:border-primary/40 hover:text-primary'
+              }`}
+            >
+              <PenLine size={12} className="shrink-0" />
+              <span>{showCustom ? '收起手动输入' : '手动输入其他答案'}</span>
+            </button>
+            {(showCustom || hasText) && (
+              <div className="mt-1.5">{inputBox}</div>
+            )}
+          </div>
+        </>
       )}
 
       <button
         onClick={handleSubmit}
         disabled={!canSubmit}
-        className={`w-full py-2 rounded-lg text-xs font-medium transition-colors ${
+        className={`w-full py-2 rounded-lg text-xs font-medium transition-all ${
           canSubmit
-            ? 'bg-amber-500 text-white hover:bg-amber-600 active:scale-[0.98]'
-            : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-400 cursor-not-allowed'
+            ? 'bg-primary text-primary-foreground hover:opacity-90 active:scale-[0.98]'
+            : 'bg-zinc-100 dark:bg-zinc-700/70 text-zinc-400 dark:text-zinc-500 cursor-not-allowed'
         }`}
       >
-        {type === 'text' ? 'Submit' : type === 'single' ? 'Confirm Selection' : 'Confirm Selections'}
+        提交
       </button>
     </div>
   );

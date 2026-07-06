@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
-import { Send, Paperclip, X, Trash2, Plus, History, Sparkles, Brain, Zap, Microscope, RotateCw, Loader2, Square } from 'lucide-react';
+import { Send, Paperclip, X, Trash2, Plus, History, Sparkles, Brain, Zap, Microscope, RotateCw, Loader2, Square, ChevronUp, ChevronDown } from 'lucide-react';
 import { MessageRenderer, ToolCallRenderer, ThinkingBlock, TodoCard, AskCard } from './MessageRenderer';
 import { db, ChatSession } from '@/db';
 import { processFile } from '@/lib/fileProcessor';
@@ -76,7 +76,11 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
    * 'plan': 深度规划模式，先思考后执行
    */
   const [mode, setMode] = useState<'act' | 'plan' | 'research'>('act');
-  
+
+  /** 滚动到顶/底浮钮的可见性（仅在跨越阈值时 setState，避免每像素重渲染） */
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  const [showScrollBottom, setShowScrollBottom] = useState(false);
+
   /**
    * 使用自定义 Hook 管理聊天会话
    * 包含消息列表、加载状态、流式渲染状态文字以及发送消息等核心逻辑
@@ -129,10 +133,26 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
     } else {
       userScrolledUp.current = true;
     }
+    updateScrollButtons();
   }, [messages]);
 
   /**
-   * 监听用户手动滚动 —— 如果在底部则重置标记，否则标记为已上翻
+   * 根据当前滚动位置刷新「到顶/到底」浮钮可见性。
+   * 仅在状态实际变化时 setState，避免滚动事件触发频繁重渲染。
+   * 仅当内容可滚动（高度差 > 240px）时才显示浮钮。
+   */
+  const updateScrollButtons = () => {
+    const el = chatScrollRef.current;
+    if (!el) { setShowScrollTop(false); setShowScrollBottom(false); return; }
+    const scrollable = el.scrollHeight - el.clientHeight > 240;
+    const top = el.scrollTop < 80;
+    const bottom = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
+    setShowScrollTop(scrollable && !top);
+    setShowScrollBottom(scrollable && !bottom);
+  };
+
+  /**
+   * 监听用户手动滚动 —— 如果在底部则重置标记，否则标记为已上翻；并刷新浮钮
    */
   const handleScroll = () => {
     if (isNearBottom()) {
@@ -140,6 +160,17 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
     } else {
       userScrolledUp.current = true;
     }
+    updateScrollButtons();
+  };
+
+  /** 平滑滚动到顶部 */
+  const handleScrollToTop = () => {
+    chatScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  /** 平滑滚动到底部 */
+  const handleScrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
   /**
@@ -370,12 +401,19 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
         </div>
       )}
 
-      <div
-        ref={chatScrollRef}
-        onScroll={handleScroll}
-        className="flex-1 min-h-0 overflow-y-auto p-4 space-y-6 pt-16 scroll-smooth"
-      >
-        {todoList.length > 0 && <TodoCard items={todoList} />}
+      {/* 主区域：常驻进度卡片（可选）+ 滚动消息列表 + 滚动导航浮钮 */}
+      <div className="flex-1 min-h-0 flex flex-col relative">
+        {/* 研究进度卡片：常驻窗口顶部，不随消息滚动（pt-14 避开悬浮的头部按钮） */}
+        {todoList.length > 0 && (
+          <div className="shrink-0 px-4 pt-14 pb-1 z-10">
+            <TodoCard items={todoList} />
+          </div>
+        )}
+        <div
+          ref={chatScrollRef}
+          onScroll={handleScroll}
+          className={`flex-1 min-h-0 overflow-y-auto p-4 space-y-6 scroll-smooth ${todoList.length > 0 ? 'pt-2' : 'pt-16'}`}
+        >
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-zinc-400 space-y-4">
             <div className={`w-16 h-16 rounded-full flex items-center justify-center shadow-inner ${mode === 'plan' ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-500' : mode === 'research' ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-500' : 'bg-zinc-50 dark:bg-zinc-800/50 text-primary'}`}>
@@ -458,6 +496,31 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
           </div>
         )}
         <div ref={messagesEndRef} />
+        </div>
+
+        {/* 长内容滚动时显示的「回到顶部 / 滚动到底部」浮动按钮 */}
+        {(showScrollTop || showScrollBottom) && (
+          <div className="absolute right-3 bottom-3 z-20 flex flex-col gap-2">
+            {showScrollTop && (
+              <button
+                onClick={handleScrollToTop}
+                title="回到顶部"
+                className="p-2 bg-white/80 dark:bg-zinc-800/80 backdrop-blur shadow-md ring-1 ring-zinc-900/5 dark:ring-white/10 rounded-full text-zinc-500 hover:text-primary hover:scale-105 active:scale-95 transition-all"
+              >
+                <ChevronUp size={18} />
+              </button>
+            )}
+            {showScrollBottom && (
+              <button
+                onClick={handleScrollToBottom}
+                title="滚动到底部"
+                className="p-2 bg-white/80 dark:bg-zinc-800/80 backdrop-blur shadow-md ring-1 ring-zinc-900/5 dark:ring-white/10 rounded-full text-zinc-500 hover:text-primary hover:scale-105 active:scale-95 transition-all"
+              >
+                <ChevronDown size={18} />
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {askState?.active && (

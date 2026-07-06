@@ -1290,13 +1290,16 @@ Use this tool when:
 - You need to confirm a design choice before proceeding
 - You want the user to select from multiple valid approaches
 - You need additional details to improve research quality
+- Asking which research files to keep at the end of research (NEVER delete files before asking)
 
 The question is displayed as an interactive card in the chat UI. The user's answer will be returned as this tool's result.
+
+IMPORTANT: The UI ALWAYS provides a manual free-text input alongside whatever preset options you supply. You therefore never need to enumerate every conceivable answer — provide a few sensible presets (e.g. keep-all / delete-caches / report-only) and the user can type a custom answer for anything else.
 
 Parameters:
 - question: The question to ask the user, in Chinese (required)
 - type: "single" (single choice from options), "multi" (multiple choices), or "text" (free text input)
-- options: Array of option strings (required for "single" and "multi" types, omit for "text")`,
+- options: Array of option strings (required for "single" and "multi" types, omit for "text"). Keep it short (2-4 presets); manual input covers the rest.`,
       parameters: {
         type: 'object',
         properties: {
