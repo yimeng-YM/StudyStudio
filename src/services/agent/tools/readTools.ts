@@ -1,4 +1,6 @@
 import { db } from '@/db';
+import { ToolError } from './toolError';
+import { findOccurrences } from './noteTextUtils';
 
 /**
  * 检索系统内所有的学科（Subject）基础信息。
@@ -179,5 +181,144 @@ export const get_note_outline = async ({
     title: entity.title,
     totalLines: lines.length,
     headings,
+  };
+};
+
+/**
+ * 笔记内全文搜索（方向为「内容→位置」，与 get_note_lines 的「位置→内容」互补）。
+ * 返回每个命中的行号、列号、长度与上下文预览。
+ *
+ * @param args.entityId      - 笔记实体 ID
+ * @param args.query         - 搜索文本（或 use_regex 时的正则源）
+ * @param args.case_sensitive - 是否区分大小写（默认 false，即大小写不敏感）
+ * @param args.use_regex     - 是否把 query 当作正则（默认 false）
+ * @param args.max_results   - 最多返回的命中数（默认 50，上限 500）
+ */
+export const search_in_note = async ({
+  entityId,
+  query,
+  case_sensitive = false,
+  use_regex = false,
+  max_results = 50,
+}: {
+  entityId: string;
+  query: string;
+  case_sensitive?: boolean;
+  use_regex?: boolean;
+  max_results?: number;
+}) => {
+  const entity = await db.entities.get(entityId);
+  if (!entity) throw new ToolError('entity_not_found', `未找到实体 ${entityId}`, { entityId }, '请通过 get_subject_details 确认 entityId 是否正确。');
+  if (entity.type !== 'note') throw new ToolError('wrong_entity_type', `实体 ${entityId} 不是笔记（类型: ${entity.type}）`, { entityId, actualType: entity.type });
+
+  if (typeof query !== 'string' || query.length === 0) {
+    throw new ToolError('invalid_argument', '参数 query 不能为空。', undefined, '请提供要搜索的文本（或正则）。');
+  }
+
+  const content = typeof entity.content === 'string' ? entity.content : '';
+  const cap = Math.max(1, Math.min(Math.floor(max_results) > 0 ? Math.floor(max_results) : 50, 500));
+
+  // 正则语法错误会在内部抛 ToolError 'invalid_regex'
+  const occs = findOccurrences(content, query, {
+    caseSensitive: case_sensitive,
+    useRegex: !!use_regex,
+  });
+
+  const matches = occs.slice(0, cap).map(o => ({
+    line: o.line,
+    column: o.column,
+    length: o.end - o.start,
+    preview: o.preview,
+  }));
+
+  return {
+    entityId,
+    title: entity.title,
+    query,
+    total_matches: occs.length,
+    returned: matches.length,
+    truncated: occs.length > cap,
+    matches,
+  };
+};
+
+/**
+ * 返回笔记的统计元信息：总行数、字数（CJK 字符 + 拉丁词）、各级标题数、表格数、
+ * 代码块（按语言）、图片数、链接数、预估阅读时间。无需读取全文即可获取概览。
+ *
+ * @param args.entityId - 笔记实体 ID
+ */
+export const get_note_stats = async ({ entityId }: { entityId: string }) => {
+  const entity = await db.entities.get(entityId);
+  if (!entity) throw new ToolError('entity_not_found', `未找到实体 ${entityId}`, { entityId }, '请通过 get_subject_details 确认 entityId 是否正确。');
+  if (entity.type !== 'note') throw new ToolError('wrong_entity_type', `实体 ${entityId} 不是笔记（类型: ${entity.type}）`, { entityId, actualType: entity.type });
+
+  const content = typeof entity.content === 'string' ? entity.content : '';
+  const lines = content.split('\n');
+  const totalLines = lines.length;
+
+  // 字数：CJK 按字符计、拉丁按词计
+  const cjkChars = (content.match(/[一-鿿㐀-䶿]/g) || []).length;
+  const latinWords = (content.match(/[A-Za-z0-9]+/g) || []).length;
+
+  // 标题（按层级）
+  const headingsByLevel: Record<string, number> = {};
+  let totalHeadings = 0;
+  for (const ln of lines) {
+    const m = ln.match(/^(#{1,6})\s+/);
+    if (m) {
+      const lvl = m[1].length;
+      headingsByLevel[lvl] = (headingsByLevel[lvl] || 0) + 1;
+      totalHeadings++;
+    }
+  }
+
+  // 代码块（按围栏语言），处理 ``` 与 ~~~
+  const codeBlocks: Record<string, number> = {};
+  let inFence = false;
+  for (const ln of lines) {
+    const f = ln.match(/^\s*(```|~~~)\s*(.*)$/);
+    if (f) {
+      if (!inFence) {
+        const lang = (f[2] || '').trim() || 'plain';
+        codeBlocks[lang] = (codeBlocks[lang] || 0) + 1;
+        inFence = true;
+      } else {
+        inFence = false;
+      }
+    }
+  }
+
+  // 表格：行分隔线（|---|）且上下都是表格行
+  let tableCount = 0;
+  for (let i = 1; i < lines.length; i++) {
+    if (
+      /^\s*\|[-: |]+\|?\s*$/.test(lines[i]) &&
+      /^\s*\|.*\|.*$/.test(lines[i - 1])
+    ) {
+      tableCount++;
+    }
+  }
+
+  const imageCount = (content.match(/!\[[^\]]*\]\([^)]+\)/g) || []).length;
+  const allLinks = (content.match(/\[[^\]]+\]\([^)]+\)/g) || []).length;
+  const linkCount = Math.max(0, allLinks - imageCount);
+
+  // 预估阅读时间：中文 ~400 字/分，英文 ~200 词/分
+  const estimatedReadingMinutes = Math.max(1, Math.round(cjkChars / 400 + latinWords / 200));
+
+  return {
+    entityId,
+    title: entity.title,
+    total_lines: totalLines,
+    char_count: content.length,
+    cjk_chars: cjkChars,
+    word_count: latinWords,
+    headings: { total: totalHeadings, by_level: headingsByLevel },
+    tables: tableCount,
+    code_blocks: codeBlocks,
+    images: imageCount,
+    links: linkCount,
+    estimated_reading_minutes: estimatedReadingMinutes,
   };
 };

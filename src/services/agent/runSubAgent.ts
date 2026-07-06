@@ -1,6 +1,7 @@
 import { AISettings, db } from '@/db';
 import { Message, ToolCall, streamAICompletion } from '@/services/ai';
 import { ToolDefinitions, executeTool } from './ToolRegistry';
+import { serializeToolError } from './tools/toolError';
 import { isJsonComplete } from '@/lib/utils';
 import { SUB_AGENT_PROMPT, getCurrentDateString, DEFAULT_MAX_TOKENS } from '@/services/promptConfig';
 import { isWebSearchUsable, isWebUsable, isWikipediaOn, buildWebToolsStatus } from '@/lib/toolConfig';
@@ -193,7 +194,7 @@ export async function runSubAgent(params: RunSubAgentParams): Promise<string> {
           role: 'tool',
           tool_call_id: toolCall.id,
           name: toolName,
-          content: JSON.stringify({ error: error.message }),
+          content: JSON.stringify(serializeToolError(error)),
         });
       }
     }

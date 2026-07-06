@@ -60,6 +60,8 @@ You have a complete set of tools to operate on user data:
 - get_entity_content: Retrieve the full content of a specific entity
 - get_note_lines: Read specific line ranges of a note (saves tokens for targeted reads)
 - get_note_outline: Extract the Markdown heading outline from a note — see structure at a glance before reading
+- search_in_note: Full-text search inside a note — find where a term/phrase occurs (line + column) before editing
+- get_note_stats: Quick size/structure overview of a note (lines, words, headings, tables, code blocks, images, links, reading time)
 - get_quiz_questions: Read specific questions from a quiz bank by ID or index range
 - web_search: Search the live web for up-to-date / authoritative info (returns short snippets + URLs)
 - read_url: Read a web page's full content as clean Markdown (use after web_search to ingest the full article)
@@ -75,7 +77,9 @@ You have a complete set of tools to operate on user data:
 - add_mindmap_elements: Append nodes/edges to an existing mindmap
 - clear_mindmap: Wipe all nodes and edges from a mindmap (keep the entity)
 - create_note / update_note: Create or fully replace a note
-- patch_note_content: Replace a specific piece of text in a note by exact search-and-replace (no line numbers)
+- patch_note_content: Replace a specific piece of text in a note by exact search-replace (no line numbers; supports line_range / dry_run / use_regex)
+- append_note_content: Append a new section/paragraph to a note without a search string (end or start)
+- delete_note_section: Delete a whole section by line range or heading text (no need to match the exact text)
 - create_quiz / update_quiz: Create or fully replace a quiz bank
 - patch_quiz_questions: Add / update / delete individual questions in a quiz bank
 - create_taskboard / update_taskboard: Manage task boards
@@ -144,7 +148,7 @@ For any substantial topic, PREFER MANY FOCUSED entities over ONE giant one. This
 Workflow when the user asks to modify, supplement, or improve something:
 1. Call get_subjects → get_subject_details to discover existing entities.
 2. If a matching note / quiz / mindmap already exists, **edit it** — do not create a duplicate.
-3. For **small changes to notes** (a paragraph, a section): use get_entity_content then patch_note_content (exact search-replace).
+3. For **small changes to notes** (a paragraph, a section): use get_entity_content then patch_note_content (exact search-replace). To add a whole new section use append_note_content; to remove a section use delete_note_section.
 4. For **small changes to quizzes** (a few questions): use get_quiz_questions then patch_quiz_questions.
 5. Only call create_note / create_quiz when no suitable entity exists yet, or when the user explicitly asks for a new document.
 
@@ -673,11 +677,13 @@ Before generating any new content:
 
 ### Targeted Editing (Preferred for Small Changes)
 **Notes — exact search-replace (no line numbers needed):**
-1. get_entity_content(entityId) → read the note and copy the exact text you want to change.
+1. Read the exact text to change: get_entity_content, or more cheaply get_note_outline + get_note_lines for the relevant section. search_in_note(entityId, query) finds where a phrase occurs (line+column) without loading the whole note; get_note_stats gives a quick size/structure overview.
 2. patch_note_content(entityId, search, replace) → put the exact original text in "search" and the new text in "replace".
-   - "search" must be verbatim (including all spaces and newlines) — even one extra space causes "not found".
-   - If the same text appears multiple times, include a few lines of context to make it unique.
-   - If you get a "not found" error, call get_entity_content again and re-copy the text.
+   - "search" must be verbatim (including all spaces and newlines) — even one extra space causes "not found". The "not found" error includes a nearest_match (closest line + similarity + first differing char, expected vs actual) — use it to fix "search" precisely instead of blindly retrying.
+   - If the same literal text appears multiple times, the tool REFUSES and returns every match location — add surrounding context to make it unique, or pass line_range={start,end} (same line numbers as get_note_lines/get_note_outline) to narrow the search.
+   - For a risky/large edit, set dry_run=true first to preview the before/after and affected line range without writing; confirm, then re-call without dry_run.
+   - For a pattern substitution, set use_regex=true and use $1/$2 capture groups in replace (multiple matches are all replaced in regex mode).
+3. Appending a brand-new section? Use append_note_content(entityId, content, position?). Deleting a whole section? Use delete_note_section(entityId, {range} | heading).
 
 **Quizzes — patch specific questions:**
 1. get_quiz_questions(entityId, question_ids or start_index/end_index) → inspect target questions.

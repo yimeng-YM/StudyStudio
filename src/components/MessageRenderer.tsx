@@ -145,6 +145,11 @@ const TOOL_NAMES: Record<string, string> = {
   'create_note': '创建笔记',
   'update_note': '更新笔记',
   'patch_note_content': '精确编辑笔记',
+  'append_note_content': '追加笔记',
+  'delete_note_section': '删除笔记段落',
+  'insert_image_into_note': '插入图片',
+  'search_in_note': '笔记内搜索',
+  'get_note_stats': '笔记统计',
   'create_quiz': '创建测验',
   'update_quiz': '更新测验',
   'patch_quiz_questions': '精确编辑题库',
@@ -180,7 +185,11 @@ const getToolDescription = (name: string, args: string) => {
       case 'clear_mindmap': return `清空思维导图`;
       case 'create_note': return `创建笔记: ${parsed.title}`;
       case 'update_note': return `更新笔记: ${parsed.title || (parsed.entityId ? parsed.entityId.slice(0, 8) + '...' : '')}`;
-      case 'patch_note_content': return `精确编辑笔记: "${(parsed.search || '').slice(0, 30).replace(/\n/g, '↵')}${(parsed.search || '').length > 30 ? '…' : ''}"`;
+      case 'patch_note_content': return `精确编辑笔记: "${(parsed.search || '').slice(0, 30).replace(/\n/g, '↵')}${(parsed.search || '').length > 30 ? '…' : ''}"${parsed.dry_run ? '（预览）' : ''}`;
+      case 'append_note_content': return `追加笔记（${parsed.position === 'start' ? '开头' : '末尾'}）`;
+      case 'delete_note_section': return `删除笔记段落${parsed.heading ? `: "${parsed.heading}"` : (parsed.range ? `: 第 ${parsed.range.start_line}–${parsed.range.end_line ?? '末尾'} 行` : '')}`;
+      case 'search_in_note': return `笔记内搜索: "${(parsed.query || '').slice(0, 30)}"`;
+      case 'get_note_stats': return `笔记统计`;
       case 'create_quiz': return `创建测验: ${parsed.title}`;
       case 'update_quiz': return `更新测验: ${parsed.title || (parsed.entityId ? parsed.entityId.slice(0, 8) + '...' : '')}`;
       case 'patch_quiz_questions': {

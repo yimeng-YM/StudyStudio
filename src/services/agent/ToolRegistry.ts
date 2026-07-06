@@ -34,6 +34,8 @@ export const ToolRegistry = {
   create_note: writeTools.create_note,
   update_note: writeTools.update_note,
   patch_note_content: writeTools.patch_note_content,
+  append_note_content: writeTools.append_note_content,
+  delete_note_section: writeTools.delete_note_section,
   insert_image_into_note: writeTools.insert_image_into_note,
   create_quiz: writeTools.create_quiz,
   update_quiz: writeTools.update_quiz,
@@ -48,6 +50,8 @@ export const ToolRegistry = {
   // 新增工具
   delete_entity: writeTools.delete_entity,
   get_note_outline: readTools.get_note_outline,
+  search_in_note: readTools.search_in_note,
+  get_note_stats: readTools.get_note_stats,
   update_task_list: async (args: { items?: any[] }) => ({ status: 'ok', itemCount: args.items?.length || 0 }),
   ask_user: async (_args: any) => ({ status: 'pending', message: 'Waiting for user response.' }),
 };
@@ -102,16 +106,23 @@ For notes and quizzes, prefer surgical edits over full rewrites:
 | Situation | Preferred Tool |
 |---|---|
 | Changing part of a note | patch_note_content |
+| Adding a whole new section/paragraph | append_note_content |
+| Removing a whole section by heading or line range | delete_note_section |
+| Finding where a term occurs in a note | search_in_note |
+| Gauging a note's size/structure without full read | get_note_stats |
 | Fixing or adding a few questions | patch_quiz_questions |
 | Rewriting the majority of a note | update_note |
 | Regenerating most questions | update_quiz |
 
 **Workflow for targeted note edits (exact search-replace, no line numbers):**
-1. get_entity_content — read the note to get the exact current text.
+1. Read the note to get the exact current text — get_entity_content, or more cheaply get_note_outline + get_note_lines for the relevant section. search_in_note finds where a phrase occurs (line+column) without loading the whole note; get_note_stats gives a quick size/structure overview.
 2. patch_note_content — copy the exact text to change into "search", put new text in "replace".
    - "search" MUST be a verbatim copy (including all spaces and newlines).
-   - If the text appears multiple times, include surrounding context to make it unique.
-   - On "not found" error: re-read with get_entity_content and copy again carefully.
+   - If the literal text appears multiple times, the tool REFUSES and returns every match location — add surrounding context to make it unique, or pass line_range={start,end} (same line numbers as get_note_lines/get_note_outline) to narrow the search.
+   - On "not found": the error includes a nearest_match (closest line + similarity + the first differing char, expected vs actual) — use it to fix the search text instead of blindly retrying.
+   - Risky/large edit? Set dry_run=true first to preview the before/after and affected line range without writing; confirm, then re-call without dry_run.
+   - Need a pattern substitution? Set use_regex=true (a 'g' flag is auto-added) and use $1/$2 capture groups in replace; in regex mode multiple matches are all replaced.
+3. Appending a brand-new section? Use append_note_content (no search text needed). Deleting a whole section? Use delete_note_section with range={start_line,end_line?} or heading="...".
 
 **Workflow for targeted quiz edits:**
 1. get_quiz_questions — inspect the relevant questions by ID or index range.
@@ -658,26 +669,106 @@ For small or targeted edits, prefer patch_note_content (search-replace) instead.
 How it works:
 - You provide the exact original text you want to replace (search).
 - You provide the new text to put in its place (replace).
-- The tool finds the exact text and replaces it. If the text is not found, it throws a clear error so you can re-read and try again.
+- The tool finds the exact text and replaces it.
+
+Diagnostics (no more vague "not found"):
+- If search is not found, the error includes a "nearest_match": the closest line, a similarity score, and the first differing character (expected vs actual) — use it to fix your search text precisely.
+- If the literal search text appears more than once, the tool REFUSES to run and returns ALL match locations (line + preview). Either add surrounding context to make it unique, or pass line_range to narrow the search.
 
 Rules:
-1. Read the note first with get_entity_content (or get_note_lines) to get the exact current text.
-2. Copy the text you want to change VERBATIM into the search field — including all spaces, punctuation, and newlines.
-3. The search text must be unique in the document. If it appears multiple times, include a few lines of surrounding context so it becomes unique.
+1. Read the note first with get_entity_content (or get_note_lines / get_note_outline) to get the exact current text.
+2. Copy the text you want to change VERBATIM into search — including all spaces, punctuation, and newlines.
+3. The literal search text must be unique in the document (see diagnostics above).
 4. Do NOT modify the search string — even one extra space will cause a "not found" error.
+
+Optional parameters:
+- line_range: { start, end? } — 1-indexed inclusive line range (same numbering as get_note_lines / get_note_outline) to restrict where search looks. Omit to search the whole note.
+- dry_run: true — compute and return the before/after preview and affected line range WITHOUT writing. Confirm, then re-call without dry_run to apply.
+- use_regex: true — treat search as a regular expression (a 'g' flag is added automatically); capture groups ($1, $2…) may be used in replace. In regex mode multiple matches are ALL replaced (uniqueness is not required).
 
 Parameters:
 - entityId: ID of the note entity (required)
-- search: The exact original text to find. Must be a verbatim copy from the current note content. (required)
-- replace: The new text to put in place of the search text. (required)`,
+- search: The exact original text to find (or regex source when use_regex=true). (required)
+- replace: The new text to put in place of the search text. (required)
+- line_range, dry_run, use_regex: see "Optional parameters" above.`,
       parameters: {
         type: 'object',
         properties: {
           entityId: { type: 'string', description: 'The ID of the note entity' },
-          search: { type: 'string', description: 'Exact original text to find. Must be copied verbatim from the note — including all whitespace and newlines.' },
-          replace: { type: 'string', description: 'New text to substitute in place of the search text.' }
+          search: { type: 'string', description: 'Exact original text to find (or regex source when use_regex=true). Must be copied verbatim from the note — including all whitespace and newlines.' },
+          replace: { type: 'string', description: 'New text to substitute in place of the search text (supports $1/$2… when use_regex=true).' },
+          line_range: {
+            type: 'object',
+            description: 'Optional 1-indexed inclusive line range to restrict the search (same numbering as get_note_lines / get_note_outline). Omit to search the whole note.',
+            properties: {
+              start: { type: 'number', description: 'First line (1-indexed, inclusive)' },
+              end: { type: 'number', description: 'Last line (1-indexed, inclusive). Omit to extend to the end of the note.' }
+            },
+            required: ['start']
+          },
+          dry_run: { type: 'boolean', description: 'If true, return the before/after preview and affected line range WITHOUT writing. Default false.' },
+          use_regex: { type: 'boolean', description: 'If true, treat search as a regular expression (g flag auto-added) and support $1/$2 capture groups in replace. Default false.' }
         },
         required: ['entityId', 'search', 'replace']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'append_note_content',
+      description: `Append content to the end (or beginning) of a note WITHOUT providing a search string.
+Use this for wholesale additions — a new section, a new paragraph — as opposed to patch_note_content which rewrites existing text.
+
+Parameters:
+- entityId: ID of the note entity (required)
+- content: The Markdown text to append (required)
+- position: "end" (default, append to the end) | "start" (insert at the very top)
+
+Returns: { id, title, position, appended_chars, affected_line_range, total_lines_after, _diff }.`,
+      parameters: {
+        type: 'object',
+        properties: {
+          entityId: { type: 'string', description: 'The ID of the note entity' },
+          content: { type: 'string', description: 'The Markdown text to append.' },
+          position: { type: 'string', enum: ['end', 'start'], description: 'Where to add the content. "end" (default) appends to the end; "start" inserts at the top.' }
+        },
+        required: ['entityId', 'content']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'delete_note_section',
+      description: `Delete a whole section from a note by line range OR by heading text — no need to match the exact text of the section.
+
+Two modes (provide exactly one):
+- range: { start_line, end_line? } — delete the 1-indexed inclusive line range (end_line omitted = to end of note). Line numbers come from get_note_lines / get_note_outline.
+- heading: the heading text (WITHOUT the leading #). Deletes the heading line itself plus everything up to (but not including) the next heading of the same or higher level, or the end of the note. The heading text must be unique; if it appears multiple times the tool refuses and lists all matches.
+
+Parameters:
+- entityId: ID of the note entity (required)
+- range: { start_line, end_line? } (optional, mutually exclusive with heading)
+- heading: heading text without leading # (optional, mutually exclusive with range)
+
+Returns: { id, title, deleted_lines, affected_line_range, total_lines_after, _diff }.`,
+      parameters: {
+        type: 'object',
+        properties: {
+          entityId: { type: 'string', description: 'The ID of the note entity' },
+          range: {
+            type: 'object',
+            description: '1-indexed inclusive line range to delete.',
+            properties: {
+              start_line: { type: 'number', description: 'First line to delete (1-indexed, inclusive)' },
+              end_line: { type: 'number', description: 'Last line to delete (1-indexed, inclusive). Omit to delete to the end of the note.' }
+            },
+            required: ['start_line']
+          },
+          heading: { type: 'string', description: 'Heading text without the leading #. The heading line and its section body (up to the next same/higher-level heading) are deleted. Must be unique.' }
+        },
+        required: ['entityId']
       }
     }
   },
@@ -1072,6 +1163,54 @@ Returns: The note title, total line count, and an ordered array of {level, text,
         properties: {
           entityId: { type: 'string', description: 'The ID of the note entity' },
           max_depth: { type: 'number', description: 'Maximum heading depth (1-6), defaults to 3' }
+        },
+        required: ['entityId']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'search_in_note',
+      description: `Full-text search INSIDE a single note — the "content → location" counterpart to get_note_lines ("location → content").
+Use this to find where a term/phrase occurs (line + column) before editing, or to check whether something already exists in a long note.
+
+Parameters:
+- entityId: ID of the note entity (required)
+- query: The text to find, or a regex source when use_regex=true (required)
+- case_sensitive: Match case-sensitively? Default false (case-insensitive).
+- use_regex: Treat query as a regular expression? Default false.
+- max_results: Cap on returned matches (default 50, max 500). total_matches is always the full count; truncated=true if capped.
+
+Returns: { total_matches, returned, truncated, matches: [{ line, column, length, preview }] }.`,
+      parameters: {
+        type: 'object',
+        properties: {
+          entityId: { type: 'string', description: 'The ID of the note entity' },
+          query: { type: 'string', description: 'The text to search for (or regex source when use_regex=true).' },
+          case_sensitive: { type: 'boolean', description: 'Match case-sensitively. Default false (case-insensitive).' },
+          use_regex: { type: 'boolean', description: 'Treat query as a regular expression. Default false.' },
+          max_results: { type: 'number', description: 'Maximum matches to return (default 50, max 500).' }
+        },
+        required: ['entityId', 'query']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_note_stats',
+      description: `Return summary statistics for a note WITHOUT reading its full content: total lines, character count, CJK chars and word count, headings by level, table count, code blocks by language, image count, link count, and estimated reading time.
+Use this to quickly gauge a note's size/structure before deciding how to read or edit it.
+
+Parameters:
+- entityId: ID of the note entity (required)
+
+Returns: { total_lines, char_count, cjk_chars, word_count, headings:{total,by_level}, tables, code_blocks, images, links, estimated_reading_minutes }.`,
+      parameters: {
+        type: 'object',
+        properties: {
+          entityId: { type: 'string', description: 'The ID of the note entity' }
         },
         required: ['entityId']
       }

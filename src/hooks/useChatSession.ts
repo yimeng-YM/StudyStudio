@@ -4,6 +4,7 @@ import { generateUUID, isJsonComplete, parseToolArguments, AI_ONLY_HINT_PREFIX }
 import { Message, ToolCall, streamAICompletion } from '@/services/ai';
 import { useAIStore, getFullContextPrompt } from '@/store/useAIStore';
 import { ToolDefinitions, executeTool } from '@/services/agent/ToolRegistry';
+import { serializeToolError } from '@/services/agent/tools/toolError';
 import { runSubAgent, SubAgentCallbacks } from '@/services/agent/runSubAgent';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { getSystemPromptWithContext } from '@/services/promptConfig';
@@ -648,7 +649,7 @@ IMPORTANT: Always respond in Chinese.
             role: 'tool',
             tool_call_id: toolCall.id,
             name: toolCall.function.name,
-            content: JSON.stringify({ error: error.message })
+            content: JSON.stringify(serializeToolError(error))
           });
         }
       }
