@@ -162,7 +162,13 @@ const TOOL_NAMES: Record<string, string> = {
   'search_wikipedia': '维基百科',
   'search_wikipedia_web': '维基百科(站内搜)',
   'present_plan': '规划建议',
-  'start_execution': '进入执行'
+  'start_execution': '进入执行',
+  'delegate_task': '委派子任务',
+  'image_search': '图片搜索',
+  'get_note_outline': '笔记大纲',
+  'delete_entity': '删除实体',
+  'update_task_list': '更新任务进度',
+  'ask_user': '询问用户'
 };
 
 /**
@@ -211,6 +217,13 @@ const getToolDescription = (name: string, args: string) => {
       case 'search_wikipedia_web': return `维基百科(站内搜): "${parsed.query || ''}"`;
       case 'present_plan': return `规划方案已准备就绪`;
       case 'start_execution': return `正在初始化执行环境`;
+      case 'image_search': return `图片搜索: "${parsed.query || ''}"`;
+      case 'get_note_outline': return `查看笔记大纲`;
+      case 'delete_entity': return `删除实体`;
+      case 'update_task_list': return `更新任务进度 (${Array.isArray(parsed.items) ? parsed.items.length : 0} 项)`;
+      case 'ask_user': return `询问: "${(parsed.question || '').slice(0, 40)}${(parsed.question || '').length > 40 ? '…' : ''}"`;
+      case 'delegate_task': return `委派子任务: "${(parsed.task || '').slice(0, 40)}${(parsed.task || '').length > 40 ? '…' : ''}"`;
+      case 'insert_image_into_note': return `插入图片到笔记${parsed.alt_text ? ` (${parsed.alt_text})` : ''}`;
       default: return `${TOOL_NAMES[name] || name}`;
     }
   } catch (e) {
@@ -446,6 +459,22 @@ function getToolResultSummary(name: string, result: string): string {
       }
       case 'create_subject':
         return parsed.name || '已创建';
+      case 'image_search': {
+        if (parsed.error) return '失败';
+        return `${parsed.count || 0} 张图片`;
+      }
+      case 'get_note_outline': {
+        const hCount = Array.isArray(parsed.headings) ? parsed.headings.length : 0;
+        return `${hCount} 个标题 / ${parsed.totalLines || 0} 行`;
+      }
+      case 'delete_entity':
+        return parsed.deleted ? `已删除: ${parsed.title || ''}` : '';
+      case 'update_task_list':
+        return `${parsed.itemCount || 0} 项`;
+      case 'search_in_note': {
+        if (parsed.error) return '失败';
+        return `${parsed.total_matches || 0} 处命中`;
+      }
       default:
         return '';
     }
