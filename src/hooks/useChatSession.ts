@@ -252,6 +252,14 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act' | 
       return;
     }
 
+    // 若当前正有 ask_user 在等待用户回答：把本次文本输入当作对该问题的回答。
+    // 否则直接发新消息会在 assistant(tool_calls) 与 tool 结果之间插入 user 消息，
+    // 破坏工具调用消息的连续性，触发协议错误。
+    if (askState?.active && content.trim()) {
+      await answerAsk(content);
+      return currentSessionId;
+    }
+
     // 重置停止标记，开始新一轮对话
     stoppedRef.current = false;
 
@@ -801,37 +809,48 @@ IMPORTANT: Always respond in Chinese.
     if (!askState?.active || !currentSessionId) return;
 
     const resolvedAnswer = Array.isArray(answer) ? answer.join(', ') : answer;
-    const toolMsg: Message = {
-      role: 'tool',
-      tool_call_id: askState.toolCallId,
-      name: 'ask_user',
-      content: JSON.stringify({ answer: resolvedAnswer }),
-    };
-
+    const toolCallId = askState.toolCallId;
     setAskState(null);
 
-    // Reconstruct the assistant message that contained ask_user
     const currentMsgs = [...messages];
-    const lastAssistant = currentMsgs[currentMsgs.length - 1];
-    if (lastAssistant?.role !== 'assistant') {
-      // Safety: if the last message isn't the assistant, treat answer as user chat
-      const userMsg: Message = { role: 'user', content: resolvedAnswer };
-      setMessages(prev => [...prev, userMsg, toolMsg]);
-      await saveMessage(userMsg, currentSessionId);
-      await saveMessage(toolMsg, currentSessionId);
-    } else {
-      setMessages(prev => [...prev, toolMsg]);
-      await saveMessage(toolMsg, currentSessionId);
-    }
+    // 找到发起本次 ask_user 的 assistant 消息。OpenAI 协议要求：带 tool_calls 的
+    // assistant 消息之后必须紧跟「每个 tool_call_id 各一条」的 tool 消息，且这一段必须
+    // 连续，不得被 user/assistant 消息打断。ask_user 在循环中被暂停、未立即写入 tool
+    // 结果，但同一轮里其它工具（如 update_task_list / create_note）的结果已经写入；
+    // 因此这里把用户回答作为 ask_user 的 tool 结果「追加在末尾」，与同轮已有 tool 结果
+    // 保持连续，补齐缺失的那一条。绝不能在中间插入 user 消息——否则会破坏
+    // assistant(tool_calls) → tool(...) 的连续性，触发
+    // "insufficient tool messages following tool_calls message"。
+    const ownerIdx = currentMsgs.findIndex(
+      m => m.role === 'assistant' && Array.isArray(m.tool_calls) && m.tool_calls.some(tc => tc?.id === toolCallId)
+    );
 
-    setLoading(true);
-    try {
-      await processAgentLoop([...currentMsgs, toolMsg], currentSessionId, false);
-    } catch (error: any) {
-      console.error("Agent Loop Error:", error);
-      showAlert(error.message, { title: 'AI 助手出错了' });
-    } finally {
-      setLoading(false);
+    // 通用收尾：把要追加的消息（tool 结果或兜底 user 消息）写入状态/DB，并继续循环。
+    const runWith = async (tailMsg: Message) => {
+      setMessages(prev => [...prev, tailMsg]);
+      await saveMessage(tailMsg, currentSessionId);
+      setLoading(true);
+      try {
+        await processAgentLoop([...currentMsgs, tailMsg], currentSessionId, false);
+      } catch (error: any) {
+        console.error("Agent Loop Error:", error);
+        showAlert(error.message, { title: 'AI 助手出错了' });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (ownerIdx !== -1) {
+      // 正常路径：把回答作为 ask_user 的 tool 结果追加在末尾（与同轮 tool 结果连续）。
+      await runWith({
+        role: 'tool',
+        tool_call_id: toolCallId,
+        name: 'ask_user',
+        content: JSON.stringify({ answer: resolvedAnswer }),
+      });
+    } else {
+      // 极端兜底：找不到发起 ask_user 的 assistant 消息（状态异常），退化为普通用户消息。
+      await runWith({ role: 'user', content: resolvedAnswer });
     }
   };
 
