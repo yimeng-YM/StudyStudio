@@ -6,6 +6,7 @@ import { DialogProvider } from '@/components/ui/DialogProvider';
 import { SortProvider } from '@/hooks/useSorting';
 import { useStudyLogger } from '@/hooks/useStudyLogger';
 import { initFontSize } from '@/hooks/useFontSize';
+import { isChunkLoadError, reloadOnChunkError } from '@/lib/chunkLoadError';
 
 // 以下三个 hook 在其模块加载时即写 DOM（主题 class / 背景与强调色 CSS 变量），以避免首屏闪烁。
 // Settings 改为懒加载后，这些模块不再随启动加载，需在入口静态引入以确保刷新时仍随首屏执行。
@@ -13,10 +14,10 @@ import '@/hooks/useTheme';
 import '@/hooks/useBackground';
 import '@/hooks/useAccentTheme';
 
-/** 可重试的动态导入包装器：
- *  - Vite dev 模式下磁盘/预构建缓存偶尔损坏会导致 `Failed to fetch dynamically imported module`
- *  - React.lazy 会缓存失败的 promise 且不重试，导致永久白屏/黑屏
- *  - 本包装在失败时自动重试（最多 3 次，1s 间隔），给浏览器/Vite 足够时间恢复
+/** 可恢复的动态导入包装器：
+ *  - chunk 加载失败时不再重复请求同一条损坏的缓存记录，而是强制回源修复后刷新入口
+ *  - 非 chunk 异常保留短暂重试，兼容开发环境的瞬时模块加载失败
+ *  - 触发页面恢复后保持 pending，让 Suspense 停留在加载态直至浏览器完成跳转
  */
 function retryImport<T>(importFn: () => Promise<T>, maxRetries = 3, delayMs = 1000): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -24,7 +25,13 @@ function retryImport<T>(importFn: () => Promise<T>, maxRetries = 3, delayMs = 10
     const tryLoad = () => {
       importFn()
         .then(resolve)
-        .catch(err => {
+        .catch(async err => {
+          if (isChunkLoadError(err)) {
+            const recovering = await reloadOnChunkError(err);
+            if (recovering) return;
+            reject(err);
+            return;
+          }
           if (++attempt < maxRetries) {
             console.warn(`[lazy load] 重试 ${attempt}/${maxRetries}…`, String(err).slice(0, 120));
             setTimeout(tryLoad, delayMs);
@@ -43,17 +50,32 @@ class PageLoadErrorBoundary extends Component<{ children: ReactNode }, { error: 
   static getDerivedStateFromError(error: Error) { return { error }; }
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error('[PageLoadError]', error, info.componentStack);
+    // React.lazy 的拒绝会被错误边界捕获，不一定触发 window.unhandledrejection，
+    // 因此页面级 chunk 的恢复必须在这里显式兜底。
+    void reloadOnChunkError(error);
   }
+
+  private handleReload = () => {
+    const { error } = this.state;
+    if (error && isChunkLoadError(error)) {
+      void reloadOnChunkError(error, { force: true }).then((recovering) => {
+        if (!recovering) window.location.reload();
+      });
+      return;
+    }
+    window.location.reload();
+  };
+
   render() {
     if (this.state.error) {
       return (
         <div className="flex flex-col items-center justify-center h-full text-sm text-zinc-500 gap-3 p-8">
           <p>页面加载失败，请刷新后重试</p>
           <button
-            onClick={() => this.setState({ error: null })}
+            onClick={this.handleReload}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 transition-colors"
           >
-            重试
+            重新加载
           </button>
         </div>
       );

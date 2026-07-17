@@ -1316,7 +1316,7 @@ function Mermaid({ chart }: { chart: string }) {
       } catch (e: any) {
         // mermaid 11 懒加载图表模块（如 ganttDiagram-xxxx.js），重新部署后旧哈希 chunk
         // 失效或缓存损坏时会触发动态 import 失败——此时带缓存破坏参数刷新一次即可恢复
-        if (reloadOnChunkError(e)) return;
+        if (await reloadOnChunkError(e)) return;
         console.error("Mermaid Render Fail", e);
         if (mounted && !cancelled) {
           setError(e.message || "Invalid Diagram");
