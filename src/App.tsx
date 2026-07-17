@@ -98,6 +98,14 @@ const AIChat = lazyPage(() => import('@/pages/AIChat').then(m => ({ default: m.A
 const Docs = lazyPage(() => import('@/pages/Docs').then(m => ({ default: m.Docs })));
 const MobileSubjects = lazyPage(() => import('@/pages/mobile/MobileSubjects').then(m => ({ default: m.MobileSubjects })));
 
+/** 首个路由页面真正完成 Suspense 提交后，再通知静态开屏退出。 */
+function SplashReadySignal() {
+  useEffect(() => {
+    window.dispatchEvent(new Event('studystudio:app-ready'));
+  }, []);
+  return null;
+}
+
 /**
  * 应用根组件
  *
@@ -115,35 +123,26 @@ function App() {
   useStudyLogger();
   useEffect(() => {
     initFontSize();
-    // 当 App 渲染完成，或者首屏主要组件加载完成后，淡出并移除开屏动画
-    const splash = document.getElementById('splash-screen');
-    if (splash) {
-      splash.style.opacity = '0';
-      splash.style.visibility = 'hidden';
-      // 动画结束后从 DOM 彻底移除，释放内存
-      setTimeout(() => {
-        splash.remove();
-      }, 300);
-    }
-  }, []); // 初始化全局字体 CSS 变量并移除开屏
+  }, []); // 初始化全局字体 CSS 变量
 
   return (
     <SortProvider>
       <DialogProvider>
         <HashRouter>
           <PageLoadErrorBoundary>
-          <Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-zinc-400">加载中…</div>}>
-          <Routes>
-            <Route path="/" element={<Layout />}>
-              <Route index element={<Dashboard />} />
-              <Route path="subjects" element={<MobileSubjects />} />
-              <Route path="subject/:id" element={<SubjectView />} />
-              <Route path="settings" element={<Settings />} />
-              <Route path="ai-chat" element={<AIChat />} />
-              <Route path="docs" element={<Docs />} />
-            </Route>
-          </Routes>
-          </Suspense>
+            <Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-zinc-400">加载中…</div>}>
+              <SplashReadySignal />
+              <Routes>
+                <Route path="/" element={<Layout />}>
+                  <Route index element={<Dashboard />} />
+                  <Route path="subjects" element={<MobileSubjects />} />
+                  <Route path="subject/:id" element={<SubjectView />} />
+                  <Route path="settings" element={<Settings />} />
+                  <Route path="ai-chat" element={<AIChat />} />
+                  <Route path="docs" element={<Docs />} />
+                </Route>
+              </Routes>
+            </Suspense>
           </PageLoadErrorBoundary>
         </HashRouter>
       </DialogProvider>

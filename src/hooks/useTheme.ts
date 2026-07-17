@@ -56,24 +56,6 @@ const updateDomClass = (theme: Theme) => {
   }
 
   root.classList.add(resolvedTheme);
-
-  // 动态修改开屏动画的背景颜色，与最终生效的主题保持一致，避免因 prefers-color-scheme 差异而闪烁
-  const splashScreen = document.getElementById('splash-screen') as HTMLElement | null;
-  if (splashScreen) {
-    if (resolvedTheme === 'dark') {
-      splashScreen.style.backgroundColor = '#09090b';
-      const title = splashScreen.querySelector('.splash-title') as HTMLElement | null;
-      const subtitle = splashScreen.querySelector('.splash-subtitle') as HTMLElement | null;
-      if (title) title.style.color = '#f4f4f5';
-      if (subtitle) subtitle.style.color = '#a1a1aa';
-    } else {
-      splashScreen.style.backgroundColor = '#ffffff';
-      const title = splashScreen.querySelector('.splash-title') as HTMLElement | null;
-      const subtitle = splashScreen.querySelector('.splash-subtitle') as HTMLElement | null;
-      if (title) title.style.color = '#09090b';
-      if (subtitle) subtitle.style.color = '#71717a';
-    }
-  }
 };
 
 const initialTheme = (localStorage.getItem('theme') as Theme) || 'light';

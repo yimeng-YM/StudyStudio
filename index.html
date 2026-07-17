@@ -9,131 +9,254 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
-    <meta name="description" content="StudyStudio 是一款融合了前沿 AI 技术的全方位学习管理系统。它致力于将知识组织、任务规划、笔记记录与智能练习有机结合，为每一位追求效率的学习者提供一站式的“数字化第二大脑”。" />
-    <meta name="keywords" content="StudyStudio,学习管理,AI学习,笔记,任务规划,知识管理,数字化第二大脑,智能练习" />
+    <meta name="description" content="StudyStudio 是一款融合 AI 的一站式学习管理系统。" />
+    <meta name="keywords" content="StudyStudio,学习管理,AI学习,笔记,任务规划,知识管理" />
     <title>StudyStudio</title>
   </head>
   <body>
-    <div id="root">
-      <!-- 首次加载的开屏动画与加载提示 -->
-      <style>
-        .splash-screen {
-          position: fixed;
-          top: 0;
-          left: 0;
-          width: 100vw;
-          height: 100vh;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          background-color: #ffffff;
-          z-index: 9999;
-          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-          transition: opacity 0.3s ease, visibility 0.3s ease;
-        }
+    <script>
+      try {
+        var savedTheme = localStorage.getItem('theme') || 'light';
+        var splashTheme = savedTheme === 'system'
+          ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+          : savedTheme;
+        document.documentElement.classList.add(splashTheme === 'dark' ? 'dark' : 'light');
+      } catch (_) {}
+      document.documentElement.classList.add('splash-pending');
+    </script>
 
-        /* 暗色模式适配 */
-        @media (prefers-color-scheme: dark) {
-          .splash-screen {
-            background-color: #09090b; /* 对应 zinc-950 */
-          }
-          .splash-title {
-            color: #f4f4f5 !important;
-          }
-          .splash-subtitle {
-            color: #a1a1aa !important;
-          }
-        }
+    <style>
+      :root {
+        --splash-bg: #ffffff;
+        --splash-ink: #111111;
+        --splash-muted: #949494;
+        --splash-track: rgba(29, 32, 48, 0.08);
+        --splash-accent: #6366f1;
+      }
 
-        .splash-container {
-          text-align: center;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 24px;
-        }
+      html.dark {
+        --splash-bg: #000000;
+        --splash-ink: #ffffff;
+        --splash-muted: #666666;
+        --splash-track: rgba(255, 255, 255, 0.09);
+        --splash-accent: #818cf8;
+      }
 
-        .splash-logo-wrapper {
-          position: relative;
-          width: 96px;
-          height: 96px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
+      html,
+      body,
+      #root {
+        min-height: 100%;
+      }
 
-        /* 改为单环外圈旋转 + 整体温和呼吸 */
-        .splash-ring {
-          position: absolute;
-          width: 100%;
-          height: 100%;
-          border: 3px solid rgba(59, 130, 246, 0.1); /* blue-500 的淡背景环 */
-          border-top-color: #3b82f6; /* blue-500 旋转指示段 */
-          border-radius: 50%;
-          animation: splash-spin 1s linear infinite;
-          box-sizing: border-box;
-        }
+      html.splash-pending {
+        overflow-y: hidden;
+      }
 
-        .splash-logo {
-          width: 52px;
-          height: 52px;
-          object-fit: contain;
-          border-radius: 12px;
-          animation: splash-logo-pulse 2s ease-in-out infinite;
-          z-index: 2;
-        }
+      html.splash-pending body {
+        margin: 0;
+        background: var(--splash-bg);
+      }
 
-        .splash-text {
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-        }
+      html.splash-pending #root {
+        opacity: 0;
+      }
 
-        .splash-title {
-          font-size: 22px;
-          font-weight: 600;
-          color: #09090b;
-          letter-spacing: 0.05em;
-          margin: 0;
-        }
+      html.splash-pending.splash-revealing #root {
+        opacity: 1;
+      }
 
-        .splash-subtitle {
-          font-size: 13px;
-          color: #71717a;
-          margin: 0;
-        }
+      .splash-screen {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: grid;
+        place-items: center;
+        background-color: var(--splash-bg);
+        color: var(--splash-ink);
+        font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        transform: translateY(0);
+        visibility: visible;
+        transition:
+          transform 760ms cubic-bezier(.76, 0, .24, 1),
+          visibility 0ms linear 760ms;
+        will-change: transform;
+      }
 
-        @keyframes splash-spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
+      .splash-screen.is-exiting {
+        transform: translateY(-100%);
+        visibility: hidden;
+        pointer-events: none;
+      }
 
-        /* 呼吸效果调整：只对中间的 Logo 采用极其柔和的大小缩放与投影呼吸 */
-        @keyframes splash-logo-pulse {
-          0%, 100% {
-            transform: scale(0.96);
-            filter: drop-shadow(0 0 0px rgba(59, 130, 246, 0));
-          }
-          50% {
-            transform: scale(1.04);
-            filter: drop-shadow(0 0 12px rgba(59, 130, 246, 0.24));
-          }
-        }
-      </style>
-      <div class="splash-screen" id="splash-screen">
-        <div class="splash-container">
-          <div class="splash-logo-wrapper">
-            <div class="splash-ring"></div>
-            <img class="splash-logo" src="/logos.png" alt="Logo" onerror="this.style.display='none'" />
-          </div>
-          <div class="splash-text">
-            <h1 class="splash-title">StudyStudio</h1>
-            <p class="splash-subtitle">加载专属学习空间中...</p>
-          </div>
+      .splash-content {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        animation: splash-appear 520ms cubic-bezier(.22, 1, .36, 1) both;
+      }
+
+      .splash-mark {
+        position: relative;
+        display: grid;
+        place-items: center;
+        width: 112px;
+        height: 112px;
+      }
+
+      .splash-ring,
+      .splash-glow {
+        position: absolute;
+        border-radius: 50%;
+      }
+
+      .splash-ring {
+        inset: 0;
+        z-index: 1;
+        background: conic-gradient(
+          from 0deg,
+          transparent 0 18%,
+          var(--splash-accent) 42%,
+          transparent 64% 100%
+        );
+        -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 1.5px), #000 0);
+        mask: radial-gradient(farthest-side, transparent calc(100% - 1.5px), #000 0);
+        animation: splash-spin 3.2s linear infinite;
+      }
+
+      .splash-ring::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border: 1px solid var(--splash-track);
+        border-radius: inherit;
+      }
+
+      .splash-glow {
+        inset: -28px;
+        z-index: 0;
+        background: radial-gradient(circle, color-mix(in srgb, var(--splash-accent) 42%, transparent) 0%, transparent 68%);
+        filter: blur(30px);
+        transform: scale(.74);
+        animation: splash-glow 3s ease-in-out infinite;
+      }
+
+      .splash-logo {
+        position: relative;
+        z-index: 2;
+        width: 68px;
+        height: 68px;
+        object-fit: contain;
+        filter: drop-shadow(0 5px 10px rgba(0, 0, 0, 0.14));
+      }
+
+      html.dark .splash-logo {
+        filter: invert(1) drop-shadow(0 5px 10px rgba(255, 255, 255, 0.12));
+      }
+
+      .splash-title {
+        margin: 25px 0 0;
+        font-size: 22px;
+        font-weight: 720;
+        line-height: 1;
+        letter-spacing: -0.025em;
+      }
+
+      .splash-dots {
+        display: flex;
+        gap: 5px;
+        margin-top: 13px;
+      }
+
+      .splash-dots span {
+        width: 4px;
+        height: 4px;
+        border-radius: 50%;
+        background: var(--splash-muted);
+        animation: splash-dot 1.2s ease-in-out infinite;
+      }
+
+      .splash-dots span:nth-child(2) { animation-delay: 140ms; }
+      .splash-dots span:nth-child(3) { animation-delay: 280ms; }
+
+      @keyframes splash-appear {
+        from { opacity: 0; transform: scale(.97); }
+        to { opacity: 1; transform: scale(1); }
+      }
+
+      @keyframes splash-spin {
+        to { transform: rotate(360deg); }
+      }
+
+      @keyframes splash-glow {
+        0%, 100% { opacity: .2; transform: scale(.74); }
+        50% { opacity: .68; transform: scale(1.1); }
+      }
+
+      @keyframes splash-dot {
+        0%, 65%, 100% { opacity: .28; transform: translateY(0); }
+        30% { opacity: 1; transform: translateY(-3px); }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .splash-content,
+        .splash-logo { animation: none; }
+        .splash-ring { animation-duration: 5s; }
+        .splash-glow { animation-duration: 4.6s; }
+        .splash-dots span { animation-duration: 1.8s; }
+      }
+    </style>
+
+    <div id="root"></div>
+    <div class="splash-screen" id="splash-screen" role="status" aria-live="polite" aria-label="StudyStudio 正在加载">
+      <div class="splash-content">
+        <div class="splash-mark" aria-hidden="true">
+          <div class="splash-ring"></div>
+          <div class="splash-glow"></div>
+          <img class="splash-logo" src="/logos.png" alt="" onerror="this.style.visibility='hidden'" />
         </div>
+        <p class="splash-title">StudyStudio</p>
+        <div class="splash-dots" aria-hidden="true"><span></span><span></span><span></span></div>
       </div>
     </div>
+
+    <script>
+      (function () {
+        var splash = document.getElementById('splash-screen');
+        if (!splash) return;
+
+        var startedAt = performance.now();
+        var minimumVisibleMs = 650;
+        var dismissed = false;
+        var removeTimer;
+
+        function exitSplash(skipMinimum) {
+          if (dismissed) return;
+          var wait = skipMinimum ? 0 : Math.max(0, minimumVisibleMs - (performance.now() - startedAt));
+          window.setTimeout(function () {
+            if (dismissed) return;
+            dismissed = true;
+            window.clearTimeout(failsafeTimer);
+            document.documentElement.classList.add('splash-revealing');
+            splash.classList.add('is-exiting');
+            splash.setAttribute('aria-hidden', 'true');
+            removeTimer = window.setTimeout(function () {
+              splash.remove();
+              document.documentElement.classList.remove('splash-pending');
+              document.documentElement.classList.remove('splash-revealing');
+            }, 800);
+          }, wait);
+        }
+
+        window.addEventListener('studystudio:app-ready', function () { exitSplash(false); }, { once: true });
+        var failsafeTimer = window.setTimeout(function () { exitSplash(true); }, 12000);
+        window.addEventListener('pagehide', function () { window.clearTimeout(removeTimer); }, { once: true });
+      })();
+    </script>
+
+    <noscript>
+      <style>#splash-screen { display: none !important; }</style>
+      <p style="padding:24px;font-family:system-ui;color:#71717a">StudyStudio 需要启用 JavaScript 才能运行。</p>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -209,7 +209,7 @@ export function Dashboard() {
                 {/* Mobile header with logo + theme toggle */}
                 <div className="md:hidden flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <img src="/logos.png" alt="StudyStudio" className="w-7 h-7 object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                    <img src="/logos.png" alt="StudyStudio" className="w-7 h-7 object-contain dark:invert" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                     <span className="font-bold text-lg text-zinc-800 dark:text-zinc-100">StudyStudio</span>
                   </div>
                   <ThemeToggle />

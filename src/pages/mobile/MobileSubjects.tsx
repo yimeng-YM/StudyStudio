@@ -63,7 +63,7 @@ export function MobileSubjects() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             {!logoError ? (
-              <img src="/logos.png" alt="StudyStudio" className="w-7 h-7 object-contain" onError={() => setLogoError(true)} />
+              <img src="/logos.png" alt="StudyStudio" className="w-7 h-7 object-contain dark:invert" onError={() => setLogoError(true)} />
             ) : (
               <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-xs">S</div>
             )}

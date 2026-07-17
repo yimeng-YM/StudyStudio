@@ -132,7 +132,7 @@ export function Sidebar({ isMobileOpen, onMobileClose }: SidebarProps = {}) {
         <div className="flex items-center justify-between mb-2 md:hidden">
           <div className="flex items-center gap-2">
             {!logoError ? (
-              <img src="/logos.png" alt="StudyStudio" className="w-7 h-7 object-contain" onError={() => setLogoError(true)} />
+              <img src="/logos.png" alt="StudyStudio" className="w-7 h-7 object-contain dark:invert" onError={() => setLogoError(true)} />
             ) : (
               <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-xs">S</div>
             )}
@@ -152,9 +152,9 @@ export function Sidebar({ isMobileOpen, onMobileClose }: SidebarProps = {}) {
         <div className={`flex items-center ${isCollapsed ? 'justify-center' : (!logoError ? 'justify-center' : 'gap-2')} px-0 py-4 mb-4 min-h-[3.5rem] relative`}>
           {!logoError ? (
             <img
-              src={isCollapsed ? "/logos.png" : "/logo.png?v=1"}
+              src={isCollapsed ? "/logos.png" : "/logo.png?v=3"}
               alt="StudyStudio"
-              className={cn("object-contain transition-all duration-300", isCollapsed ? "w-8 h-8" : "w-auto h-auto max-w-full max-h-14")}
+              className={cn("object-contain transition-all duration-300 dark:invert", isCollapsed ? "w-8 h-8" : "w-auto h-auto max-w-full max-h-14")}
               onError={() => setLogoError(true)}
             />
           ) : (
