@@ -1,17 +1,18 @@
 import { db } from '@/db';
+import { DEFAULT_LOCAL_SEARCH_BASE_URL, getLocalSearchBaseUrl, getSearchBackend } from '@/lib/toolConfig';
 
 /**
- * 联网工具集（web_search / read_url / search_wikipedia / search_wikipedia_web）。
+ * 联网工具集（web_search / read_url / image_search / Wikipedia）。
  *
- * 本项目是纯浏览器端 SPA，没有后端，无法直接 fetch 任意网页（CORS）。
- * 联网搜索与网页读取共用同一后端与同一 Key（见 AIConfig.webSearchBackend）：
- *   - 'serper'（默认）：搜索 POST https://google.serper.dev/search，读取 POST https://scrape.serper.dev
+ * 联网搜索与网页读取共用同一后端（见 AIConfig.webSearchBackend）：
+ *   - 'local'：调用同源 /api，由本地 Gateway + SearXNG 完成搜索和网页提取，无需第三方 API Key
+ *   - 'serper'：搜索 POST https://google.serper.dev/search，读取 POST https://scrape.serper.dev
  *       两者均需 Serper API Key（X-API-KEY，https://serper.dev/）
  *   - 'jina'：搜索 GET https://s.jina.ai/<query>（需 Jina Key，免注册有限额度），读取 GET https://r.jina.ai/<url>（免 Key）
  *
  * 两个维基来源（多重信息交叉）：
  *   - search_wikipedia：原站 {lang}.wikipedia.org/w/api.php?origin=*，免 Key、CORS 原生支持（原站被墙，默认关闭，挂 VPN 时可用）
- *   - search_wikipedia_web：经 Serper 对 wikipedia.org 做站内搜索（query site:wikipedia.org），国内可用、默认开启；复用 web_search 的 Serper 逻辑
+ *   - search_wikipedia_web：经当前搜索后端对 wikipedia.org 做站内搜索（query site:wikipedia.org）
  *
  * 后端、各 Key 均存于 AIConfig（db.settings id=1），由「设置 → 高级参数」配置；
  * 是否启用各工具由 AI 对话界面的「工具」按钮开关控制（见 toolConfig.ts 的联动规则）。所有错误以 { error } 形式回传给模型，便于其自适应。
@@ -22,6 +23,7 @@ const READER_ENDPOINT = 'https://r.jina.ai/';
 const SERPER_ENDPOINT = 'https://google.serper.dev/search';
 const SCRAPE_SERPER_ENDPOINT = 'https://scrape.serper.dev';
 const SERPER_IMAGES_ENDPOINT = 'https://google.serper.dev/images';
+const DEFAULT_LOCAL_API_BASE = DEFAULT_LOCAL_SEARCH_BASE_URL;
 
 /** 单个网页正文的最大字符预算，防止超大页面灌进上下文撑爆 token */
 const READ_DEFAULT_MAX_CHARS = 16000;
@@ -43,6 +45,8 @@ const WIKIPEDIA_DEFAULT_LIMIT = 5;
 const WIKIPEDIA_MAX_LIMIT = 10;
 /** 联网请求统一超时，避免某个慢响应卡死 Agent 循环 */
 const REQUEST_TIMEOUT_MS = 20000;
+/** 本地 Playwright 降级渲染可能比普通抓取更久。 */
+const LOCAL_EXTRACT_TIMEOUT_MS = 45000;
 
 // ── 搜索结果会话级缓存（TTL 5 分钟，避免相同查询重复消耗 API 额度） ──
 const SEARCH_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -100,17 +104,47 @@ async function jinaHeaders(): Promise<Record<string, string>> {
 }
 
 /**
- * 读取搜索/读取后端与 Serper Key（存于 AIConfig），供 web_search / read_url 分发使用。
+ * 读取搜索/读取后端配置，供 web_search / read_url / image_search 分发使用。
  */
-async function readWebSearchConfig(): Promise<{ backend: 'jina' | 'serper'; serperKey: string }> {
+async function readWebSearchConfig(): Promise<{
+  backend: 'local' | 'jina' | 'serper';
+  serperKey: string;
+  localBaseUrl: string;
+}> {
   try {
     const cfg = await db.settings.get(1) as any;
-    const backend: 'jina' | 'serper' = cfg?.webSearchBackend === 'jina' ? 'jina' : 'serper';
+    const backend = getSearchBackend(cfg);
     const serperKey = typeof cfg?.serperApiKey === 'string' ? cfg.serperApiKey.trim() : '';
-    return { backend, serperKey };
+    const localBaseUrl = getLocalSearchBaseUrl(cfg);
+    return { backend, serperKey, localBaseUrl };
   } catch {
-    return { backend: 'serper', serperKey: '' };
+    return { backend: 'local', serperKey: '', localBaseUrl: DEFAULT_LOCAL_API_BASE };
   }
+}
+
+/** 调用本地 Gateway，并把 HTTP 错误统一转换为现有工具约定的 { error }。 */
+async function requestLocalBackend(
+  localBaseUrl: string,
+  path: string,
+  payload: Record<string, unknown>,
+  timeoutMs = REQUEST_TIMEOUT_MS,
+): Promise<any> {
+  const response = await fetchWithTimeout(`${localBaseUrl}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }, timeoutMs);
+  const text = await response.text();
+  let data: any;
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = {};
+  }
+  if (!response.ok) {
+    return { error: data?.error || data?.detail || `本地联网服务请求失败: HTTP ${response.status}` };
+  }
+  return data;
 }
 
 /** 截断字符串并折叠空白，超出部分用省略号收尾 */
@@ -299,12 +333,24 @@ export const web_search = async ({ query, max_results }: { query: string; max_re
   }
   const limit = Math.min(Math.max(max_results ?? SEARCH_DEFAULT_RESULTS, 1), SEARCH_MAX_RESULTS);
   const q = query.trim();
-  const { backend, serperKey } = await readWebSearchConfig();
+  const { backend, serperKey, localBaseUrl } = await readWebSearchConfig();
 
   // 检查会话级缓存
   const cacheKey = makeCacheKey(backend, q, limit);
   const cached = cacheRead(searchCache, cacheKey);
   if (cached) return cached;
+
+  // ── 本地 Gateway + SearXNG ──
+  if (backend === 'local') {
+    try {
+      const result = await requestLocalBackend(localBaseUrl, '/web/search', { query: q, max_results: limit });
+      if (!result.error) cacheWrite(searchCache, cacheKey, result);
+      return result.error ? { ...result, query: q } : result;
+    } catch (e: any) {
+      if (e?.name === 'AbortError') return { error: '本地搜索超时（20s）。', query: q };
+      return { error: '无法连接本地搜索后端。请运行 start-search.bat，并在高级设置中检查本地 API 地址。', query: q };
+    }
+  }
 
   // ── Serper 后端（默认），含降级链 ──
   if (backend === 'serper') {
@@ -419,7 +465,7 @@ export const web_search = async ({ query, max_results }: { query: string; max_re
 
 /**
  * 在网络上搜索图片，返回若干候选图片的直链、来源页面与标题。
- * 仅支持 Serper 后端（google.serper.dev/images）——Jina 无对等的通用图片搜索接口。
+ * 支持 Local/SearXNG 与 Serper；Jina 无对等的通用图片搜索接口。
  * 相同查询 5 分钟内命中缓存直接返回。
  *
  * @param args.query - 搜索关键词（必填）
@@ -432,10 +478,24 @@ export const image_search = async ({ query, max_results }: { query: string; max_
   }
   const limit = Math.min(Math.max(max_results ?? IMAGE_SEARCH_DEFAULT_RESULTS, 1), IMAGE_SEARCH_MAX_RESULTS);
   const q = query.trim();
-  const { backend, serperKey } = await readWebSearchConfig();
+  const { backend, serperKey, localBaseUrl } = await readWebSearchConfig();
+
+  if (backend === 'local') {
+    const cacheKey = makeCacheKey('local-images', q, limit);
+    const cached = cacheRead(imageCache, cacheKey);
+    if (cached) return cached;
+    try {
+      const result = await requestLocalBackend(localBaseUrl, '/web/images', { query: q, max_results: limit });
+      if (!result.error) cacheWrite(imageCache, cacheKey, result);
+      return result.error ? { ...result, query: q } : result;
+    } catch (e: any) {
+      if (e?.name === 'AbortError') return { error: '本地图片搜索超时（20s）。', query: q };
+      return { error: '无法连接本地搜索后端。请确认本地 Gateway 与 SearXNG 已启动。', query: q };
+    }
+  }
 
   if (backend !== 'serper') {
-    return { error: '图片搜索目前仅支持 Serper 后端，请在「设置 → 高级参数」中切换联网搜索后端为 Serper。', query: q };
+    return { error: '图片搜索支持 Local 或 Serper 后端，请在「设置 → 高级参数」中切换后端。', query: q };
   }
   if (!serperKey) return { error: NO_SERPER_KEY_HINT, query: q };
 
@@ -510,7 +570,23 @@ export const read_url = async ({ url, max_chars }: { url: string; max_chars?: nu
     target = `https://${target}`;
   }
   const budget = Math.min(Math.max(max_chars ?? READ_DEFAULT_MAX_CHARS, READ_MIN_MAX_CHARS), READ_MAX_MAX_CHARS);
-  const { backend, serperKey } = await readWebSearchConfig();
+  const { backend, serperKey, localBaseUrl } = await readWebSearchConfig();
+
+  // ── 本地 Gateway：由服务端处理 CORS、正文抽取、JS 渲染与 SSRF 防护 ──
+  if (backend === 'local') {
+    try {
+      const result = await requestLocalBackend(
+        localBaseUrl,
+        '/web/extract',
+        { url: target, max_chars: budget },
+        LOCAL_EXTRACT_TIMEOUT_MS,
+      );
+      return result.error ? { ...result, url: target } : result;
+    } catch (e: any) {
+      if (e?.name === 'AbortError') return { error: '本地网页提取超时（45s）。', url: target };
+      return { error: '无法连接本地网页提取服务。请运行 start-search.bat，并检查本地 API 地址。', url: target };
+    }
+  }
 
   // ── Serper scrape 后端（默认） ──
   if (backend === 'serper') {
@@ -607,9 +683,8 @@ export const search_wikipedia = async ({ query, language, limit }: { query: stri
 };
 
 /**
- * 在维基百科做**站内搜索**：经已验证国内可用的 Serper web_search 后端，对 wikipedia.org 做 `site:` 搜索，
- * 返回维基条目链接 + Google 摘要。绕过 wikipedia.org 被墙——浏览器只访问 Serper（国内可达），由 Serper 在境外取 Google 结果。
- * 默认开启；复用 web_search 的 Serper/Jina 逻辑与错误处理。拿到链接后可用 read_url 读取全文（英文维基较稳，中文维基可能超时，模型可优先读英文维基再翻译）。
+ * 在维基百科做**站内搜索**：经当前 web_search 后端对 wikipedia.org 做 `site:` 搜索。
+ * 默认开启；复用 Local/Serper/Jina 的错误处理。拿到链接后可用 read_url 读取全文。
  *
  * @param args.query - 搜索关键词（必填）
  * @param args.max_results - 返回结果上限（可选，默认 5，上限 10）
@@ -620,7 +695,7 @@ export const search_wikipedia_web = async ({ query, max_results }: { query: stri
     return { error: '缺少搜索关键词 query' };
   }
   const limit = Math.min(Math.max(max_results ?? WIKIPEDIA_DEFAULT_LIMIT, 1), WIKIPEDIA_MAX_LIMIT);
-  // 用当前后端（默认 Serper/Google，支持 site: 操作符）对 wikipedia.org 做站内搜索
+  // 用当前后端对 wikipedia.org 做站内搜索
   const res = await web_search({ query: `${query.trim()} site:wikipedia.org`, max_results: limit });
   if (res.error) return { error: res.error, query: query.trim() };
   // 兜底：只保留 wikipedia.org 链接（site: 过滤通常已保证，Jina 等不识别 site: 时由此兜底）

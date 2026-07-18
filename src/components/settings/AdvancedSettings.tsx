@@ -1,9 +1,10 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useAIStore } from '@/store/useAIStore';
 import { SegmentSlider } from '@/components/ui/SegmentSlider';
 import { DEFAULT_MAX_TOKENS } from '@/services/promptConfig';
 import { cn } from '@/lib/utils';
-import { Search, ChevronDown, Check, SlidersHorizontal, Tag, Globe } from 'lucide-react';
+import { DEFAULT_LOCAL_SEARCH_BASE_URL, getSearchBackend } from '@/lib/toolConfig';
+import { Search, ChevronDown, Check, SlidersHorizontal, Tag, Globe, RefreshCw } from 'lucide-react';
 
 /**
  * 高级参数设置页。
@@ -21,6 +22,8 @@ export function AdvancedSettings() {
   const [showNamingModel, setShowNamingModel] = useState(false);
   const [namingModelSearch, setNamingModelSearch] = useState('');
   const namingModelRef = useRef<HTMLDivElement>(null);
+  const [localHealth, setLocalHealth] = useState<'idle' | 'checking' | 'ready' | 'degraded' | 'offline'>('idle');
+  const searchBackend = getSearchBackend(config);
 
   const activeProvider = useMemo(
     () => providers.find(p => p.id === config?.activeProviderId) || null,
@@ -72,6 +75,33 @@ export function AdvancedSettings() {
     await updateConfig({ namingModel: m || undefined });
     setShowNamingModel(false);
   };
+
+  const localApiBase = (config?.localSearchBaseUrl?.trim() || DEFAULT_LOCAL_SEARCH_BASE_URL).replace(/\/+$/, '') || DEFAULT_LOCAL_SEARCH_BASE_URL;
+
+  const checkLocalBackend = useCallback(async () => {
+    setLocalHealth('checking');
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 5000);
+    try {
+      const response = await fetch(`${localApiBase}/health`, { signal: controller.signal });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      setLocalHealth(data?.gateway === true && data?.searxng === true ? 'ready' : 'degraded');
+    } catch {
+      setLocalHealth('offline');
+    } finally {
+      window.clearTimeout(timer);
+    }
+  }, [localApiBase]);
+
+  useEffect(() => {
+    if (searchBackend !== 'local') {
+      setLocalHealth('idle');
+      return;
+    }
+    const timer = window.setTimeout(() => void checkLocalBackend(), 400);
+    return () => window.clearTimeout(timer);
+  }, [searchBackend, checkLocalBackend]);
 
   const maxTokens = config?.maxTokens ?? DEFAULT_MAX_TOKENS;
   const inputCls = "flex-1 border rounded-lg px-3 py-2 bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-shadow";
@@ -271,25 +301,69 @@ export function AdvancedSettings() {
             <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">联网（搜索 + 网页读取）</h3>
           </div>
           <p className="text-[11px] text-zinc-400 -mt-1">
-            联网搜索与网页读取共用同一后端与同一 Key。不配置对应 Key 则无法启用联网能力。
+            联网搜索与网页读取共用同一后端。本地后端免 Key；Serper/Jina 需配置对应 Key。
           </p>
 
-          {/* 搜索后端：Serper 前置（默认） */}
+          {/* 搜索后端 */}
           <div>
             <label className="block text-xs font-medium mb-1.5 text-zinc-600 dark:text-zinc-300">后端</label>
             <div className="flex gap-2">
-              <button type="button" onClick={() => updateConfig({ webSearchBackend: 'serper' })} className={cn('flex-1 px-3 py-2 rounded-lg text-xs font-medium border transition-colors', (config?.webSearchBackend ?? 'serper') === 'serper' ? 'bg-blue-600 text-white border-blue-600' : 'bg-zinc-50 dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600')}>Serper（默认）</button>
-              <button type="button" onClick={() => updateConfig({ webSearchBackend: 'jina' })} className={cn('flex-1 px-3 py-2 rounded-lg text-xs font-medium border transition-colors', config?.webSearchBackend === 'jina' ? 'bg-blue-600 text-white border-blue-600' : 'bg-zinc-50 dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600')}>Jina</button>
+              <button type="button" onClick={() => updateConfig({ webSearchBackend: 'local' })} className={cn('flex-1 px-3 py-2 rounded-lg text-xs font-medium border transition-colors', searchBackend === 'local' ? 'bg-blue-600 text-white border-blue-600' : 'bg-zinc-50 dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600')}>Local</button>
+              <button type="button" onClick={() => updateConfig({ webSearchBackend: 'serper' })} className={cn('flex-1 px-3 py-2 rounded-lg text-xs font-medium border transition-colors', searchBackend === 'serper' ? 'bg-blue-600 text-white border-blue-600' : 'bg-zinc-50 dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600')}>Serper</button>
+              <button type="button" onClick={() => updateConfig({ webSearchBackend: 'jina' })} className={cn('flex-1 px-3 py-2 rounded-lg text-xs font-medium border transition-colors', searchBackend === 'jina' ? 'bg-blue-600 text-white border-blue-600' : 'bg-zinc-50 dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600')}>Jina</button>
             </div>
             <p className="text-[10px] text-zinc-400 mt-1.5">
-              {config?.webSearchBackend === 'jina'
+              {searchBackend === 'local'
+                ? 'Local：本地 Gateway + SearXNG 搜索，Trafilatura/Playwright 提取，无需第三方搜索 API Key'
+                : config?.webSearchBackend === 'jina'
                 ? 'Jina：搜索 s.jina.ai、读取 r.jina.ai（读取免 Key）'
                 : 'Serper：搜索 google.serper.dev、读取 scrape.serper.dev，共用同一 Key'}
             </p>
           </div>
 
+          {searchBackend === 'local' && (
+            <div className="space-y-2">
+              <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-300">本地 API 地址</label>
+              <div className="flex gap-2">
+                <input
+                  className={cn(inputCls, 'font-mono')}
+                  value={config?.localSearchBaseUrl ?? ''}
+                  onChange={e => {
+                    void updateConfig({ localSearchBaseUrl: e.target.value });
+                    setLocalHealth('idle');
+                  }}
+                  placeholder={DEFAULT_LOCAL_SEARCH_BASE_URL}
+                  autoComplete="off"
+                />
+                <button
+                  type="button"
+                  onClick={() => void checkLocalBackend()}
+                  disabled={localHealth === 'checking'}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 border border-zinc-200 dark:border-zinc-700 disabled:opacity-50"
+                >
+                  <RefreshCw size={12} className={cn(localHealth === 'checking' && 'animate-spin')} />
+                  检测
+                </button>
+              </div>
+              <p className={cn(
+                'text-[10px]',
+                localHealth === 'ready' ? 'text-emerald-500' :
+                localHealth === 'degraded' ? 'text-amber-500' :
+                localHealth === 'offline' ? 'text-red-500' : 'text-zinc-400'
+              )}>
+                {localHealth === 'checking' && '正在检测本地服务…'}
+                {localHealth === 'ready' && '本地 Gateway 与 SearXNG 均已就绪'}
+                {localHealth === 'degraded' && 'Gateway 已连接，但 SearXNG 尚未就绪'}
+                {localHealth === 'offline' && '无法连接本地搜索服务，请运行 start-search.bat'}
+                {localHealth === 'idle' && (DEFAULT_LOCAL_SEARCH_BASE_URL === '/api'
+                  ? '开发模式由 Vite 把 /api 代理到独立搜索服务'
+                  : '部署版将连接这台电脑上的 127.0.0.1:17890')}
+              </p>
+            </div>
+          )}
+
           {/* Serper Key：默认后端时显示（前置） */}
-          {(config?.webSearchBackend ?? 'serper') === 'serper' && (
+          {searchBackend === 'serper' && (
             <div>
               <label className="block text-xs font-medium mb-1.5 text-zinc-600 dark:text-zinc-300">
                 Serper API Key

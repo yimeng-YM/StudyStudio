@@ -130,8 +130,10 @@ export interface AIConfig {
   jinaApiKey?: string;
   /** 是否启用联网能力总开关（同时控制 web_search 与 read_url，二者同步开/关）；联网搜索后端需另配 API Key */
   webSearchEnabled?: boolean;
-  /** 联网搜索/读取使用的后端：'serper'（默认，搜索走 google.serper.dev、读取走 scrape.serper.dev）或 'jina'（s.jina.ai 搜索 + r.jina.ai 读取） */
-  webSearchBackend?: 'jina' | 'serper';
+  /** 联网搜索/读取使用的后端：本地 Gateway、Serper 或 Jina */
+  webSearchBackend?: 'local' | 'jina' | 'serper';
+  /** 本地搜索 Gateway 的 API 根地址；同源部署时使用 /api */
+  localSearchBaseUrl?: string;
   /** Serper（google.serper.dev 搜索 + scrape.serper.dev 读取）API Key，仅当 webSearchBackend 为 'serper' 时使用 */
   serperApiKey?: string;
   /** 是否启用维基百科原站（wikipedia.org）API 查询；免 Key，但原站在部分网络被墙，默认关闭（如挂 VPN 可手动开启），受联网总开关联动约束 */

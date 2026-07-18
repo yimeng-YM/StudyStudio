@@ -4,7 +4,7 @@ import { ToolDefinitions, executeTool } from './ToolRegistry';
 import { serializeToolError } from './tools/toolError';
 import { isJsonComplete } from '@/lib/utils';
 import { SUB_AGENT_PROMPT, getCurrentDateString, DEFAULT_MAX_TOKENS } from '@/services/promptConfig';
-import { isWebSearchUsable, isWebUsable, isWikipediaOn, buildWebToolsStatus } from '@/lib/toolConfig';
+import { isWebSearchUsable, isWebUsable, isWikipediaOn, isImageSearchUsable, buildWebToolsStatus } from '@/lib/toolConfig';
 
 /**
  * 子 Agent 执行过程中向 UI 上报的回调集合。
@@ -69,7 +69,7 @@ export async function runSubAgent(params: RunSubAgentParams): Promise<string> {
     if (n === 'read_url') return webUsable;
     if (n === 'search_wikipedia_web') return webUsable;
     if (n === 'search_wikipedia') return wikiOn;
-    if (n === 'image_search') return webUsable;
+    if (n === 'image_search') return isImageSearchUsable(cfg);
     return true;
   });
 

@@ -9,7 +9,7 @@ import { runSubAgent, SubAgentCallbacks } from '@/services/agent/runSubAgent';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { getSystemPromptWithContext } from '@/services/promptConfig';
 import { generateSessionTitle } from '@/services/aiGenerator';
-import { isWebSearchUsable, isWebUsable, isWikipediaOn, buildWebToolsStatus } from '@/lib/toolConfig';
+import { isWebSearchUsable, isWebUsable, isWikipediaOn, isImageSearchUsable, buildWebToolsStatus } from '@/lib/toolConfig';
 
 /**
  * 任务执行计划状态
@@ -479,7 +479,7 @@ IMPORTANT: Always respond in Chinese.
       if (n === 'read_url') return isWebUsable(config);
       if (n === 'search_wikipedia_web') return isWebUsable(config);
       if (n === 'search_wikipedia') return isWikipediaOn(config);
-      if (n === 'image_search') return isWebUsable(config);
+      if (n === 'image_search') return isImageSearchUsable(config);
       return true;
     });
 

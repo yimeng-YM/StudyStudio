@@ -129,6 +129,39 @@ StudyStudio 是一个功能丰富的智能学习助手 Web 应用，集成了 AI
 3. 脚本将自动安装项目依赖
 4. 完成后会自动打开浏览器访问应用
 
+### 🔎 本地搜索后端（无需 Serper/Jina Key）
+
+项目现在包含可在本机运行的搜索与网页提取后端：
+
+- SearXNG 聚合通用网页与图片搜索结果
+- Trafilatura 提取正文并转换为 Markdown
+- Playwright Chromium 兜底处理 JavaScript 渲染页面
+- SQLite 持久缓存搜索和提取结果
+- URL 安全策略阻止访问本机、局域网和云元数据地址
+
+前置条件：安装并启动 Docker Desktop。首次运行还会下载 Python 依赖与 Chromium。
+
+前端与搜索服务现在是两个独立进程：
+
+- 双击 **`start.bat`**：打开 `http://localhost:5173`，并自动在另一个窗口启动搜索服务。
+- 双击 **`start-search.bat`**：只启动搜索服务，不启动或构建前端。
+- **`start-local.bat`** 保留为 `start-search.bat` 的兼容入口。
+
+搜索 API 监听 `http://127.0.0.1:17890`。在「设置 → 高级参数 → 联网」中选择 **Local**，本地开发时 API 地址保持为空即可；Vite 会把 `/api` 代理到搜索服务。
+
+本地 API：
+
+- `GET /api/health`
+- `POST /api/web/search`
+- `POST /api/web/images`
+- `POST /api/web/extract`
+
+### Vercel 前端连接本机搜索服务
+
+SearXNG/Docker 后端本身不部署到 Vercel。部署在 `https://mengstudystudio.cn` 的前端会在浏览器中连接访问者自己电脑上的 `http://127.0.0.1:17890/api`，因此每位使用者仍需先运行 **`start-search.bat`**。浏览器首次访问时可能询问本地网络访问权限，需要允许。
+
+生产域名已加入本地服务的 CORS 白名单。Vercel Preview 或其他域名需要通过 `STUDYSTUDIO_ALLOWED_ORIGINS` 把精确的 HTTPS Origin 加入白名单，然后重启搜索服务。不要使用 `*`，避免任意网站调用本机服务。
+
 ## 📦 手动运行
 
 如果您更喜欢手动操作：

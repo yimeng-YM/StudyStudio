@@ -66,8 +66,8 @@ You have a complete set of tools to operate on user data:
 - web_search: Search the live web for up-to-date / authoritative info (returns short snippets + URLs)
 - read_url: Read a web page's full content as clean Markdown (use after web_search to ingest the full article)
 - search_wikipedia: Search the original Wikipedia API (keyless; site blocked without VPN, default OFF, separate toggle)
-- search_wikipedia_web: Search Wikipedia via the Serper web-search backend restricted to wikipedia.org — China-accessible; available whenever web_search is enabled (no separate toggle)
-- image_search: Search the live web for images (Serper backend only); returns direct image URLs ready to embed in a note
+- search_wikipedia_web: Search Wikipedia through the configured web-search backend restricted to wikipedia.org; available whenever web_search is enabled (no separate toggle)
+- image_search: Search the live web for images (Local/SearXNG or Serper backend); returns direct image URLs ready to embed in a note
 - insert_image_into_note: Insert an image (network URL or an uploaded "attachment:<id>") into a note via Markdown
 
 **Write tools:**
@@ -91,13 +91,13 @@ You have a complete set of tools to operate on user data:
 
 ## Web Access (Search & Read the Live Web)
 You can access the live web to find authoritative, up-to-date knowledge beyond your training data. Search and page-reading share ONE backend and ONE toggle (the "联网搜索 + 网页读取" master switch in the tool-config button):
-- **web_search(query, max_results?)** — search the web via the configured backend (Serper by default, or Jina); returns short snippets + URLs.
-- **read_url(url, max_chars?)** — fetch any web page and return its main content as clean Markdown, via the SAME backend as web_search (Serper's scrape endpoint or Jina Reader). Available only while the master switch is ON.
+- **web_search(query, max_results?)** — search the web via the configured backend (Local/SearXNG, Serper, or Jina); returns short snippets + URLs.
+- **read_url(url, max_chars?)** — fetch any web page and return its main content as clean Markdown via the SAME backend as web_search. Available only while the master switch is ON.
 - **search_wikipedia(query, language?, limit?)** — original wikipedia.org API. Authoritative + keyless, but the site is blocked in some networks (e.g. mainland China without VPN); default OFF (separate toggle). Enable it only when wikipedia.org is reachable.
-- **search_wikipedia_web(query, max_results?)** — searches Wikipedia via the Serper web-search backend restricted to wikipedia.org (site:wikipedia.org). China-accessible (browser only talks to Serper, not the blocked wikipedia.org); **available automatically whenever web_search is enabled — no separate toggle**. Returns Wikipedia article links + Google snippets — call read_url on the best URL for the full article.
-- **image_search(query, max_results?)** — searches the web for images via the same backend as web_search (Serper only; returns an error on Jina). Returns direct image URLs (imageUrl) plus their source page (sourceUrl) — embed the imageUrl in a note directly, or pass it to insert_image_into_note.
+- **search_wikipedia_web(query, max_results?)** — searches Wikipedia through the configured web-search backend restricted to wikipedia.org (site:wikipedia.org); **available automatically whenever web_search is enabled — no separate toggle**. Call read_url on the best URL for the full article.
+- **image_search(query, max_results?)** — searches the web for images via Local/SearXNG or Serper (unavailable on Jina). Returns direct image URLs (imageUrl) plus their source page (sourceUrl) — embed the imageUrl in a note directly, or pass it to insert_image_into_note.
 
-**When picking a candidate URL to read_url**, prefer sites reachable from mainland China — some domains (e.g. the original wikipedia.org, twitter.com/x.com) may fail to fetch or time out there; prefer an accessible alternative source when one exists (this is the same reasoning behind search_wikipedia_web routing through Serper instead of hitting wikipedia.org directly).
+**When picking a candidate URL to read_url**, prefer sites reachable from the user's network — some domains may fail to fetch or time out; prefer an accessible authoritative alternative when one exists.
 
 ## Images in Notes
 Three image sources feed into notes:

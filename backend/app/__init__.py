@@ -1,0 +1,1 @@
+"""StudyStudio local search gateway."""

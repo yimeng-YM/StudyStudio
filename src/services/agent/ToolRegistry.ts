@@ -17,7 +17,7 @@ export const ToolRegistry = {
   get_note_lines: readTools.get_note_lines,
   get_quiz_questions: readTools.get_quiz_questions,
 
-  // 联网工具：搜索网络、读取网页全文、维基百科（原站 API / Serper 站内搜）、图片搜索，供模型获取训练数据外的权威/时效信息
+  // 联网工具：搜索网络、读取网页全文、维基百科和图片搜索，供模型获取训练数据外的权威/时效信息
   web_search: webTools.web_search,
   read_url: webTools.read_url,
   search_wikipedia: webTools.search_wikipedia,
@@ -392,8 +392,8 @@ Cite the Wikipedia URL(s) you use. Distill content into your own answer — do n
     type: 'function',
     function: {
       name: 'search_wikipedia_web',
-      description: `Search Wikipedia via the web-search backend (Serper/Google) restricted to wikipedia.org — the China-accessible Wikipedia lookup.
-Runs a \`site:wikipedia.org\` search through the same backend as web_search, so the browser only talks to Serper (reachable in mainland China), NOT to the blocked wikipedia.org. Returns Wikipedia article links + Google snippets. Available automatically whenever web_search is enabled — no separate toggle.
+      description: `Search Wikipedia through the configured web-search backend, restricted to wikipedia.org.
+Runs a \`site:wikipedia.org\` search through the same backend as web_search. Returns Wikipedia article links and snippets. Available automatically whenever web_search is enabled — no separate toggle.
 
 Use this tool to:
 - Look up definitional, encyclopedic, or factual "authoritative" knowledge when the original wikipedia.org (search_wikipedia) is blocked / disabled.
@@ -420,7 +420,7 @@ Cite the source URL(s) you use. Distill content into your own answer — do not 
     type: 'function',
     function: {
       name: 'image_search',
-      description: `Search the live web for images matching a query. Only works with the Serper backend (returns an error if the current backend is Jina).
+      description: `Search the live web for images matching a query. Available with the local SearXNG or Serper backend (unavailable with Jina).
 Use this tool to:
 - Find a relevant, real-world image to illustrate a note (diagram, photo, chart screenshot, etc.).
 - Get a direct image URL you can embed in a note via Markdown \`![]()\` or the insert_image_into_note tool.
@@ -429,7 +429,7 @@ Parameters:
 - query: The search query text (required). Be specific about what the image should show.
 - max_results: Maximum number of results to return (optional, default 6, max 10).
 
-Returns: { query, count, results: [{ title, imageUrl, sourceUrl }] }. imageUrl is a direct image link ready to embed; sourceUrl is the page the image was found on (cite it if relevant). On error (e.g. wrong backend, missing key, rate limit), returns { error, query }.`,
+Returns: { query, count, results: [{ title, imageUrl, sourceUrl }] }. imageUrl is a direct image link ready to embed; sourceUrl is the page the image was found on (cite it if relevant). On error (e.g. backend unavailable or rate limit), returns { error, query }.`,
       parameters: {
         type: 'object',
         properties: {

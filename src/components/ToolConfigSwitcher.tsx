@@ -3,7 +3,7 @@ import { useAIStore } from '@/store/useAIStore';
 import { cn } from '@/lib/utils';
 import { ChevronUp, Wrench, Globe, BookOpen } from 'lucide-react';
 import {
-  isSearchKeyConfigured,
+  isSearchBackendConfigured,
   isWebUsable,
   isWikipediaOn,
 } from '@/lib/toolConfig';
@@ -11,8 +11,7 @@ import {
 /**
  * AI 对话界面的「工具配置」按钮（与 ModeSwitcher / ModelSwitcher 并排）。
  * 点击向上展开 popover，提供联网工具开关，遵循联动规则（见 toolConfig.ts）：
- *   - 「联网搜索 + 网页读取」总开关：同步控制 web_search 与 read_url。需先在设置里配置对应后端的 API Key，
- *     否则开关灰色不可用，悬停提示前往设置配置 Key。
+ *   - 「联网搜索 + 网页读取」总开关：同步控制 web_search 与 read_url。Local 免 Key；第三方后端需对应 Key。
  *   - 维基百科站内搜（search_wikipedia_web）**无独立开关——总开关开启即自带**该能力（国内可用）。
  *   - 维基百科原站 API（search_wikipedia）：独立开关，**默认关闭**（被墙，挂 VPN 可开），总开关关时联动关闭。
  * 切换即时写入运行时 config，下一条消息即生效（Agent 循环按可用性注入工具）。
@@ -31,7 +30,7 @@ export function ToolConfigSwitcher() {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const keyConfigured = isSearchKeyConfigured(config ?? null);
+  const backendConfigured = isSearchBackendConfigured(config ?? null);
   const webUsable = isWebUsable(config ?? null);
   const wikiOn = isWikipediaOn(config ?? null);
   const anyOn = webUsable || wikiOn;
@@ -70,8 +69,8 @@ export function ToolConfigSwitcher() {
             label="联网搜索 + 网页读取"
             description="搜索网络 + 读取网页正文"
             checked={webUsable}
-            disabled={!keyConfigured}
-            disabledHint="请先在 设置 → 高级参数 中配置搜索后端 API Key"
+            disabled={!backendConfigured}
+            disabledHint="请先在 设置 → 高级参数 中完成搜索后端配置"
             onChange={(v) => updateConfig({ webSearchEnabled: v })}
           />
 
@@ -91,7 +90,7 @@ export function ToolConfigSwitcher() {
           />
 
           <div className="px-3 py-2 border-t border-zinc-100 dark:border-zinc-800 text-[10px] text-zinc-400 leading-snug">
-            国内用户优先使用serper并关闭维基百科工具
+            推荐本地部署使用 Local；仅使用网页版本时可选择 Serper/Jina
           </div>
         </div>
       )}
