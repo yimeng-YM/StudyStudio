@@ -49,7 +49,10 @@ Thumbs.db
 # Test coverage
 coverage
 
-# Local search backend runtime data
+# Independent checkout of the search branch
+/search/
+
+# Runtime files left by the pre-extraction backend layout
 backend/.venv/
 backend/data/
 backend/**/__pycache__/

@@ -9,8 +9,7 @@
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "search": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-local.ps1",
-    "local": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-local.ps1",
-    "test:backend": "cd backend && .venv\\Scripts\\python.exe -m pytest tests"
+    "local": "npm run search"
   },
   "dependencies": {
     "@tailwindcss/typography": "^0.5.19",

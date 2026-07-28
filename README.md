@@ -131,7 +131,7 @@ StudyStudio 是一个功能丰富的智能学习助手 Web 应用，集成了 AI
 
 ### 🔎 本地搜索后端（无需 Serper/Jina Key）
 
-项目现在包含可在本机运行的搜索与网页提取后端：
+搜索与网页提取服务已经独立到本仓库的 [`search` 分支](https://github.com/yimeng-YM/StudyStudio/tree/search)，不再与 `master` 的前端源码混合：
 
 - SearXNG 聚合通用网页与图片搜索结果
 - Trafilatura 提取正文并转换为 Markdown
@@ -139,12 +139,18 @@ StudyStudio 是一个功能丰富的智能学习助手 Web 应用，集成了 AI
 - SQLite 持久缓存搜索和提取结果
 - URL 安全策略阻止访问本机、局域网和云元数据地址
 
-前置条件：安装并启动 Docker Desktop。首次运行还会下载 Python 依赖与 Chromium。
+`search` 分支以服务文件作为仓库根目录，拥有自己的应用代码、依赖清单、SearXNG/Docker 配置、启动器、测试和使用文档。首次使用时，在本仓库根目录执行：
+
+```bash
+git clone --branch search --single-branch https://github.com/yimeng-YM/StudyStudio.git search
+```
+
+主仓库会忽略这个独立检出目录。运行服务的前置条件是安装并启动 Docker Desktop；首次启动还会下载 Python 依赖与 Chromium。
 
 前端与搜索服务现在是两个独立进程：
 
-- 双击 **`start.bat`**：打开 `http://localhost:5173`，并自动在另一个窗口启动搜索服务。
-- 双击 **`start-search.bat`**：只启动搜索服务，不启动或构建前端。
+- 双击 **`start.bat`**：打开 `http://localhost:5173`；若已检出 `search` 分支，会自动在另一个窗口启动搜索服务。
+- 双击 **`start-search.bat`**：通过兼容入口启动独立检出中的 `search/start.bat`，不启动或构建前端。
 - **`start-local.bat`** 保留为 `start-search.bat` 的兼容入口。
 
 搜索 API 监听 `http://127.0.0.1:17890`。在「设置 → 高级参数 → 联网」中选择 **Local**，本地开发时 API 地址保持为空即可；Vite 会把 `/api` 代理到搜索服务。
@@ -160,7 +166,7 @@ StudyStudio 是一个功能丰富的智能学习助手 Web 应用，集成了 AI
 
 SearXNG/Docker 后端本身不部署到 Vercel。部署在 `https://mengstudystudio.cn` 的前端会在浏览器中连接访问者自己电脑上的 `http://127.0.0.1:17890/api`，因此每位使用者仍需先运行 **`start-search.bat`**。浏览器首次访问时可能询问本地网络访问权限，需要允许。
 
-生产域名已加入本地服务的 CORS 白名单。Vercel Preview 或其他域名需要通过 `STUDYSTUDIO_ALLOWED_ORIGINS` 把精确的 HTTPS Origin 加入白名单，然后重启搜索服务。不要使用 `*`，避免任意网站调用本机服务。
+StudyStudio 根启动器会把正式域名加入 CORS 白名单。Vercel Preview 或其他域名需要通过 `LOCAL_SEARCH_ALLOWED_ORIGINS` 把精确的 HTTPS Origin 加入白名单，然后重启搜索服务。不要使用 `*`，避免任意网站调用本机服务。完整的独立部署、API 与配置说明见 [`search` 分支 README](https://github.com/yimeng-YM/StudyStudio/tree/search)。
 
 ## 📦 手动运行
 

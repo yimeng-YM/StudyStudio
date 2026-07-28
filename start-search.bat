@@ -3,22 +3,19 @@ setlocal
 title StudyStudio Search Service
 cd /d "%~dp0"
 
-echo Starting the independent StudyStudio search service...
-echo.
-
-powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start-local.ps1" %*
-set "search_exit=%ERRORLEVEL%"
-
-if not "%search_exit%"=="0" (
+if not exist "%~dp0search\start.bat" (
+  echo The independent search service is not installed.
   echo.
-  echo The search service failed to start. Review the error above.
-  echo Exit code: %search_exit%
+  echo Clone the search branch into this directory first:
+  echo git clone --branch search --single-branch https://github.com/yimeng-YM/StudyStudio.git search
   echo.
   pause
-  exit /b %search_exit%
+  exit /b 1
 )
 
-echo.
-echo The search service has stopped.
-pause
-exit /b 0
+if not defined LOCAL_SEARCH_ADDITIONAL_ORIGINS (
+  set "LOCAL_SEARCH_ADDITIONAL_ORIGINS=https://mengstudystudio.cn,https://www.mengstudystudio.cn"
+)
+
+call "%~dp0search\start.bat" %*
+exit /b %ERRORLEVEL%

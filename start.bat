@@ -29,19 +29,24 @@ if not exist "node_modules" (
 
 echo [3/3] Starting StudyStudio on http://localhost:5173 ...
 if /i not "%STUDYSTUDIO_SKIP_SEARCH%"=="1" (
-  powershell.exe -NoLogo -NoProfile -Command "try { $r = Invoke-RestMethod -Uri 'http://127.0.0.1:17890/api/health' -TimeoutSec 2; if ($r.gateway) { exit 0 } } catch {}; exit 1" >nul 2>&1
-  if errorlevel 1 (
-    echo Opening the search service in a separate window...
-    start "StudyStudio Search Service" "%ComSpec%" /d /c call "%~dp0start-search.bat"
+  if exist "%~dp0search\start.bat" (
+    powershell.exe -NoLogo -NoProfile -Command "try { $r = Invoke-RestMethod -Uri 'http://127.0.0.1:17890/api/health' -TimeoutSec 2; if ($r.gateway) { exit 0 } } catch {}; exit 1" >nul 2>&1
+    if errorlevel 1 (
+      echo Opening the independent search service in a separate window...
+      start "StudyStudio Search Service" "%ComSpec%" /d /c call "%~dp0start-search.bat"
+    ) else (
+      echo The search service is already running.
+    )
   ) else (
-    echo The search service is already running.
+    echo The independent search branch is not installed in search\.
+    echo The frontend will continue without starting the local search service.
   )
 )
 
 start "" /b cmd.exe /d /c "timeout /t 3 >nul && start http://localhost:5173"
 echo.
 echo Keep this window open while using the frontend.
-echo The search service runs independently in its own window.
+echo When installed, the search service runs independently in its own window.
 echo.
 
 call npm run dev
