@@ -1,4 +1,4 @@
-param(
+﻿param(
   [switch]$VerifyOnly,
   [switch]$KeepSearxng
 )
@@ -90,23 +90,33 @@ $searxngUrl = if ($env:SEARXNG_URL) {
   "http://127.0.0.1:${searxngPort}"
 }
 $searxngStarted = $false
+$searxngWasRunning = $false
 
-Write-Host "[1/5] Checking Docker Desktop..." -ForegroundColor Cyan
+Write-Host "[1/5] 正在检查 Docker Desktop..." -ForegroundColor Cyan
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-  throw "Docker CLI was not found. Install Docker Desktop, then run start.bat again."
+  throw "未找到 Docker CLI。请安装 Docker Desktop，然后重新运行 start.bat。"
 }
 Invoke-NativeCommand -Quiet { docker info }
 if ($script:nativeExitCode -ne 0) {
-  throw "Docker Desktop is not running. Start Docker Desktop, then run start.bat again."
+  throw "Docker Desktop 未运行。请启动 Docker Desktop，然后重新运行 start.bat。"
 }
 
+$runningSearxngIds = @(
+  & docker compose -f $composeFile ps --status running --quiet searxng 2>$null
+)
+$searxngWasRunning = (
+  $LASTEXITCODE -eq 0 -and
+  $runningSearxngIds.Count -gt 0 -and
+  -not [string]::IsNullOrWhiteSpace(($runningSearxngIds -join ""))
+)
+
 try {
-  Write-Host "[2/5] Starting local SearXNG..." -ForegroundColor Cyan
+  Write-Host "[2/5] 正在启动本地 SearXNG..." -ForegroundColor Cyan
   Invoke-NativeCommand { docker compose -f $composeFile up -d }
   if ($script:nativeExitCode -ne 0) {
-    throw "The SearXNG container failed to start."
+    throw "SearXNG 容器启动失败。"
   }
-  $searxngStarted = $true
+  $searxngStarted = -not $searxngWasRunning
 
   $searxngReady = $false
   for ($attempt = 1; $attempt -le 30; $attempt++) {
@@ -121,10 +131,10 @@ try {
     }
   }
   if (-not $searxngReady) {
-    throw "SearXNG did not become ready at ${searxngUrl}."
+    throw "SearXNG 未能在 ${searxngUrl} 正常就绪。"
   }
 
-  Write-Host "[3/5] Preparing the Python environment..." -ForegroundColor Cyan
+  Write-Host "[3/5] 正在准备 Python 环境..." -ForegroundColor Cyan
   if (-not (Test-Path -LiteralPath $venvPython)) {
     $createdVenv = $false
     if (Get-Command py -ErrorAction SilentlyContinue) {
@@ -133,15 +143,15 @@ try {
     }
     if (-not $createdVenv) {
       if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
-        throw "Python was not found. Install Python 3.11 or newer."
+        throw "未找到 Python。请安装 Python 3.11 或更高版本。"
       }
       Invoke-NativeCommand { python -m venv $venvRoot }
       if ($script:nativeExitCode -ne 0) {
-        throw "Could not create a Python virtual environment. Install Python 3.11 or newer."
+        throw "无法创建 Python 虚拟环境。请安装 Python 3.11 或更高版本。"
       }
     }
     if (-not (Test-Path -LiteralPath $venvPython)) {
-      throw "The Python virtual environment was not created correctly."
+      throw "Python 虚拟环境未能正确创建。"
     }
   }
 
@@ -160,7 +170,7 @@ try {
     try {
       Invoke-NativeCommand { & $venvPython -m pip install --disable-pip-version-check -r $requirements }
       if ($script:nativeExitCode -ne 0) {
-        throw "Python dependency installation failed."
+        throw "Python 依赖安装失败。"
       }
       Set-Content -LiteralPath $requirementsStamp -Value $requirementsHash -Encoding ASCII
     } finally {
@@ -168,10 +178,10 @@ try {
     }
   }
 
-  Write-Host "[4/5] Checking Playwright Chromium..." -ForegroundColor Cyan
+  Write-Host "[4/5] 正在检查 Playwright Chromium..." -ForegroundColor Cyan
   Invoke-NativeCommand { & $venvPython -m playwright install chromium }
   if ($script:nativeExitCode -ne 0) {
-    throw "Playwright Chromium installation failed."
+    throw "Playwright Chromium 安装失败。"
   }
 
   if ($VerifyOnly) {
@@ -179,32 +189,32 @@ try {
     try {
       Invoke-NativeCommand { & $venvPython -c "from app.main import app; print(app.title)" }
       if ($script:nativeExitCode -ne 0) {
-        throw "The local search API could not be imported."
+        throw "无法导入本地搜索 API。"
       }
     } finally {
       Pop-Location
     }
-    Write-Host "Search service verification completed successfully." -ForegroundColor Green
+    Write-Host "搜索服务验证成功。" -ForegroundColor Green
     return
   }
 
-  Write-Host "[5/5] Starting the local search API..." -ForegroundColor Green
+  Write-Host "[5/5] 正在启动本地搜索 API..." -ForegroundColor Green
   Write-Host "API:  http://${gatewayHost}:${gatewayPort}/api" -ForegroundColor Magenta
-  Write-Host "Docs: http://${gatewayHost}:${gatewayPort}/docs" -ForegroundColor DarkGray
-  Write-Host "Keep this window open while search is in use." -ForegroundColor DarkGray
+  Write-Host "文档: http://${gatewayHost}:${gatewayPort}/docs" -ForegroundColor DarkGray
+  Write-Host "使用搜索功能期间，请保持此窗口运行。" -ForegroundColor DarkGray
 
   Push-Location $serviceRoot
   try {
     & $venvPython -m uvicorn app.main:app --host $gatewayHost --port $gatewayPort
     if ($LASTEXITCODE -ne 0) {
-      throw "The local search API stopped with exit code $LASTEXITCODE."
+      throw "本地搜索 API 已停止，退出代码：$LASTEXITCODE。"
     }
   } finally {
     Pop-Location
   }
 } finally {
   if ($searxngStarted -and -not $KeepSearxng) {
-    Write-Host "Stopping SearXNG..." -ForegroundColor DarkGray
+    Write-Host "正在停止 SearXNG..." -ForegroundColor DarkGray
     Invoke-NativeCommand -Quiet { docker compose -f $composeFile stop }
   }
 }
