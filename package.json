@@ -8,8 +8,7 @@
     "build": "tsc && vite build",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
-    "search": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-local.ps1",
-    "local": "npm run search"
+    "search": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-search.ps1"
   },
   "dependencies": {
     "@tailwindcss/typography": "^0.5.19",

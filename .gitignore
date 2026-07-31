@@ -52,13 +52,6 @@ coverage
 # Independent checkout of the search branch
 /search/
 
-# Runtime files left by the pre-extraction backend layout
-backend/.venv/
-backend/data/
-backend/**/__pycache__/
-backend/**/*.py[cod]
-.pytest_cache/
-
 # Temp files
 *.tmp
 tmp/

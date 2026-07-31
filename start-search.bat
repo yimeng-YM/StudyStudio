@@ -26,11 +26,6 @@ echo %c_cyan%                 StudyStudio 本地搜索服务%c_reset%
 echo %c_blue%============================================================%c_reset%
 echo.
 
-if defined STUDYSTUDIO_LEGACY_ENTRY (
-  echo %c_yell%提示：start-local.bat 是兼容入口，后续请使用 start-search.bat。%c_reset%
-  echo.
-)
-
 if not exist "%~dp0search\start.bat" (
   echo %c_red%[错误] 尚未安装独立搜索服务。%c_reset%
   echo.
