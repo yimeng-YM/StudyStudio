@@ -150,8 +150,8 @@ git clone --branch search --single-branch https://github.com/yimeng-YM/StudyStud
 前端与搜索服务现在是两个独立进程：
 
 - 双击 **`start.bat`**：打开 `http://localhost:5173`；若已检出 `search` 分支，会自动在另一个窗口启动搜索服务。
-- 双击 **`start-search.bat`**：通过兼容入口启动独立检出中的 `search/start.bat`，不启动或构建前端。
-- **`start-local.bat`** 保留为 `start-search.bat` 的兼容入口。
+- 双击 **`start-search.bat`**：通过正式桥接入口启动独立检出中的 `search/start.bat`，不启动或构建前端。
+- **`start-local.bat`** 不承担独立功能，仅为旧快捷方式保留兼容；新入口统一使用 `start-search.bat`，后续版本可删除该兼容文件。
 
 搜索 API 监听 `http://127.0.0.1:17890`。在「设置 → 高级参数 → 联网」中选择 **Local**，本地开发时 API 地址保持为空即可；Vite 会把 `/api` 代理到搜索服务。
 
