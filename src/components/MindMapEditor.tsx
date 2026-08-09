@@ -94,6 +94,7 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
   const flowWrapperRef = useRef<HTMLDivElement>(null);
   const { openContextMenu, contextMenu } = useContextMenu();
   const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const [showLayoutMenu, setShowLayoutMenu] = useState(false);
   const [layoutMenuPos, setLayoutMenuPos] = useState({ left: 0, bottom: 0 });
   /** @type {[string | null, Function]} 当前选中的思维导图记录ID */
@@ -622,28 +623,44 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
     setTimeout(() => jumpToNode(id), 100);
   }, [nodes, edges, setNodes, takeSnapshot, showPrompt, jumpToNode, selectedMindMapId, subjectId, subject?.name]);
 
-  const handleEditNode = useCallback(async (nodeId: string) => {
-    const node = nodes.find(n => n.id === nodeId);
-    if (!node) return;
-    const label = await showPrompt("输入新标签:", node.data.label, { title: "编辑节点" });
-    if (label !== null) {
-      const newNodes = nodes.map((n) => {
-        if (n.id === node.id) {
-          return { ...n, data: { ...n.data, label } };
-        }
-        return n;
-      });
-      takeSnapshot(newNodes, edges);
-      setNodes(newNodes);
+  const handleEditNode = useCallback((nodeId: string) => {
+    setEditingNodeId(nodeId);
+  }, []);
+
+  const handleCommitNodeEdit = useCallback((nodeId: string, label: string) => {
+    const node = nodes.find(candidate => candidate.id === nodeId);
+    if (!node) {
+      setEditingNodeId(null);
+      return;
     }
-  }, [nodes, edges, setNodes, showPrompt, takeSnapshot]);
+
+    if (String(node.data.label ?? '') === label) {
+      setEditingNodeId(null);
+      return;
+    }
+
+    const newNodes = nodes.map(candidate => candidate.id === nodeId
+      ? { ...candidate, data: { ...candidate.data, label } }
+      : candidate
+    );
+    takeSnapshot(newNodes, edges);
+    setNodes(newNodes);
+    setEditingNodeId(null);
+  }, [nodes, edges, setNodes, takeSnapshot]);
+
+  const handleCancelNodeEdit = useCallback((nodeId: string) => {
+    setEditingNodeId(current => current === nodeId ? null : current);
+  }, []);
 
   const nodesWithHandlers = useMemo(() => {
     return nodes.map((node) => ({
       ...node,
       data: {
         ...node.data,
+        isEditing: editingNodeId === node.id,
         onEdit: () => handleEditNode(node.id),
+        onCommitEdit: (label: string) => handleCommitNodeEdit(node.id, label),
+        onCancelEdit: () => handleCancelNodeEdit(node.id),
         onAddChild: () => handleAddChild(node.id),
         onAddSibling: () => handleAddSibling(node.id),
         onDelete: () => handleDeleteNode(node.id),
@@ -653,7 +670,7 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
         hasTaskLink: linkedTaskTargets.has(node.id),
       },
     }));
-  }, [nodes, handleEditNode, handleAddChild, handleAddSibling, handleDeleteNode, handleNote, handleTask, linkedNoteNodeIds, linkedTaskTargets]);
+  }, [nodes, editingNodeId, handleEditNode, handleCommitNodeEdit, handleCancelNodeEdit, handleAddChild, handleAddSibling, handleDeleteNode, handleNote, handleTask, linkedNoteNodeIds, linkedTaskTargets]);
 
   /**
    * 节点连接事件处理，用户手动拖拽连线时触发
@@ -668,19 +685,9 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
   /**
    * 双击节点修改文本标签
    */
-  const onNodeDoubleClick = useCallback(async (_: React.MouseEvent, node: Node) => {
-    const label = await showPrompt("输入新标签:", node.data.label, { title: "编辑节点" });
-    if (label !== null) {
-      const newNodes = nodes.map((n) => {
-        if (n.id === node.id) {
-          return { ...n, data: { ...n.data, label } };
-        }
-        return n;
-      });
-      takeSnapshot(newNodes, edges);
-      setNodes(newNodes);
-    }
-  }, [nodes, edges, setNodes, showPrompt, takeSnapshot]);
+  const onNodeDoubleClick = useCallback((_event: React.MouseEvent, node: Node) => {
+    handleEditNode(node.id);
+  }, [handleEditNode]);
 
   /**
    * 节点拖拽结束时保存快照，以便后续可以撤销该位置移动操作

@@ -1,4 +1,4 @@
-import { memo, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
 import { Plus, Trash2, FileText, GitBranchPlus, CheckSquare, Pencil } from 'lucide-react';
 
@@ -11,6 +11,43 @@ import { Plus, Trash2, FileText, GitBranchPlus, CheckSquare, Pencil } from 'luci
  */
 export const CustomNode = memo(({ data, isConnectable }: NodeProps) => {
   const [showToolbar, setShowToolbar] = useState(false);
+  const [draftLabel, setDraftLabel] = useState(String(data.label ?? ''));
+  const inputRef = useRef<HTMLInputElement>(null);
+  const skipNextBlurRef = useRef(false);
+
+  useEffect(() => {
+    if (!data.isEditing) return;
+
+    skipNextBlurRef.current = false;
+    setDraftLabel(String(data.label ?? ''));
+    const focusFrame = requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    });
+
+    return () => cancelAnimationFrame(focusFrame);
+  }, [data.isEditing, data.label]);
+
+  const commitEdit = () => {
+    data.onCommitEdit?.(draftLabel);
+  };
+
+  const cancelEdit = () => {
+    skipNextBlurRef.current = true;
+    setDraftLabel(String(data.label ?? ''));
+    data.onCancelEdit?.();
+  };
+
+  const editInputWidth = Math.min(
+    480,
+    Math.max(
+      80,
+      Array.from(draftLabel || ' ').reduce(
+        (width, character) => width + (character.charCodeAt(0) > 255 ? 14 : 8),
+        16,
+      ),
+    ),
+  );
 
   return (
     <div
@@ -21,7 +58,40 @@ export const CustomNode = memo(({ data, isConnectable }: NodeProps) => {
     >
       {/* 节点主体容器 */}
       <div className="px-4 py-2 shadow-md rounded-md bg-white dark:bg-zinc-900 border-2 border-zinc-200 dark:border-zinc-800 hover:border-blue-500 transition-colors min-w-[100px] text-center">
-        <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{data.label}</div>
+        {data.isEditing ? (
+          <input
+            ref={inputRef}
+            value={draftLabel}
+            style={{ width: `${editInputWidth}px` }}
+            onChange={(event) => setDraftLabel(event.target.value)}
+            onClick={(event) => event.stopPropagation()}
+            onDoubleClick={(event) => event.stopPropagation()}
+            onPointerDown={(event) => event.stopPropagation()}
+            onBlur={() => {
+              if (skipNextBlurRef.current) {
+                skipNextBlurRef.current = false;
+                return;
+              }
+              commitEdit();
+            }}
+            onKeyDown={(event) => {
+              event.stopPropagation();
+              if (event.nativeEvent.isComposing) return;
+
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                commitEdit();
+              } else if (event.key === 'Escape') {
+                event.preventDefault();
+                cancelEdit();
+              }
+            }}
+            className="nodrag nopan nowheel bg-transparent text-center text-sm font-medium text-zinc-900 dark:text-zinc-100 outline-none border-b-2 border-blue-500 px-0.5 py-0.5 transition-[width] duration-100"
+            aria-label="编辑节点文本"
+          />
+        ) : (
+          <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{data.label}</div>
+        )}
       </div>
 
       {/* 四向连接点 */}
