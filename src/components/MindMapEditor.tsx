@@ -17,7 +17,7 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { db, Entity } from '@/db';
-import { Plus, Target, ArrowRight, ArrowDown, ArrowUp, ArrowLeft, GitBranch, ChevronDown, Layout as LayoutIcon } from 'lucide-react';
+import { Plus, Target, ArrowRight, ArrowDown, ArrowUp, ArrowLeft, GitBranch, ChevronDown, Layout as LayoutIcon, Pencil, GitBranchPlus, FileText, CheckSquare, Trash2, Maximize2, Undo2, Redo2, MousePointer2 } from 'lucide-react';
 import { CustomNode } from './CustomNode';
 import { Modal } from './ui/Modal';
 import { useDialog } from '@/components/ui/DialogProvider';
@@ -38,6 +38,7 @@ import {
   MINDMAP_TASK_RELATION,
   type MindMapTaskInput,
 } from '@/services/studyLinks';
+import { useContextMenu } from '@/components/ui/ContextMenu';
 
 /**
  * 思维导图编辑器组件属性
@@ -89,7 +90,9 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   /** @type {[Edge[], Function, Function]} 画布连线状态管理 */
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-  const { setCenter, fitView } = useReactFlow();
+  const { setCenter, fitView, project } = useReactFlow();
+  const flowWrapperRef = useRef<HTMLDivElement>(null);
+  const { openContextMenu, contextMenu } = useContextMenu();
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [showLayoutMenu, setShowLayoutMenu] = useState(false);
   const [layoutMenuPos, setLayoutMenuPos] = useState({ left: 0, bottom: 0 });
@@ -573,7 +576,7 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
    * 添加一个新的中心主题节点（根节点）
    * 若当前学科下尚无思维导图实体，则先懒加载创建，确保每学科仅保持一份导图数据
    */
-  const handleAddRootNode = useCallback(async () => {
+  const handleAddRootNode = useCallback(async (position?: { x: number; y: number }) => {
     const label = await showPrompt("输入新中心主题名称:", "中心主题");
     if (!label) return;
 
@@ -605,8 +608,8 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
       id,
       type: 'custom',
       position: {
-        x: nodes.length > 0 ? Math.max(...nodes.map(n => n.position.x)) + 400 : 250,
-        y: 250
+        x: position?.x ?? (nodes.length > 0 ? Math.max(...nodes.map(n => n.position.x)) + 400 : 250),
+        y: position?.y ?? 250
       },
       data: { label },
     };
@@ -874,6 +877,14 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
     });
   }, [edges, nodes, setEdges, showConfirm, takeSnapshot]);
 
+  const deleteEdgeById = useCallback(async (edgeId: string) => {
+    const confirmed = await showConfirm('确定要删除这条连接线吗？', { title: '删除连接' });
+    if (!confirmed) return;
+    const newEdges = edges.filter(edge => edge.id !== edgeId);
+    takeSnapshot(nodes, newEdges);
+    setEdges(newEdges);
+  }, [edges, nodes, setEdges, showConfirm, takeSnapshot]);
+
   const handleDeleteSelected = useCallback(() => {
     const selectedNodes = nodes.filter(n => n.selected);
     const selectedEdges = edges.filter(e => e.selected);
@@ -893,6 +904,53 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
     });
   }, [nodes, edges, setNodes, setEdges, takeSnapshot, showConfirm]);
 
+  const handleNodeContextMenu = useCallback((event: React.MouseEvent, node: Node) => {
+    openContextMenu(event, [
+      { key: 'edit', label: '编辑节点', icon: Pencil, onSelect: () => handleEditNode(node.id) },
+      { key: 'child', label: '添加子节点', icon: GitBranchPlus, onSelect: () => handleAddChild(node.id) },
+      { key: 'sibling', label: '添加同级节点', icon: Plus, onSelect: () => handleAddSibling(node.id) },
+      { key: 'note', label: linkedNoteNodeIds.has(node.id) ? '打开关联笔记' : '创建或关联笔记', icon: FileText, separatorBefore: true, onSelect: () => handleNote(node.id) },
+      { key: 'task', label: linkedTaskTargets.has(node.id) ? '打开关联任务' : '添加到任务清单', icon: CheckSquare, onSelect: () => handleTask(node.id) },
+      {
+        key: 'delete',
+        label: '删除节点',
+        icon: Trash2,
+        danger: true,
+        separatorBefore: true,
+        onSelect: async () => {
+          const confirmed = await showConfirm(`确定要删除“${String(node.data.label ?? '此节点')}”及其连接吗？`, { title: '删除节点' });
+          if (confirmed) handleDeleteNode(node.id);
+        },
+      },
+    ], `节点：${String(node.data.label ?? '未命名')}`);
+  }, [handleAddChild, handleAddSibling, handleDeleteNode, handleEditNode, handleNote, handleTask, linkedNoteNodeIds, linkedTaskTargets, openContextMenu, showConfirm]);
+
+  const handleEdgeContextMenu = useCallback((event: React.MouseEvent, edge: Edge) => {
+    openContextMenu(event, [
+      { key: 'delete', label: '删除连接线', icon: Trash2, danger: true, onSelect: () => deleteEdgeById(edge.id) },
+    ], '连接线操作');
+  }, [deleteEdgeById, openContextMenu]);
+
+  const handlePaneContextMenu = useCallback((event: React.MouseEvent) => {
+    const wrapper = flowWrapperRef.current;
+    const rect = wrapper?.getBoundingClientRect();
+    const position = project({
+      x: event.clientX - (rect?.left ?? 0),
+      y: event.clientY - (rect?.top ?? 0),
+    });
+    openContextMenu(event, [
+      { key: 'root', label: '在此处添加中心主题', icon: Plus, onSelect: () => handleAddRootNode(position) },
+      { key: 'select-all', label: '全选节点和连接', icon: MousePointer2, separatorBefore: true, shortcut: 'Ctrl+A', onSelect: () => {
+        setNodes(current => current.map(node => ({ ...node, selected: true })));
+        setEdges(current => current.map(edge => ({ ...edge, selected: true })));
+      } },
+      { key: 'layout', label: '自动整理（向右）', icon: LayoutIcon, onSelect: () => onLayout('LR') },
+      { key: 'fit', label: '适应全部内容', icon: Maximize2, onSelect: () => fitView({ duration: 500, padding: 0.2 }) },
+      { key: 'undo', label: '撤销', icon: Undo2, separatorBefore: true, shortcut: 'Ctrl+Z', disabled: historyIndex <= 0, onSelect: handleUndo },
+      { key: 'redo', label: '重做', icon: Redo2, shortcut: 'Ctrl+Y', disabled: historyIndex >= history.length - 1, onSelect: handleRedo },
+    ], '思维导图画布');
+  }, [fitView, handleAddRootNode, handleRedo, handleUndo, history.length, historyIndex, onLayout, openContextMenu, project, setEdges, setNodes]);
+
   // 使用新的 useMindMapContext hook 来注册上下文
   // 注意：不传递 nodes.length 以避免频繁更新导致无限循环
   useMindMapContext(
@@ -905,7 +963,7 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
   return (
     <div className="flex h-full relative">
       {/* React Flow Editor */}
-      <div className="flex-1 relative bg-white/80 dark:bg-zinc-950/80 rounded-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden shadow-sm">
+      <div ref={flowWrapperRef} className="flex-1 relative bg-white/80 dark:bg-zinc-950/80 rounded-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden shadow-sm">
         {selectedMindMapId ? (
           <ReactFlow
             nodes={nodesWithHandlers}
@@ -914,6 +972,9 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
             onNodeDoubleClick={onNodeDoubleClick}
+            onNodeContextMenu={handleNodeContextMenu}
+            onEdgeContextMenu={handleEdgeContextMenu}
+            onPaneContextMenu={handlePaneContextMenu}
             onNodeDragStop={onNodeDragStop}
             onEdgeClick={handleEdgeClick}
             nodeTypes={nodeTypes}
@@ -931,7 +992,7 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
             {/* Mobile: full-width toolbar */}
             <div className="md:hidden absolute top-0 left-0 right-0 z-10 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800">
               <div className="flex items-center gap-1.5 px-2 py-1.5 overflow-x-auto scrollbar-none">
-                <button onClick={handleAddRootNode} className="flex items-center gap-1 px-2 py-1 bg-blue-600 text-white rounded-full text-xs font-medium hover:bg-blue-700 transition-colors shrink-0 whitespace-nowrap"><Plus size={14} />中心主题</button>
+                <button onClick={() => handleAddRootNode()} className="flex items-center gap-1 px-2 py-1 bg-blue-600 text-white rounded-full text-xs font-medium hover:bg-blue-700 transition-colors shrink-0 whitespace-nowrap"><Plus size={14} />中心主题</button>
                 <div className="w-px h-4 bg-zinc-200 dark:bg-zinc-800 mx-1 shrink-0" />
                 <button onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setLayoutMenuPos({ left: r.left, bottom: r.bottom }); setShowLayoutMenu(!showLayoutMenu); }} className="flex items-center gap-1 px-2 py-1 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-full text-xs font-medium text-zinc-700 dark:text-zinc-300 transition-all border border-transparent hover:border-blue-200 shrink-0 whitespace-nowrap"><LayoutIcon size={14} className="text-blue-500" />整理<ChevronDown size={12} className={cn("transition-transform", showLayoutMenu && "rotate-180")} /></button>
                 <div className="w-px h-4 bg-zinc-200 dark:bg-zinc-800 mx-1 shrink-0" />
@@ -947,7 +1008,7 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
             {/* Desktop: floating pill */}
             <Panel position="top-center" className="hidden md:block bg-white/70 dark:bg-zinc-900/80 backdrop-blur-md rounded-full border border-zinc-200 dark:border-zinc-800 shadow-lg mt-4 overflow-visible">
               <div className="flex items-center gap-2 px-4 py-2 overflow-x-auto scrollbar-none">
-                <button onClick={handleAddRootNode} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-full text-xs font-medium hover:bg-blue-700 transition-colors shrink-0 whitespace-nowrap"><Plus size={14} /> 新增中心主题</button>
+                <button onClick={() => handleAddRootNode()} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-full text-xs font-medium hover:bg-blue-700 transition-colors shrink-0 whitespace-nowrap"><Plus size={14} /> 新增中心主题</button>
                 <div className="w-px h-4 bg-zinc-200 dark:bg-zinc-800 mx-1 shrink-0" />
                 <button onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setLayoutMenuPos({ left: r.left, bottom: r.bottom }); setShowLayoutMenu(!showLayoutMenu); }} className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-full text-xs font-medium text-zinc-700 dark:text-zinc-300 transition-all border border-transparent hover:border-blue-200 whitespace-nowrap"><LayoutIcon size={14} className="text-blue-500" />自动整理<ChevronDown size={12} className={cn("transition-transform", showLayoutMenu && "rotate-180")} /></button>
                 <div className="w-px h-4 bg-zinc-200 dark:bg-zinc-800 mx-1 shrink-0" />
@@ -992,7 +1053,7 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
           </ReactFlow>
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-zinc-500 gap-4">
-            <button onClick={handleAddRootNode} title="新增中心主题" className="w-16 h-16 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-full flex items-center justify-center transition-colors group">
+            <button onClick={() => handleAddRootNode()} title="新增中心主题" className="w-16 h-16 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-full flex items-center justify-center transition-colors group">
               <Plus size={32} className="group-hover:scale-110 transition-transform" />
             </button>
             <p>点击加号新增中心主题</p>
@@ -1027,6 +1088,8 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
       {showLayoutMenu && (
         <div className="fixed inset-0 z-[140]" onClick={() => setShowLayoutMenu(false)} />
       )}
+
+      {contextMenu}
 
       <Modal
         isOpen={isNoteModalOpen}

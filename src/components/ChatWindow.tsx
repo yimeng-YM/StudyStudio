@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
-import { Send, Paperclip, X, Trash2, Plus, History, Sparkles, Brain, Zap, Microscope, RotateCw, Loader2, Square, ChevronUp, ChevronDown } from 'lucide-react';
+import { Send, Paperclip, X, Trash2, Plus, History, Sparkles, Brain, Zap, Microscope, RotateCw, Loader2, Square, ChevronUp, ChevronDown, Pencil, Copy, MessageSquare } from 'lucide-react';
 import { MessageRenderer, ToolCallRenderer, ThinkingBlock, TodoCard, AskCard } from './MessageRenderer';
 import { db, ChatSession } from '@/db';
 import { processFile } from '@/lib/fileProcessor';
@@ -10,6 +10,9 @@ import { useChatSession } from '@/hooks/useChatSession';
 import { ModelSwitcher } from './ModelSwitcher';
 import { ModeSwitcher } from './ModeSwitcher';
 import { ToolConfigSwitcher } from './ToolConfigSwitcher';
+import { useAIStore } from '@/store/useAIStore';
+import { useContextMenu } from '@/components/ui/ContextMenu';
+import { buildChatTranscript } from '@/lib/chatTranscript';
 
 /**
  * 格式化文件大小为易读字符串
@@ -53,11 +56,16 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
   className,
   placeholder
 }, ref) => {
-  const { showConfirm, showAlert } = useDialog();
+  const { showConfirm, showAlert, showPrompt } = useDialog();
+  const composerDraft = useAIStore(state => state.composerDraft);
+  const setComposerDraft = useAIStore(state => state.setComposerDraft);
+  const { openContextMenu, contextMenu } = useContextMenu();
   
   // --- 状态管理 ---
   /** 用户当前输入的文本内容 */
   const [input, setInput] = useState('');
+  const [composerHiddenContext, setComposerHiddenContext] = useState('');
+  const [composerSourceLabel, setComposerSourceLabel] = useState('');
   /** 已选择待上传的文件列表，包含处理后的文本内容和图片；imageAttachmentIds 与 images 按顺序一一对应（已同步存入 db.attachments，供 AI 用 insert_image_into_note 引用） */
   const [selectedFiles, setSelectedFiles] = useState<{ name: string, size: number, content: string, images?: string[], imageAttachmentIds?: string[] }[]>([]);
   /** 消息列表滚动容器引用，用于实现自动滚动 */
@@ -66,6 +74,9 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
   const chatScrollRef = useRef<HTMLDivElement>(null);
   /** 文件选择输入框引用 */
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  /** StrictMode 会重复执行 effect；按草稿 ID 保证每个选区只消费一次。 */
+  const consumedComposerDraftIdRef = useRef<string | null>(null);
   /** 标记用户是否手动滚动离开底部 */
   const userScrolledUp = useRef(false);
   /** 是否显示历史会话面板 */
@@ -100,8 +111,27 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
     reset: () => {
       clearSession();
       setInput('');
+      setComposerHiddenContext('');
+      setComposerSourceLabel('');
     }
   }));
+
+  useEffect(() => {
+    if (!composerDraft || consumedComposerDraftIdRef.current === composerDraft.id) return;
+    consumedComposerDraftIdRef.current = composerDraft.id;
+    setInput(current => current.trim() ? `${current.trimEnd()}\n\n${composerDraft.text}` : composerDraft.text);
+    setComposerHiddenContext(current => [current, composerDraft.hiddenContext].filter(Boolean).join('\n\n---\n\n'));
+    setComposerSourceLabel(current => [current, composerDraft.sourceLabel].filter(Boolean).join('；'));
+    setComposerDraft(null);
+    window.setTimeout(() => {
+      const textarea = inputRef.current;
+      if (!textarea) return;
+      textarea.focus();
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+      textarea.style.height = 'auto';
+      textarea.style.height = `${Math.min(textarea.scrollHeight, 150)}px`;
+    }, 120);
+  }, [composerDraft, setComposerDraft]);
 
   /**
    * 判断用户是否在聊天区域底部（阈值 100px 内视为在底部）
@@ -279,6 +309,8 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
     clearSession();
     setShowHistory(false);
     if (onSessionChange) onSessionChange(null);
+    setComposerHiddenContext('');
+    setComposerSourceLabel('');
   };
 
   /**
@@ -296,9 +328,7 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
    * @param {React.MouseEvent} e - 事件对象，阻止冒泡
    * @param {string} id - 会话 ID
    */
-  const deleteSession = async (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
-
+  const deleteSessionById = async (id: string) => {
     const confirmed = await showConfirm('确定要删除此对话吗？', { title: '删除对话' });
     if (!confirmed) return;
 
@@ -310,6 +340,35 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
     }
   };
 
+  const deleteSession = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    await deleteSessionById(id);
+  };
+
+  const renameSession = async (session: ChatSession) => {
+    const title = await showPrompt('输入新的会话名称：', session.title || '', { title: '重命名会话' });
+    if (!title?.trim()) return;
+    await db.chatSessions.update(session.id, { title: title.trim(), updatedAt: Date.now() });
+  };
+
+  const copySessionTranscript = async (session: ChatSession) => {
+    try {
+      await navigator.clipboard.writeText(await buildChatTranscript(session.id));
+      showAlert('会话内容已复制到剪贴板。', { title: '复制成功' });
+    } catch {
+      showAlert('无法访问剪贴板，请检查浏览器权限。', { title: '复制失败' });
+    }
+  };
+
+  const handleSessionContextMenu = (event: React.MouseEvent, session: ChatSession) => {
+    openContextMenu(event, [
+      { key: 'open', label: '打开会话', icon: MessageSquare, onSelect: () => switchSession(session.id) },
+      { key: 'rename', label: '重命名', icon: Pencil, onSelect: () => renameSession(session) },
+      { key: 'copy', label: '复制对话内容', icon: Copy, onSelect: () => copySessionTranscript(session) },
+      { key: 'delete', label: '删除会话', icon: Trash2, danger: true, separatorBefore: true, onSelect: () => deleteSessionById(session.id) },
+    ], `会话：${session.title || '未命名会话'}`);
+  };
+
   /**
    * 发送消息处理函数
    * 负责收集输入文本、附件，调用 sendMessage 发送至 AI，并处理会话 ID 的自动更新
@@ -319,14 +378,17 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
 
     const content = input;
     const files = selectedFiles;
+    const hiddenContext = composerHiddenContext;
     
     setInput('');
     setSelectedFiles([]);
+    setComposerHiddenContext('');
+    setComposerSourceLabel('');
 
     // 发送新消息时重置滚动状态，确保能看到自己的消息
     userScrolledUp.current = false;
 
-    const newSessionId = await sendMessage(content, files);
+    const newSessionId = await sendMessage(content, files, hiddenContext);
     if (newSessionId && newSessionId !== currentSessionId && onSessionChange) {
       onSessionChange(newSessionId);
     }
@@ -372,6 +434,7 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
               <div
                 key={s.id}
                 onClick={() => switchSession(s.id)}
+                onContextMenu={(event) => handleSessionContextMenu(event, s)}
                 className={`w-full text-left p-3.5 rounded-xl border dark:border-zinc-800 flex items-center gap-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/80 cursor-pointer group transition-all duration-200 ${currentSessionId === s.id ? 'border-primary/50 bg-primary/5 shadow-sm' : 'bg-white dark:bg-zinc-900'
                   }`}
               >
@@ -571,8 +634,27 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
         <div className="flex justify-end items-center gap-2 mb-2 pr-1">
           <ModelSwitcher />
         </div>
+        {composerSourceLabel && (
+          <div className="mb-2 flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-zinc-600 dark:text-zinc-300">
+            <Sparkles size={14} className="shrink-0 text-primary" />
+            <span className="min-w-0 flex-1 truncate">已引用：{composerSourceLabel}</span>
+            <button
+              type="button"
+              onClick={() => {
+                setComposerHiddenContext('');
+                setComposerSourceLabel('');
+              }}
+              className="rounded-full p-1 text-zinc-400 hover:bg-zinc-200 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-100"
+              title="移除引用位置"
+              aria-label="移除引用位置"
+            >
+              <X size={13} />
+            </button>
+          </div>
+        )}
         <div className="bg-white/70 dark:bg-zinc-900/80 backdrop-blur-xl p-2 rounded-[1.5rem] shadow-lg border border-zinc-200/50 dark:border-zinc-800/50 ring-1 ring-black/5 dark:ring-white/5 transition-all focus-within:ring-primary/20 focus-within:border-primary/30">
           <textarea
+            ref={inputRef}
             style={{ fontSize: 'var(--app-font-size, 14px)' }}
             className="w-full bg-transparent px-2 pt-2.5 pb-1 text-zinc-900 dark:text-zinc-100 focus:outline-none placeholder:text-zinc-400 disabled:opacity-50 disabled:cursor-not-allowed resize-none max-h-[150px] min-h-[48px]"
             value={input}
@@ -635,6 +717,7 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
           </div>
         </div>
       </div>
+      {contextMenu}
     </div>
   );
 });

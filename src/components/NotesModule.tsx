@@ -6,7 +6,7 @@ import {
   ImageIcon, Undo, Redo, ArrowLeft,
   Bold, Italic, Strikethrough, List, ListOrdered, Heading1, Heading2, Heading3,
   Quote, Code, Link as LinkIcon, BookOpen,
-  PanelLeftClose, PanelLeftOpen, Unlink
+  PanelLeftClose, PanelLeftOpen, Unlink, Copy, Download, Sparkles, FileText
 } from 'lucide-react';
 import { useSorting, sortItems } from '@/hooks/useSorting';
 import { useManualReorder } from '@/hooks/useManualReorder';
@@ -25,6 +25,9 @@ import {
   MINDMAP_NOTE_RELATION,
   unlinkNoteFromMindMaps,
 } from '@/services/studyLinks';
+import { DataManager } from '@/services/dataManager';
+import { type ContextMenuTriggerEvent, shouldPreserveNativeContextMenu, useContextMenu } from '@/components/ui/ContextMenu';
+import { useAskAIFromSelection } from '@/hooks/useAskAIFromSelection';
 
 interface NotesModuleProps {
   subjectId: string;
@@ -207,6 +210,8 @@ export function NotesModule({
 
   const [editTitle, setEditTitle] = useState('');
   const { showAlert, showConfirm } = useDialog();
+  const { openContextMenu, contextMenu } = useContextMenu();
+  const askAIFromSelection = useAskAIFromSelection();
   const mindMapLinks = useLiveQuery(async () => {
     if (!selectedNote?.id) return [];
     const relations = await db.relations.where('targetId').equals(selectedNote.id).toArray();
@@ -408,6 +413,73 @@ export function NotesModule({
     db.entities.update(note.id, { lastAccessed: Date.now() });
   };
 
+  const editNoteFromList = (note: Entity) => {
+    handleSelectNote(note);
+    setIsEditing(true);
+  };
+
+  const copyNoteContent = async (note: Entity) => {
+    try {
+      await navigator.clipboard.writeText(note.content || '');
+      showAlert('笔记内容已复制到剪贴板。', { title: '复制成功' });
+    } catch {
+      showAlert('无法访问剪贴板，请检查浏览器权限。', { title: '复制失败' });
+    }
+  };
+
+  const exportNote = async (note: Entity) => {
+    try {
+      await DataManager.downloadBackup({ entityIds: [note.id], includeChatHistory: false });
+    } catch (error) {
+      showAlert(error instanceof Error ? error.message : '导出笔记失败', { title: '导出失败' });
+    }
+  };
+
+  const handleNoteContextMenu = (event: React.MouseEvent, note: Entity) => {
+    openContextMenu(event, [
+      { key: 'open', label: '打开笔记', icon: FileText, onSelect: () => handleSelectNote(note) },
+      { key: 'edit', label: '编辑笔记', icon: Edit, onSelect: () => editNoteFromList(note) },
+      { key: 'copy', label: '复制笔记内容', icon: Copy, separatorBefore: true, onSelect: () => copyNoteContent(note) },
+      { key: 'export', label: '导出笔记', icon: Download, onSelect: () => exportNote(note) },
+      { key: 'delete', label: '删除笔记', icon: Trash, danger: true, separatorBefore: true, onSelect: () => deleteNote(note.id) },
+    ], `笔记：${note.title}`);
+  };
+
+  const handleNoteSelectionContextMenu = (event: ContextMenuTriggerEvent, details: {
+    text: string;
+    section?: string;
+    characterIndex: number;
+    lineNumber?: number;
+  }) => {
+    if (!selectedNote) return;
+    const sourceLabel = `笔记《${selectedNote.title}》${details.section ? ` · ${details.section}` : ''}`;
+    const locator = details.characterIndex >= 0
+      ? `原始内容字符 ${details.characterIndex + 1}${details.lineNumber ? `，约第 ${details.lineNumber} 行` : ''}`
+      : `渲染内容选区${details.section ? `，所在章节“${details.section}”` : ''}`;
+    openContextMenu(event, [
+      {
+        key: 'ask-ai',
+        label: '提问 AI',
+        icon: Sparkles,
+        onSelect: () => askAIFromSelection({
+          selectedText: details.text,
+          sourceLabel,
+          hiddenContext: [
+            '[界面精确选区上下文]',
+            '来源类型：知识笔记',
+            `subjectId：${subjectId}`,
+            `entityId：${selectedNote.id}`,
+            `笔记标题：${selectedNote.title}`,
+            details.section ? `所在章节：${details.section}` : '',
+            `选区定位：${locator}`,
+            '用户消息中的引用块就是精确选区。请直接基于以上实体和位置理解，不要再调用搜索工具重复查找该选区；仅在回答确实需要补充上下文时读取该 entityId。',
+          ].filter(Boolean).join('\n'),
+        }),
+      },
+      { key: 'copy', label: '复制所选文本', icon: Copy, onSelect: () => navigator.clipboard.writeText(details.text) },
+    ], sourceLabel);
+  };
+
   const handleBackToList = () => {
     setSelectedNote(null);
     setIsEditing(false);
@@ -466,6 +538,7 @@ export function NotesModule({
                         selectedNote={selectedNote}
                         onSelectNote={handleSelectNote}
                         createNote={createNote}
+                        onContextMenu={handleNoteContextMenu}
                       />
                     </motion.div>
                   ) : (
@@ -539,6 +612,7 @@ export function NotesModule({
               onScrollComplete={handleScrollComplete}
               sidebarCollapsed={sidebarCollapsed}
               onExpandSidebar={() => setSidebarCollapsed(false)}
+              onSelectionContextMenu={handleNoteSelectionContextMenu}
             />
           </motion.div>
         )}
@@ -564,6 +638,7 @@ export function NotesModule({
               selectedNote={selectedNote}
               onSelectNote={handleSelectNote}
               createNote={createNote}
+              onContextMenu={handleNoteContextMenu}
             />
           </motion.div>
         )}
@@ -650,6 +725,7 @@ export function NotesModule({
                 fileInputRef={fileInputRef}
                 scrollTarget={scrollTarget}
                 onScrollComplete={handleScrollComplete}
+                onSelectionContextMenu={handleNoteSelectionContextMenu}
               />
             </div>
           </motion.div>
@@ -662,6 +738,7 @@ export function NotesModule({
     <div className="flex h-full gap-4 relative">
       {desktopLayout}
       {mobileLayout}
+      {contextMenu}
     </div>
   );
 }
@@ -719,6 +796,7 @@ function NoteDetail({
   mindMapLinkCount, unlinkFromMindMaps,
   insertMarkdown, handleImageUpload, textAreaRef, fileInputRef,
   scrollTarget, onScrollComplete, sidebarCollapsed, onExpandSidebar,
+  onSelectionContextMenu,
 }: any) {
   const readingRef = useRef<HTMLDivElement>(null);
 
@@ -735,6 +813,31 @@ function NoteDetail({
       return () => cancelAnimationFrame(raf);
     }
   }, [scrollTarget, isEditing, onScrollComplete]);
+
+  const handleReadingContextMenu = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (shouldPreserveNativeContextMenu(event.target)) return;
+    const container = readingRef.current;
+    const selection = window.getSelection();
+    if (!container || !selection || selection.isCollapsed || !selection.rangeCount) return;
+    const range = selection.getRangeAt(0);
+    const ancestor = range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
+      ? range.commonAncestorContainer as Element
+      : range.commonAncestorContainer.parentElement;
+    if (!ancestor || !container.contains(ancestor)) return;
+    const text = selection.toString().trim();
+    if (!text) return;
+
+    const targetElement = event.target instanceof Element ? event.target : null;
+    const headings = Array.from(container.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6'));
+    const section = headings
+      .filter(heading => targetElement && (heading === targetElement || Boolean(heading.compareDocumentPosition(targetElement) & Node.DOCUMENT_POSITION_FOLLOWING)))
+      .at(-1)?.textContent?.trim();
+    const characterIndex = String(selectedNote.content || '').indexOf(text);
+    const lineNumber = characterIndex >= 0
+      ? String(selectedNote.content || '').slice(0, characterIndex).split(/\r?\n/).length
+      : undefined;
+    onSelectionContextMenu?.(event, { text, section, characterIndex, lineNumber });
+  };
 
   if (!selectedNote) {
     return (
@@ -828,10 +931,33 @@ function NoteDetail({
           </div>
         ) : (
           isHtmlContent(selectedNote.content) ? (
-            <HtmlPreview content={selectedNote.content} mode="view" autoHeight={false} className="flex-1 min-h-0" />
+            <HtmlPreview
+              content={selectedNote.content}
+              mode="view"
+              autoHeight={false}
+              className="flex-1 min-h-0"
+              onSelectionContextMenu={(selection) => {
+                const characterIndex = String(selectedNote.content || '').indexOf(selection.text);
+                const lineNumber = characterIndex >= 0
+                  ? String(selectedNote.content || '').slice(0, characterIndex).split(/\r?\n/).length
+                  : undefined;
+                onSelectionContextMenu?.({
+                  clientX: selection.clientX,
+                  clientY: selection.clientY,
+                  preventDefault: () => undefined,
+                  stopPropagation: () => undefined,
+                }, {
+                  text: selection.text,
+                  section: selection.section,
+                  characterIndex,
+                  lineNumber,
+                });
+              }}
+            />
           ) : (
             <div
               ref={readingRef}
+              onContextMenu={handleReadingContextMenu}
               className="prose dark:prose-invert max-w-none text-zinc-800 dark:text-zinc-200 overflow-auto flex-1 min-h-0 min-w-0"
               style={{ fontSize: 'var(--app-font-size, 14px)', overscrollBehavior: 'contain', wordBreak: 'break-word' }}
             >
@@ -845,7 +971,7 @@ function NoteDetail({
 }
 
 /** ─── 笔记列表组件 ─── */
-function NotesList({ notes, selectedNote, onSelectNote, createNote }: { notes: any[] | undefined; selectedNote: any; onSelectNote: (note: any) => void; createNote: () => void }) {
+function NotesList({ notes, selectedNote, onSelectNote, createNote, onContextMenu }: { notes: any[] | undefined; selectedNote: any; onSelectNote: (note: any) => void; createNote: () => void; onContextMenu: (event: React.MouseEvent, note: Entity) => void }) {
   const { sortMode, sortDirection, setSortMode, toggleDirection } = useSorting();
   const { moveItem } = useManualReorder(notes, db.entities);
 
@@ -870,6 +996,7 @@ function NotesList({ notes, selectedNote, onSelectNote, createNote }: { notes: a
           <div
             key={note.id}
             onClick={() => onSelectNote(note)}
+            onContextMenu={(event) => onContextMenu(event, note)}
             className={cn(
               "p-3 rounded cursor-pointer transition-all group relative animate-in slide-in-from-left duration-300",
               selectedNote?.id === note.id ? 'bg-zinc-200 dark:bg-zinc-800' : 'hover:bg-zinc-100 dark:hover:bg-zinc-900'

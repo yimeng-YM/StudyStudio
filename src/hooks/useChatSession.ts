@@ -246,7 +246,7 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act' | 
    * @param files - 用户附带的文件或图片资源
    * @returns 活跃的会话 ID
    */
-  const sendMessage = async (content: string, files: any[] = []) => {
+  const sendMessage = async (content: string, files: any[] = [], hiddenContext = '') => {
     if (!settings?.apiKey || !settings?.baseUrl) {
       showAlert("请在设置中配置 AI 服务的 API Key 和请求地址。", { title: '缺少配置' });
       return;
@@ -271,7 +271,15 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act' | 
 
     if (mode === 'plan' && awaitingConfirmation.current) {
       awaitingConfirmation.current = false;
-      const userMessage: Message = { role: 'user', content };
+      const userMessage: Message = {
+        role: 'user',
+        content: hiddenContext.trim()
+          ? [
+              { type: 'text', text: content },
+              { type: 'text', text: `${AI_ONLY_HINT_PREFIX}${hiddenContext.trim()}` },
+            ]
+          : content,
+      };
       const newMessages = [...messages, userMessage];
       setMessages(newMessages);
       await saveMessage(userMessage, activeSessionId);
@@ -292,7 +300,7 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act' | 
 
     let userMessage: Message = { role: 'user', content };
 
-    if (files && files.length > 0) {
+    if ((files && files.length > 0) || hiddenContext.trim()) {
       // 构建多部分消息：用户文字与每个文件各自独立成块。
       // 这样可避免两个问题：
       //  ① 多个文件被合并进单个预览卡片（MessageRenderer 仅识别首个 FILE_METADATA 标记）；
@@ -303,6 +311,9 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act' | 
       // 用户输入的文字始终作为第一个独立 text part，与文件内容分离
       if (content.trim()) {
         parts.push({ type: 'text', text: content });
+      }
+      if (hiddenContext.trim()) {
+        parts.push({ type: 'text', text: `${AI_ONLY_HINT_PREFIX}${hiddenContext.trim()}` });
       }
       for (const f of files) {
         const fileText = (f?.content || '').trim();

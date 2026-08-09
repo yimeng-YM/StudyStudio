@@ -6,7 +6,7 @@ import {
   CheckCircle2, FileText, ListChecks, Type, AlignLeft, X, Check, XCircle, RefreshCw,
   Image as ImageIcon, Bold, Italic, Strikethrough, List, ListOrdered, Heading1, Heading2, Heading3,
   Quote, Code, Link as LinkIcon, Upload, ArrowLeft,
-  PanelLeftClose, PanelLeftOpen
+  PanelLeftClose, PanelLeftOpen, Copy, Sparkles
 } from 'lucide-react';
 import { useSorting, sortItems } from '@/hooks/useSorting';
 import { useManualReorder } from '@/hooks/useManualReorder';
@@ -19,6 +19,8 @@ import { MessageRenderer } from '@/components/MessageRenderer';
 import { useUIContext } from '@/hooks/useUIContext';
 import { useResizable } from '@/hooks/useResizable';
 import { ResizeHandle } from '@/components/ui/ResizeHandle';
+import { shouldPreserveNativeContextMenu, useContextMenu } from '@/components/ui/ContextMenu';
+import { useAskAIFromSelection } from '@/hooks/useAskAIFromSelection';
 
 interface QuizModuleProps {
   subjectId: string;
@@ -295,7 +297,7 @@ function QuestionViewer({ question, index, quizId, existingRecord, onEdit, onDel
             {isSubmitted && isObj && (isCorrect ? <span className="text-green-600 text-xs font-bold flex items-center gap-1 shrink-0"><CheckCircle2 size={14}/> 回答正确</span> : <span className="text-red-600 text-xs font-bold flex items-center gap-1 shrink-0"><XCircle size={14}/> 回答错误</span>)}
             {attemptCount > 0 && <span className="text-zinc-400 text-xs shrink-0">作答 {attemptCount} 次</span>}
           </div>
-          <div className="text-lg text-zinc-800 dark:text-zinc-200">{question.text ? <MessageRenderer content={question.text} /> : <span className="text-zinc-400 italic">（未填写题目）</span>}</div>
+          <div data-ai-region="题干" className="text-lg text-zinc-800 dark:text-zinc-200">{question.text ? <MessageRenderer content={question.text} /> : <span className="text-zinc-400 italic">（未填写题目）</span>}</div>
           <div className="ml-1">
             {(question.type === 'single_choice' || question.type === 'multiple_choice') && (
               <div className="space-y-2">
@@ -312,7 +314,7 @@ function QuestionViewer({ question, index, quizId, existingRecord, onEdit, onDel
                     <div key={i} onClick={() => { if (isSubmitted) return; const si = String(i); if (question.type === 'single_choice') setUserAnswer([si]); else { const c = Array.isArray(userAnswer) ? userAnswer.map(String) : normalizeAnswerToIndexArray(userAnswer); setUserAnswer(c.includes(si) ? c.filter((x: string) => x !== si) : [...c, si]); } }}
                       className={cn("flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all", cls)}>
                       <div className={cn("w-6 h-6 flex items-center justify-center border rounded-full text-xs font-medium shrink-0 transition-colors mt-0.5", isSel ? "bg-blue-600 text-white border-blue-600" : "bg-white dark:bg-zinc-800 text-zinc-500")}>{String.fromCharCode(65 + i)}</div>
-                      <div className="flex-1 min-w-0 text-sm text-zinc-800 dark:text-zinc-200"><MessageRenderer content={opt} /></div>
+                      <div data-ai-region={`选项 ${String.fromCharCode(65 + i)}`} className="flex-1 min-w-0 text-sm text-zinc-800 dark:text-zinc-200"><MessageRenderer content={opt} /></div>
                     </div>
                   );
                 })}
@@ -337,8 +339,8 @@ function QuestionViewer({ question, index, quizId, existingRecord, onEdit, onDel
           </div>
           {isSubmitted && (
             <div className="mt-4 p-4 bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-100 dark:border-yellow-900/30 rounded-lg space-y-3 animate-in fade-in slide-in-from-top-2">
-              <div><div className="text-xs font-bold text-yellow-800 dark:text-yellow-500 uppercase tracking-wider mb-1">参考答案</div><div className="text-sm text-zinc-800 dark:text-zinc-200 font-medium">{question.type === 'essay' || question.type === 'short_answer' || question.type === 'fill_in_blank' ? <MessageRenderer content={String(question.answer)} /> : formatAnswer(question.answer, question)}</div></div>
-              {question.explanation && <div><div className="text-xs font-bold text-yellow-800 dark:text-yellow-500 uppercase tracking-wider mb-1">解析</div><div className="text-sm text-zinc-700 dark:text-zinc-300"><MessageRenderer content={question.explanation} /></div></div>}
+              <div data-ai-region="参考答案"><div className="text-xs font-bold text-yellow-800 dark:text-yellow-500 uppercase tracking-wider mb-1">参考答案</div><div className="text-sm text-zinc-800 dark:text-zinc-200 font-medium">{question.type === 'essay' || question.type === 'short_answer' || question.type === 'fill_in_blank' ? <MessageRenderer content={String(question.answer)} /> : formatAnswer(question.answer, question)}</div></div>
+              {question.explanation && <div data-ai-region="解析"><div className="text-xs font-bold text-yellow-800 dark:text-yellow-500 uppercase tracking-wider mb-1">解析</div><div className="text-sm text-zinc-700 dark:text-zinc-300"><MessageRenderer content={question.explanation} /></div></div>}
             </div>
           )}
         </div>
@@ -531,7 +533,7 @@ function scrollToQuestionInContainer(index: number, container: HTMLElement) {
   setTimeout(() => observer.disconnect(), 4000);
 }
 
-function QuizEditor({ quiz, isEditingTitle, setIsEditingTitle, editTitle, setEditTitle, onUpdateTitle, onDeleteQuiz, scrollToIndex, onScrollComplete, sidebarWidth, sidebarCollapsed, onExpandSidebar }: any) {
+function QuizEditor({ quiz, isEditingTitle, setIsEditingTitle, editTitle, setEditTitle, onUpdateTitle, onDeleteQuiz, scrollToIndex, onScrollComplete, sidebarWidth, sidebarCollapsed, onExpandSidebar, onQuestionSelectionContextMenu }: any) {
   const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
   const questions = (quiz.content as QuizContent)?.questions || [];
   const { showConfirm } = useDialog();
@@ -562,6 +564,23 @@ function QuizEditor({ quiz, isEditingTitle, setIsEditingTitle, editTitle, setEdi
   const [, setRefreshKey] = useState(0);
   const handleRecordSaved = () => setRefreshKey(k => k + 1);
 
+  const handleQuestionContextMenu = (event: React.MouseEvent<HTMLDivElement>, question: Question, index: number) => {
+    if (shouldPreserveNativeContextMenu(event.target)) return;
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || !selection.rangeCount) return;
+    const range = selection.getRangeAt(0);
+    const ancestor = range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
+      ? range.commonAncestorContainer as Element
+      : range.commonAncestorContainer.parentElement;
+    if (!ancestor || !event.currentTarget.contains(ancestor)) return;
+    const text = selection.toString().trim();
+    if (!text) return;
+    const region = event.target instanceof Element
+      ? event.target.closest<HTMLElement>('[data-ai-region]')?.dataset.aiRegion || '题目内容'
+      : '题目内容';
+    onQuestionSelectionContextMenu?.(event, { question, index, region, text });
+  };
+
   return (
     <div className="flex flex-col h-full">
       <div className="hidden md:flex items-center justify-between gap-4 pb-4 border-b border-zinc-200 dark:border-zinc-800 shrink-0">
@@ -588,7 +607,7 @@ function QuizEditor({ quiz, isEditingTitle, setIsEditingTitle, editTitle, setEdi
       <div ref={questionListRef} className={cn("flex-1 overflow-y-auto py-2 md:py-4", (sidebarCollapsed || sidebarWidth < 250) ? "grid grid-cols-2 gap-4 items-start" : "space-y-6")} style={{ overscrollBehavior: 'contain' }}>
         {questions.length === 0 ? <div className="text-center py-20 text-zinc-400"><div className="mb-2">开始添加题目</div><div className="text-sm">点击下方按钮添加不同类型的题目</div></div>
           : questions.map((q, index) => (
-            <div key={q.id} data-question-index={index} className="relative group/item bg-white/70 dark:bg-zinc-900/50 rounded-xl border border-zinc-200 dark:border-zinc-800/50 p-4 transition-all hover:border-zinc-300 dark:hover:border-zinc-700">
+            <div key={q.id} data-question-index={index} onContextMenu={(event) => handleQuestionContextMenu(event, q, index)} className="relative group/item bg-white/70 dark:bg-zinc-900/50 rounded-xl border border-zinc-200 dark:border-zinc-800/50 p-4 transition-all hover:border-zinc-300 dark:hover:border-zinc-700">
               {editingQuestionId === q.id ? <QuestionEditor question={q} onSave={(updates) => updateQuestion(q.id, updates)} onCancel={() => setEditingQuestionId(null)} />
                 : <QuestionViewer question={q} index={index} quizId={quiz.id} existingRecord={recordMap.get(q.id) || null} onEdit={() => setEditingQuestionId(q.id)} onDelete={() => deleteQuestion(q.id)} onRecordSaved={handleRecordSaved} />}
             </div>
@@ -629,7 +648,9 @@ export function QuizModule({ subjectId }: QuizModuleProps) {
   const [editTitle, setEditTitle] = useState('');
   // 题目导航侧栏是否完全收起（仅桌面端、查看题库时生效）
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const { showConfirm } = useDialog();
+  const { showConfirm, showAlert } = useDialog();
+  const { openContextMenu, contextMenu } = useContextMenu();
+  const askAIFromSelection = useAskAIFromSelection();
   const { width: sidebarWidth, startResizing, isResizing } = useResizable({
     initialWidth: 320,
     minWidth: 180,
@@ -660,9 +681,16 @@ export function QuizModule({ subjectId }: QuizModuleProps) {
     if (c) { await db.entities.delete(id); if (selectedQuizId === id) { setSelectedQuizId(null); setIsEditingTitle(false); setViewMode('list'); setSidebarCollapsed(false); } }
   };
 
+  const exportQuiz = async (quiz: Entity) => {
+    try {
+      await DataManager.downloadBackup({ entityIds: [quiz.id], includeChatHistory: false });
+    } catch (error) {
+      showAlert(error instanceof Error ? error.message : '导出题库失败', { title: '导出失败' });
+    }
+  };
+
   const handleMobileExport = async () => {
-    if (!selectedQuiz) return;
-    try { await DataManager.downloadBackup({ entityIds: [selectedQuiz.id] }); } catch { alert('导出失败'); }
+    if (selectedQuiz) await exportQuiz(selectedQuiz);
   };
 
   const updateQuizTitle = async () => {
@@ -676,6 +704,78 @@ export function QuizModule({ subjectId }: QuizModuleProps) {
   const handleSelectQuiz = async (quiz: Entity) => {
     setSelectedQuizId(quiz.id); setEditTitle(quiz.title); setIsEditingTitle(false); setViewMode('nav'); setScrollToIndex(null); setSidebarCollapsed(false);
     await db.entities.update(quiz.id, { lastAccessed: Date.now() });
+  };
+
+  const renameQuiz = async (quiz: Entity) => {
+    await handleSelectQuiz(quiz);
+    setEditTitle(quiz.title);
+    setIsEditingTitle(true);
+  };
+
+  const duplicateQuiz = async (quiz: Entity) => {
+    const now = Date.now();
+    const sourceQuestions = ((quiz.content as QuizContent)?.questions || []);
+    const questionsCopy = sourceQuestions.map(question => ({
+      ...JSON.parse(JSON.stringify(question)),
+      id: generateUUID(),
+    }));
+    const copy: Entity = {
+      ...quiz,
+      id: generateUUID(),
+      title: `${quiz.title} 副本`,
+      content: { ...(quiz.content as QuizContent), questions: questionsCopy },
+      chatSessionId: undefined,
+      createdAt: now,
+      updatedAt: now,
+      lastAccessed: now,
+      order: now,
+    };
+    await db.entities.add(copy);
+    await handleSelectQuiz(copy);
+  };
+
+  const handleQuizContextMenu = (event: React.MouseEvent, quiz: Entity) => {
+    openContextMenu(event, [
+      { key: 'open', label: '打开题库', icon: FileText, onSelect: () => handleSelectQuiz(quiz) },
+      { key: 'rename', label: '重命名题库', icon: Edit, onSelect: () => renameQuiz(quiz) },
+      { key: 'export', label: '导出题库', icon: Upload, separatorBefore: true, onSelect: () => exportQuiz(quiz) },
+      { key: 'duplicate', label: '复制题库', icon: Copy, onSelect: () => duplicateQuiz(quiz) },
+      { key: 'delete', label: '删除题库', icon: Trash, danger: true, separatorBefore: true, onSelect: () => deleteQuiz(quiz.id) },
+    ], `题库：${quiz.title}`);
+  };
+
+  const handleQuestionSelectionContextMenu = (event: React.MouseEvent, details: {
+    question: Question;
+    index: number;
+    region: string;
+    text: string;
+  }) => {
+    if (!selectedQuiz) return;
+    const sourceLabel = `题库《${selectedQuiz.title}》 · 第 ${details.index + 1} 题 · ${details.region}`;
+    openContextMenu(event, [
+      {
+        key: 'ask-ai',
+        label: '提问 AI',
+        icon: Sparkles,
+        onSelect: () => askAIFromSelection({
+          selectedText: details.text,
+          sourceLabel,
+          hiddenContext: [
+            '[界面精确选区上下文]',
+            '来源类型：题库',
+            `subjectId：${subjectId}`,
+            `entityId：${selectedQuiz.id}`,
+            `题库标题：${selectedQuiz.title}`,
+            `questionId：${details.question.id}`,
+            `题号：${details.index + 1}`,
+            `题型：${getQuestionTypeLabel(details.question.type)}`,
+            `选区区域：${details.region}`,
+            '用户消息中的引用块就是精确选区。请直接基于以上实体、题号和区域理解，不要再调用搜索工具重复查找该选区；仅在回答确实需要补充上下文时读取该 entityId。',
+          ].join('\n'),
+        }),
+      },
+      { key: 'copy', label: '复制所选文本', icon: Copy, onSelect: () => navigator.clipboard.writeText(details.text) },
+    ], sourceLabel);
   };
   const handleBackToList = () => { setSelectedQuizId(null); setIsEditingTitle(false); setViewMode('list'); setScrollToIndex(null); setSidebarCollapsed(false); };
   const handleDetailBack = () => { setViewMode('nav'); setScrollToIndex(null); };
@@ -703,7 +803,7 @@ export function QuizModule({ subjectId }: QuizModuleProps) {
       </div>
       <div className="space-y-2 overflow-y-auto flex-1">
         {quizzes?.map((quiz, idx) => (
-          <div key={quiz.id} onClick={() => handleSelectQuiz(quiz)} className={cn("p-3 rounded cursor-pointer transition-all group relative animate-in slide-in-from-left duration-300", selectedQuizId === quiz.id ? 'bg-zinc-200 dark:bg-zinc-800' : 'hover:bg-zinc-100 dark:hover:bg-zinc-900')}
+          <div key={quiz.id} onClick={() => handleSelectQuiz(quiz)} onContextMenu={(event) => handleQuizContextMenu(event, quiz)} className={cn("p-3 rounded cursor-pointer transition-all group relative animate-in slide-in-from-left duration-300", selectedQuizId === quiz.id ? 'bg-zinc-200 dark:bg-zinc-800' : 'hover:bg-zinc-100 dark:hover:bg-zinc-900')}
             style={{ animationDelay: `${idx * 30}ms`, contentVisibility: 'auto', containIntrinsicSize: 'auto 60px' }}>
             <div className="flex justify-between items-start gap-2">
               <div className="min-w-0 flex-1"><div className="font-medium truncate text-slate-800 dark:text-slate-200">{quiz.title}</div><div className="text-xs text-slate-500">{new Date(quiz.updatedAt).toLocaleDateString()} · {(quiz.content as QuizContent)?.questions?.length || 0} 题</div></div>
@@ -765,7 +865,7 @@ export function QuizModule({ subjectId }: QuizModuleProps) {
         ) : (
           <motion.div key={selectedQuiz.id} initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 12 }} transition={{ duration: 0.25 }} className="flex-1 min-w-0">
             <div className="h-full flex flex-col bg-white/70 dark:bg-zinc-900/50 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800 p-4 relative overflow-clip">
-              <QuizEditor quiz={selectedQuiz} isEditingTitle={isEditingTitle} setIsEditingTitle={setIsEditingTitle} editTitle={editTitle} setEditTitle={setEditTitle} onUpdateTitle={updateQuizTitle} onDeleteQuiz={() => deleteQuiz(selectedQuiz.id)} scrollToIndex={scrollToIndex} onScrollComplete={handleScrollComplete} sidebarWidth={sidebarWidth} sidebarCollapsed={sidebarCollapsed} onExpandSidebar={() => setSidebarCollapsed(false)} />
+              <QuizEditor quiz={selectedQuiz} isEditingTitle={isEditingTitle} setIsEditingTitle={setIsEditingTitle} editTitle={editTitle} setEditTitle={setEditTitle} onUpdateTitle={updateQuizTitle} onDeleteQuiz={() => deleteQuiz(selectedQuiz.id)} scrollToIndex={scrollToIndex} onScrollComplete={handleScrollComplete} sidebarWidth={sidebarWidth} sidebarCollapsed={sidebarCollapsed} onExpandSidebar={() => setSidebarCollapsed(false)} onQuestionSelectionContextMenu={handleQuestionSelectionContextMenu} />
             </div>
           </motion.div>
         )}
@@ -808,7 +908,7 @@ export function QuizModule({ subjectId }: QuizModuleProps) {
               <button onClick={() => deleteQuiz(selectedQuiz!.id)} className="p-1.5 text-zinc-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors shrink-0" title="删除题库"><Trash size={18} /></button>
             </div>
             <div className="flex-1 min-h-0 flex flex-col overflow-clip px-3 pt-3">
-              <QuizEditor quiz={selectedQuiz} isEditingTitle={isEditingTitle} setIsEditingTitle={setIsEditingTitle} editTitle={editTitle} setEditTitle={setEditTitle} onUpdateTitle={updateQuizTitle} onDeleteQuiz={() => deleteQuiz(selectedQuiz!.id)} scrollToIndex={scrollToIndex} onScrollComplete={handleScrollComplete} />
+              <QuizEditor quiz={selectedQuiz} isEditingTitle={isEditingTitle} setIsEditingTitle={setIsEditingTitle} editTitle={editTitle} setEditTitle={setEditTitle} onUpdateTitle={updateQuizTitle} onDeleteQuiz={() => deleteQuiz(selectedQuiz!.id)} scrollToIndex={scrollToIndex} onScrollComplete={handleScrollComplete} onQuestionSelectionContextMenu={handleQuestionSelectionContextMenu} />
             </div>
           </motion.div>
         )}
@@ -820,6 +920,7 @@ export function QuizModule({ subjectId }: QuizModuleProps) {
     <div className="flex h-full gap-4 relative">
       {desktopLayout}
       {mobileLayout}
+      {contextMenu}
     </div>
   );
 }

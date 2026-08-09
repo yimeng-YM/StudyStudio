@@ -1024,7 +1024,7 @@ export function ViewCodeToggle({ mode, onChange, className = '' }: { mode: 'view
  * HTML 预览组件：view 模式用 iframe 渲染可交互 HTML，code 模式用 SyntaxHighlighter 展示源码
  */
 /** 将用户 HTML 包装为安全的 iframe srcdoc：注入防溢出样式，防止错误文本撑开布局 */
-function wrapHtmlForIframe(html: string): string {
+function wrapHtmlForIframe(html: string, reportSelection: boolean): string {
   const overflowCSS = `<style>
 *,*::before,*::after{max-width:100%!important;overflow-wrap:break-word!important;word-break:break-word!important;box-sizing:border-box!important}
 pre,code{white-space:pre-wrap!important;overflow-wrap:break-word!important;word-break:break-all!important;max-width:100%!important;display:block!important}
@@ -1048,7 +1048,29 @@ body{margin:0;padding:8px;font-family:system-ui,sans-serif;font-size:14px;max-wi
     try { new ResizeObserver(report).observe(document.body); } catch (e) {}
   }
 })();</script>`;
-  const headInject = overflowCSS + heightReportScript;
+  const selectionReportScript = reportSelection ? `<script>(function () {
+  document.addEventListener('contextmenu', function (event) {
+    var target = event.target;
+    if (target && target.closest && target.closest('input,textarea,select,[contenteditable="true"],a[href],img,video,audio,iframe,pre,code')) return;
+    var selection = window.getSelection();
+    var text = selection ? String(selection).trim() : '';
+    if (!text) return;
+    var section = '';
+    try {
+      var headings = Array.prototype.slice.call(document.querySelectorAll('h1,h2,h3,h4,h5,h6'));
+      for (var i = 0; i < headings.length; i++) {
+        if (headings[i] === target || (headings[i].compareDocumentPosition(target) & Node.DOCUMENT_POSITION_FOLLOWING)) {
+          section = String(headings[i].textContent || '').trim();
+        }
+      }
+    } catch (e) {}
+    event.preventDefault();
+    try {
+      parent.postMessage({ __htmlPreviewSelection: { text: text, section: section, x: event.clientX, y: event.clientY } }, '*');
+    } catch (e) {}
+  });
+})();</script>` : '';
+  const headInject = overflowCSS + heightReportScript + selectionReportScript;
   const trimmed = html.trim();
   // 已有完整 HTML 结构：注入到 head 中
   if (/^\s*<(!DOCTYPE|html)/i.test(trimmed)) {
@@ -1064,12 +1086,12 @@ body{margin:0;padding:8px;font-family:system-ui,sans-serif;font-size:14px;max-wi
   return '<!DOCTYPE html><html><head><meta charset="UTF-8">' + headInject + '</head><body>' + trimmed + '</body></html>';
 }
 
-export function HtmlPreview({ content, mode, autoHeight = true, className = '' }: { content: string; mode: 'view' | 'code'; autoHeight?: boolean; className?: string }) {
+export function HtmlPreview({ content, mode, autoHeight = true, className = '', onSelectionContextMenu }: { content: string; mode: 'view' | 'code'; autoHeight?: boolean; className?: string; onSelectionContextMenu?: (details: { text: string; section?: string; clientX: number; clientY: number }) => void }) {
   const isDark = useIsDark();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [measuredHeight, setMeasuredHeight] = useState(300);
 
-  const srcdoc = useMemo(() => (mode === 'view' ? wrapHtmlForIframe(content) : ''), [mode, content]);
+  const srcdoc = useMemo(() => (mode === 'view' ? wrapHtmlForIframe(content, Boolean(onSelectionContextMenu)) : ''), [mode, content, onSelectionContextMenu]);
 
   // autoHeight 模式：监听 iframe 内通过 postMessage 上报的内容高度
   // iframe 仅开放 allow-scripts（不透明源），父页面无法读取 contentDocument，
@@ -1093,6 +1115,25 @@ export function HtmlPreview({ content, mode, autoHeight = true, className = '' }
       window.removeEventListener('message', onMessage);
     };
   }, [mode, srcdoc, autoHeight]);
+
+  useEffect(() => {
+    if (mode !== 'view' || !onSelectionContextMenu || !iframeRef.current) return;
+    const iframe = iframeRef.current;
+    const onMessage = (event: MessageEvent) => {
+      if (event.source !== iframe.contentWindow) return;
+      const selection = (event.data as { __htmlPreviewSelection?: { text?: unknown; section?: unknown; x?: unknown; y?: unknown } } | null)?.__htmlPreviewSelection;
+      if (!selection || typeof selection.text !== 'string' || typeof selection.x !== 'number' || typeof selection.y !== 'number') return;
+      const rect = iframe.getBoundingClientRect();
+      onSelectionContextMenu({
+        text: selection.text,
+        section: typeof selection.section === 'string' ? selection.section : undefined,
+        clientX: rect.left + selection.x,
+        clientY: rect.top + selection.y,
+      });
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [mode, onSelectionContextMenu, srcdoc]);
 
   if (mode === 'code') {
     return (

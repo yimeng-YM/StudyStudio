@@ -1,8 +1,10 @@
 import { db, ChatSession } from '@/db';
-import { MessageSquare, Trash2, Brain, Zap, Microscope } from 'lucide-react';
+import { MessageSquare, Trash2, Brain, Zap, Microscope, Pencil, Copy } from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useAIStore } from '@/store/useAIStore';
 import { useDialog } from '@/components/ui/DialogProvider';
+import { useContextMenu } from '@/components/ui/ContextMenu';
+import { buildChatTranscript } from '@/lib/chatTranscript';
 
 /**
  * AI 聊天历史记录页面组件
@@ -19,7 +21,8 @@ import { useDialog } from '@/components/ui/DialogProvider';
 export function AIChat() {
   const setGlobalSessionId = useAIStore(s => s.setGlobalSessionId);
   const setFloatingWindowOpen = useAIStore(s => s.setFloatingWindowOpen);
-  const { showAlert, showConfirm } = useDialog();
+  const { showAlert, showConfirm, showPrompt } = useDialog();
+  const { openContextMenu, contextMenu } = useContextMenu();
 
   const sessions = useLiveQuery(async () => {
     return await db.chatSessions.reverse().sortBy('updatedAt');
@@ -39,14 +42,42 @@ export function AIChat() {
    * @param {React.MouseEvent} e - 点击事件对象，用于阻止冒泡
    * @param {string} id - 要删除的会话 ID
    */
-  const deleteSession = async (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
+  const deleteSessionById = async (id: string) => {
     const confirmed = await showConfirm('确定要删除这段对话吗？', { title: '删除确认', confirmText: '删除', type: 'confirm' });
     if (confirmed) {
       await db.chatSessions.delete(id);
       await db.chatMessages.where('sessionId').equals(id).delete();
       showAlert('会话已删除', { title: '成功' });
     }
+  };
+
+  const deleteSession = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    await deleteSessionById(id);
+  };
+
+  const renameSession = async (session: ChatSession) => {
+    const title = await showPrompt('输入新的会话名称：', session.title || '', { title: '重命名会话' });
+    if (!title?.trim()) return;
+    await db.chatSessions.update(session.id, { title: title.trim(), updatedAt: Date.now() });
+  };
+
+  const copyTranscript = async (session: ChatSession) => {
+    try {
+      await navigator.clipboard.writeText(await buildChatTranscript(session.id));
+      showAlert('会话内容已复制到剪贴板。', { title: '复制成功' });
+    } catch {
+      showAlert('无法访问剪贴板，请检查浏览器权限。', { title: '复制失败' });
+    }
+  };
+
+  const handleSessionContextMenu = (event: React.MouseEvent, session: ChatSession) => {
+    openContextMenu(event, [
+      { key: 'open', label: '打开会话', icon: MessageSquare, onSelect: () => handleSessionClick(session) },
+      { key: 'rename', label: '重命名', icon: Pencil, onSelect: () => renameSession(session) },
+      { key: 'copy', label: '复制对话内容', icon: Copy, onSelect: () => copyTranscript(session) },
+      { key: 'delete', label: '删除会话', icon: Trash2, danger: true, separatorBefore: true, onSelect: () => deleteSessionById(session.id) },
+    ], `会话：${session.title || '未命名会话'}`);
   };
 
   /**
@@ -57,6 +88,7 @@ export function AIChat() {
     <div
       key={session.id}
       onClick={() => handleSessionClick(session)}
+      onContextMenu={(event) => handleSessionContextMenu(event, session)}
       className="flex items-center gap-4 p-4 bg-white/70 dark:bg-zinc-900/70 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 cursor-pointer hover:border-zinc-400 dark:hover:border-zinc-600 hover:shadow-md transition-all group"
     >
       <div className={`p-3 rounded-lg flex-shrink-0 ${session.mode === 'plan' ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400' : session.mode === 'research' ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400'}`}>
@@ -100,6 +132,7 @@ export function AIChat() {
           )}
         </div>
       </div>
+      {contextMenu}
     </div>
   );
 }

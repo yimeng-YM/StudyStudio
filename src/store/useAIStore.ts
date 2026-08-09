@@ -42,6 +42,13 @@ export interface AIContext {
   uiContext?: UIContextInfo;
 }
 
+export interface AIComposerDraft {
+  id: string;
+  text: string;
+  hiddenContext?: string;
+  sourceLabel?: string;
+}
+
 /**
  * AI 状态管理 Store 接口
  * 集中管理 AI 的供应商预设、运行时配置、解析后有效配置、悬浮对话窗状态以及全局会话和上下文数据
@@ -94,6 +101,7 @@ interface AIStore {
   floatingWindowSize: { width: number; height: number };
   /** 侧边栏模式宽度 */
   aiSidebarWidth: number;
+  composerDraft: AIComposerDraft | null;
 
   setFloatingWindowOpen: (open: boolean) => void;
   setFloatingWindowMinimized: (minimized: boolean) => void;
@@ -102,6 +110,7 @@ interface AIStore {
   setAIWindowPosition: (x: number, y: number) => void;
   setFloatingWindowSize: (width: number, height: number) => void;
   setAISidebarWidth: (width: number) => void;
+  setComposerDraft: (draft: AIComposerDraft | null) => void;
 
   currentContext: AIContext | null;
   setContext: (context: AIContext | null) => void;
@@ -282,6 +291,7 @@ export const useAIStore = create<AIStore>((set, get) => ({
   aiWindowPosition: loadJSON('aiWindowPos', DEFAULT_WINDOW_POS),
   floatingWindowSize: loadJSON('aiWindowSize', DEFAULT_WINDOW_SIZE),
   aiSidebarWidth: loadJSON('aiSidebarWidth', DEFAULT_SIDEBAR_WIDTH),
+  composerDraft: null,
 
   loadSettings: async () => {
     try {
@@ -434,6 +444,7 @@ export const useAIStore = create<AIStore>((set, get) => ({
   setAIWindowPosition: (x, y) => { const p = { x, y }; saveJSON('aiWindowPos', p); set({ aiWindowPosition: p }); },
   setFloatingWindowSize: (width, height) => { const s = { width, height }; saveJSON('aiWindowSize', s); set({ floatingWindowSize: s }); },
   setAISidebarWidth: (width) => { saveJSON('aiSidebarWidth', width); set({ aiSidebarWidth: width }); },
+  setComposerDraft: (draft) => set({ composerDraft: draft }),
 
   currentContext: null,
   setContext: (context) => set({ currentContext: context }),

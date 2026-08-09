@@ -16,6 +16,7 @@ export interface TaskBlockData extends StoredTaskBlockData {
   onChange?: (data: Partial<TaskBlockData>) => void; // 数据变更回调
   onDelete?: () => void; // 删除任务块回调
   onCreateSubBoard?: (itemId: string) => void; // 为特定任务项创建子任务板的回调
+  onItemContextMenu?: (event: React.MouseEvent, item: TaskItem) => void;
 }
 
 /**
@@ -77,6 +78,7 @@ export const TaskBoardNode = memo(({ data, selected }: NodeProps<TaskBlockData>)
       {/* 头部：标题与删除按钮 */}
       <div className="p-4 border-b border-primary/10 bg-gradient-to-r from-primary/5 to-transparent rounded-t-2xl flex justify-between items-center gap-2">
         <input
+          data-task-title-input
           value={data.title}
           onChange={handleTitleChange}
           className="bg-transparent font-bold text-zinc-800 dark:text-zinc-100 w-full focus:outline-none nodrag placeholder:text-zinc-400"
@@ -95,7 +97,7 @@ export const TaskBoardNode = memo(({ data, selected }: NodeProps<TaskBlockData>)
       <div className="p-3 space-y-2">
         <div className="space-y-1">
           {(data.items || []).map(item => (
-            <div key={item.id} className="flex items-start gap-2 group relative pr-4">
+            <div key={item.id} onContextMenu={(event) => data.onItemContextMenu?.(event, item)} className="flex items-start gap-2 group relative pr-4">
               {/* 完成状态勾选框 */}
               <button
                 onClick={() => toggleItem(item.id)}
@@ -143,6 +145,7 @@ export const TaskBoardNode = memo(({ data, selected }: NodeProps<TaskBlockData>)
         <form onSubmit={addItem} className="flex gap-2 mt-2 pt-2 border-t dark:border-zinc-700/50">
           <div className="flex-1 flex items-center bg-zinc-100 dark:bg-zinc-900/50 rounded-full px-3 py-1.5 focus-within:ring-2 focus-within:ring-primary/20 transition-all">
             <input
+              data-task-add-input
               value={newItemText}
               onChange={e => setNewItemText(e.target.value)}
               className="flex-1 bg-transparent border-none text-sm focus:outline-none nodrag nopan placeholder:text-zinc-400"

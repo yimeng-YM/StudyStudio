@@ -17,8 +17,8 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import { db, Entity } from '@/db';
 import { generateUUID } from '@/lib/utils';
-import { Plus, Target } from 'lucide-react';
-import { TaskBoardNode, TaskBlockData } from './TaskBoardNode';
+import { Plus, Target, Pencil, Copy, Trash2, CheckCircle2, Circle, GitBranch, Maximize2, MousePointer2 } from 'lucide-react';
+import { TaskBoardNode, TaskBlockData, TaskItem } from './TaskBoardNode';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useTheme } from '@/hooks/useTheme';
@@ -32,6 +32,7 @@ import {
   unlinkMindMapTaskBlocks,
   unlinkMindMapTaskItems,
 } from '@/services/studyLinks';
+import { shouldPreserveNativeContextMenu, useContextMenu } from '@/components/ui/ContextMenu';
 
 /**
  * 任务模块组件属性
@@ -88,7 +89,9 @@ function TasksModuleInner({
   const { showAlert, showConfirm } = useDialog();
   const setFloatingWindowOpen = useAIStore(s => s.setFloatingWindowOpen);
   const setGlobalSessionId = useAIStore(s => s.setGlobalSessionId);
-  const { setCenter, getNode } = useReactFlow();
+  const { setCenter, getNode, fitView, project } = useReactFlow();
+  const flowWrapperRef = useRef<HTMLDivElement>(null);
+  const { openContextMenu, contextMenu } = useContextMenu();
   const [isSelectionMode, setIsSelectionMode] = useState(false);
 
   /** 获取当前学科信息 */
@@ -316,12 +319,12 @@ function TasksModuleInner({
   }, [boardEntity, setNodes, setEdges, showAlert]);
 
   /** 在画布随机位置添加一个新的任务清单块 */
-  const addBlock = useCallback(() => {
+  const addBlock = useCallback((position?: { x: number; y: number }) => {
     const id = generateUUID();
     const newNode: Node = {
       id,
       type: 'taskBlock',
-      position: { x: Math.random() * 400, y: Math.random() * 400 },
+      position: position ?? { x: Math.random() * 400, y: Math.random() * 400 },
       data: { title: '新任务清单', items: [] }
     };
     setNodes(nds => nds.concat(newNode));
@@ -359,6 +362,37 @@ function TasksModuleInner({
     setEdges(eds => eds.concat(newEdge));
   }, [nodes, setNodes, setEdges]);
 
+  const handleItemContextMenu = useCallback((event: React.MouseEvent, parentNode: Node, item: TaskItem) => {
+    openContextMenu(event, [
+      {
+        key: 'toggle',
+        label: item.completed ? '标记为未完成' : '标记为已完成',
+        icon: item.completed ? Circle : CheckCircle2,
+        onSelect: () => onNodeDataChange(parentNode.id, {
+          items: (parentNode.data.items || []).map((candidate: TaskItem) => candidate.id === item.id
+            ? { ...candidate, completed: !candidate.completed }
+            : candidate),
+        }),
+      },
+      { key: 'subboard', label: '创建子任务清单', icon: GitBranch, onSelect: () => createSubBoard(parentNode.id, item.id) },
+      {
+        key: 'delete',
+        label: '删除任务项',
+        icon: Trash2,
+        danger: true,
+        separatorBefore: true,
+        onSelect: async () => {
+          const confirmed = await showConfirm(`确定要删除任务“${item.text}”吗？`, { title: '删除任务' });
+          if (confirmed) {
+            onNodeDataChange(parentNode.id, {
+              items: (parentNode.data.items || []).filter((candidate: TaskItem) => candidate.id !== item.id),
+            });
+          }
+        },
+      },
+    ], `任务：${item.text}`);
+  }, [createSubBoard, onNodeDataChange, openContextMenu, showConfirm]);
+
   /** 将业务操作方法注入到节点数据中，供自定义节点组件调用 */
   const nodesWithHandlers = useMemo(() => {
     return nodes.map(node => ({
@@ -367,10 +401,11 @@ function TasksModuleInner({
         ...node.data,
         onChange: (patch: Partial<TaskBlockData>) => onNodeDataChange(node.id, patch),
         onDelete: () => deleteBlock(node.id),
-        onCreateSubBoard: (itemId: string) => createSubBoard(node.id, itemId)
+        onCreateSubBoard: (itemId: string) => createSubBoard(node.id, itemId),
+        onItemContextMenu: (event: React.MouseEvent, item: TaskItem) => handleItemContextMenu(event, node, item),
       }
     }));
-  }, [nodes, onNodeDataChange, deleteBlock, createSubBoard]);
+  }, [nodes, onNodeDataChange, deleteBlock, createSubBoard, handleItemContextMenu]);
 
   const onConnect = useCallback((params: Connection) => setEdges((eds) => addEdge(params, eds)), [setEdges]);
 
@@ -422,6 +457,11 @@ function TasksModuleInner({
     });
   }, [setEdges, showConfirm]);
 
+  const deleteEdgeById = useCallback(async (edgeId: string) => {
+    const confirmed = await showConfirm('确定要删除这条连接线吗？', { title: '删除连接' });
+    if (confirmed) setEdges(current => current.filter(edge => edge.id !== edgeId));
+  }, [setEdges, showConfirm]);
+
   const handleDeleteSelected = useCallback(() => {
     const selectedNodes = nodes.filter(n => n.selected);
     const selectedEdges = edges.filter(e => e.selected);
@@ -444,6 +484,70 @@ function TasksModuleInner({
       }
     });
   }, [nodes, edges, boardEntity, setNodes, setEdges, showAlert, showConfirm]);
+
+  const focusNodeInput = useCallback((nodeId: string, selector: string) => {
+    window.requestAnimationFrame(() => {
+      const nodeElement = document.querySelector<HTMLElement>(`.react-flow__node[data-id="${nodeId}"]`);
+      const input = nodeElement?.querySelector<HTMLInputElement>(selector);
+      input?.focus();
+      input?.select();
+    });
+  }, []);
+
+  const duplicateBlock = useCallback((node: Node) => {
+    const id = generateUUID();
+    const items = ((node.data.items || []) as TaskItem[]).map(item => ({ ...item, id: generateUUID() }));
+    setNodes(current => current.concat({
+      ...node,
+      id,
+      selected: false,
+      position: { x: node.position.x + 40, y: node.position.y + 40 },
+      data: { ...stripTaskNodeHandlers(node.data), title: `${node.data.title || '任务清单'} 副本`, items },
+    }));
+    window.setTimeout(() => focusNodeInput(id, '[data-task-title-input]'), 80);
+  }, [focusNodeInput, setNodes]);
+
+  const handleNodeContextMenu = useCallback((event: React.MouseEvent, node: Node) => {
+    if (shouldPreserveNativeContextMenu(event.target)) return;
+    openContextMenu(event, [
+      { key: 'rename', label: '重命名任务块', icon: Pencil, onSelect: () => focusNodeInput(node.id, '[data-task-title-input]') },
+      { key: 'add-item', label: '添加任务', icon: Plus, onSelect: () => focusNodeInput(node.id, '[data-task-add-input]') },
+      { key: 'duplicate', label: '复制任务块', icon: Copy, onSelect: () => duplicateBlock(node) },
+      {
+        key: 'delete',
+        label: '删除任务块',
+        icon: Trash2,
+        danger: true,
+        separatorBefore: true,
+        onSelect: async () => {
+          const confirmed = await showConfirm(`确定要删除“${node.data.title || '此任务块'}”吗？`, { title: '删除任务块' });
+          if (confirmed) deleteBlock(node.id);
+        },
+      },
+    ], `任务块：${node.data.title || '未命名'}`);
+  }, [deleteBlock, duplicateBlock, focusNodeInput, openContextMenu, showConfirm]);
+
+  const handleEdgeContextMenu = useCallback((event: React.MouseEvent, edge: Edge) => {
+    openContextMenu(event, [
+      { key: 'delete', label: '删除连接线', icon: Trash2, danger: true, onSelect: () => deleteEdgeById(edge.id) },
+    ], '连接线操作');
+  }, [deleteEdgeById, openContextMenu]);
+
+  const handlePaneContextMenu = useCallback((event: React.MouseEvent) => {
+    const rect = flowWrapperRef.current?.getBoundingClientRect();
+    const position = project({
+      x: event.clientX - (rect?.left ?? 0),
+      y: event.clientY - (rect?.top ?? 0),
+    });
+    openContextMenu(event, [
+      { key: 'add', label: '在此处添加任务块', icon: Plus, onSelect: () => addBlock(position) },
+      { key: 'select-all', label: '全选任务块和连接', icon: MousePointer2, separatorBefore: true, shortcut: 'Ctrl+A', onSelect: () => {
+        setNodes(current => current.map(node => ({ ...node, selected: true })));
+        setEdges(current => current.map(edge => ({ ...edge, selected: true })));
+      } },
+      { key: 'fit', label: '适应全部内容', icon: Maximize2, onSelect: () => fitView({ duration: 500, padding: 0.2 }) },
+    ], '任务画布');
+  }, [addBlock, fitView, openContextMenu, project, setEdges, setNodes]);
 
   /**
    * 任务完成状态的递归向下传播逻辑
@@ -487,7 +591,7 @@ function TasksModuleInner({
 
   return (
     <div className="flex h-full relative">
-      <div className="flex-1 relative bg-white/80 dark:bg-zinc-950/80 rounded-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden shadow-sm">
+      <div ref={flowWrapperRef} className="flex-1 relative bg-white/80 dark:bg-zinc-950/80 rounded-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden shadow-sm">
         <ReactFlow
           nodes={nodesWithHandlers}
           edges={edges}
@@ -495,6 +599,9 @@ function TasksModuleInner({
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
           onEdgeClick={onEdgeClick}
+          onNodeContextMenu={handleNodeContextMenu}
+          onEdgeContextMenu={handleEdgeContextMenu}
+          onPaneContextMenu={handlePaneContextMenu}
           nodeTypes={nodeTypes}
           panOnDrag={!isSelectionMode}
           selectionOnDrag={isSelectionMode}
@@ -510,7 +617,7 @@ function TasksModuleInner({
           {/* Mobile: full-width toolbar bar */}
           <div className="md:hidden absolute top-0 left-0 right-0 z-10 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800">
             <div className="flex items-center gap-1.5 px-2 py-1.5 overflow-x-auto scrollbar-none">
-              <button onClick={addBlock} className="flex items-center gap-1 px-2 py-1 bg-blue-600 text-white rounded-full text-xs font-medium hover:bg-blue-700 transition-colors shrink-0 whitespace-nowrap"><Plus size={14} /> 添加任务块</button>
+              <button onClick={() => addBlock()} className="flex items-center gap-1 px-2 py-1 bg-blue-600 text-white rounded-full text-xs font-medium hover:bg-blue-700 transition-colors shrink-0 whitespace-nowrap"><Plus size={14} /> 添加任务块</button>
               {nodes.length > 0 && <>
                 <div className="w-px h-4 bg-zinc-200 dark:bg-zinc-800 mx-1 shrink-0" />
                 {nodes.map(node => (
@@ -524,7 +631,7 @@ function TasksModuleInner({
           {/* Desktop: floating pill */}
           <Panel position="top-center" className="hidden md:block bg-white/70 dark:bg-zinc-900/80 backdrop-blur-md rounded-full border border-zinc-200 dark:border-zinc-800 shadow-lg mt-4 overflow-visible">
             <div className="flex items-center gap-2 px-4 py-2 overflow-x-auto scrollbar-none">
-              <button onClick={addBlock} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-full text-xs font-medium hover:bg-blue-700 transition-colors shrink-0 whitespace-nowrap"><Plus size={14} /> 添加任务块</button>
+              <button onClick={() => addBlock()} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-full text-xs font-medium hover:bg-blue-700 transition-colors shrink-0 whitespace-nowrap"><Plus size={14} /> 添加任务块</button>
               {nodes.length > 0 && <>
                 <div className="w-px h-4 bg-zinc-200 dark:bg-zinc-800 mx-1 shrink-0" />
                 {nodes.map(node => (
@@ -559,6 +666,7 @@ function TasksModuleInner({
           )}
         </ReactFlow>
       </div>
+      {contextMenu}
     </div>
   );
 }
