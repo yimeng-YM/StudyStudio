@@ -14,6 +14,7 @@ import {
   type LineRange,
   type Occurrence,
 } from './noteTextUtils';
+import { deleteEntityAndRelations } from '@/services/studyLinks';
 
 /**
  * 鲁棒的 AI 工具参数内容解析器。
@@ -999,6 +1000,6 @@ export const delete_entity = async ({ entityId }: { entityId: string }) => {
   const entity = await db.entities.get(entityId);
   if (!entity) throw new Error(`Entity ${entityId} not found`);
   const title = entity.title;
-  await db.entities.delete(entityId);
+  await deleteEntityAndRelations(entityId);
   return { deleted: true, id: entityId, title };
 };

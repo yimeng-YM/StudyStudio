@@ -2,22 +2,17 @@ import { memo, useState } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
 import { Plus, X, Check, Trash2, GitBranch } from 'lucide-react';
 import { generateUUID } from '@/lib/utils';
+import type { StoredTaskBlockData, StoredTaskItem } from '@/services/studyLinks';
 
 /**
  * 任务项数据结构
  */
-export interface TaskItem {
-  id: string;      // 唯一标识
-  text: string;    // 任务内容
-  completed: boolean; // 是否已完成
-}
+export type TaskItem = StoredTaskItem;
 
 /**
  * 任务块节点数据结构
  */
-export interface TaskBlockData {
-  title: string;   // 任务块标题
-  items: TaskItem[]; // 任务项列表
+export interface TaskBlockData extends StoredTaskBlockData {
   onChange?: (data: Partial<TaskBlockData>) => void; // 数据变更回调
   onDelete?: () => void; // 删除任务块回调
   onCreateSubBoard?: (itemId: string) => void; // 为特定任务项创建子任务板的回调

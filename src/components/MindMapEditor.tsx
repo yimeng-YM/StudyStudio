@@ -28,6 +28,16 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useMindMapContext } from '@/hooks/useUIContext';
 import * as dagre from 'dagre';
 import { cn, generateUUID } from '@/lib/utils';
+import {
+  addMindMapTasksToBoard,
+  createAndLinkMindMapNote,
+  getLinkedNote,
+  getTaskBoardForSubject,
+  linkMindMapNodeToNote,
+  MINDMAP_NOTE_RELATION,
+  MINDMAP_TASK_RELATION,
+  type MindMapTaskInput,
+} from '@/services/studyLinks';
 
 /**
  * 思维导图编辑器组件属性
@@ -37,7 +47,10 @@ import { cn, generateUUID } from '@/lib/utils';
  */
 interface MindMapEditorProps {
   subjectId: string;
-  onNavigate?: (tab: 'mindmap' | 'notes' | 'tasks', params?: { noteId?: string }) => void;
+  onNavigate?: (
+    tab: 'mindmap' | 'notes' | 'tasks',
+    params?: { noteId?: string; taskBlockId?: string },
+  ) => void;
   initialSessionId?: string | null;
 }
 
@@ -103,14 +116,23 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
   /** @type {[boolean, Function]} 是否开启自动保存 */
   const [autoSave] = useState(true);
 
+  const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
+  const [noteNodeId, setNoteNodeId] = useState<string | null>(null);
+  const [selectedNoteId, setSelectedNoteId] = useState<string>('new');
+  const [newNoteTitle, setNewNoteTitle] = useState('');
+  const [isLinkingNote, setIsLinkingNote] = useState(false);
+
   /** @type {[boolean, Function]} 转换为任务模态框显示状态 */
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+  const [taskSourceNodeId, setTaskSourceNodeId] = useState<string | null>(null);
   /** @type {[string, Function]} 待添加的任务标签 */
   const [taskLabelToAdd, setTaskLabelToAdd] = useState('');
-  /** @type {[string[], Function]} 待添加的子任务项集合 */
-  const [taskItemsToAdd, setTaskItemsToAdd] = useState<string[]>([]);
+  /** 待添加的子任务项集合（保留导图节点 ID，用于建立稳定关联） */
+  const [taskItemsToAdd, setTaskItemsToAdd] = useState<MindMapTaskInput[]>([]);
   /** @type {[Entity | null, Function]} 任务看板数据库实体对象 */
   const [taskBoardEntity, setTaskBoardEntity] = useState<Entity | null>(null);
+  const [isTaskBoardLoading, setIsTaskBoardLoading] = useState(false);
+  const [isAddingTask, setIsAddingTask] = useState(false);
   /** @type {[string, Function]} 选择添加到的目标任务块ID */
   const [selectedBlockId, setSelectedBlockId] = useState<string>('new');
   /** @type {[string, Function]} 新建任务清单名称 */
@@ -122,6 +144,42 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
     () => db.entities.where({ subjectId, type: 'mindmap' }).toArray(),
     [subjectId]
   );
+
+  const availableNotes = useLiveQuery(
+    () => db.entities.where({ subjectId, type: 'note' }).toArray(),
+    [subjectId],
+    []
+  );
+
+  const mindMapRelations = useLiveQuery(
+    () => selectedMindMapId
+      ? db.relations.where('sourceId').equals(selectedMindMapId).toArray()
+      : [],
+    [selectedMindMapId],
+    []
+  );
+
+  const linkedNoteNodeIds = useMemo(() => new Set(
+    mindMapRelations
+      .filter(relation => relation.type === MINDMAP_NOTE_RELATION)
+      .map(relation => relation.metadata?.sourceNodeId)
+      .filter((nodeId): nodeId is string => typeof nodeId === 'string')
+  ), [mindMapRelations]);
+
+  const linkedTaskTargets = useMemo(() => {
+    const targets = new Map<string, string | null>();
+    const taskRelations = mindMapRelations
+      .filter(relation => relation.type === MINDMAP_TASK_RELATION)
+      .sort((a, b) => a.createdAt - b.createdAt);
+
+    for (const relation of taskRelations) {
+      const sourceNodeId = relation.metadata?.sourceNodeId;
+      if (typeof sourceNodeId !== 'string') continue;
+      const targetBlockId = relation.metadata?.targetBlockId;
+      targets.set(sourceNodeId, typeof targetBlockId === 'string' ? targetBlockId : null);
+    }
+    return targets;
+  }, [mindMapRelations]);
 
   const selectedMindMap = useMemo(() => 
     mindMaps?.find((m: any) => m.id === selectedMindMapId) || null,
@@ -139,6 +197,7 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
   }, [mindMaps, selectedMindMapId, subjectId]);
 
   const lastSaveTimeRef = useRef<number>(0);
+  const isInitializedRef = useRef(false);
 
   /**
    * 监听选中的思维导图数据变化并同步至本地状态
@@ -162,6 +221,7 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
         }
         
         lastSaveTimeRef.current = selectedMindMap.updatedAt;
+        isInitializedRef.current = true;
       }
     }
   }, [selectedMindMap, setNodes, setEdges]);
@@ -202,8 +262,13 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
 
   useEffect(() => {
     latestDataRef.current = { nodes, edges };
-    isDirtyRef.current = true;
+    if (isInitializedRef.current) isDirtyRef.current = true;
   }, [nodes, edges]);
+
+  useEffect(() => {
+    isInitializedRef.current = false;
+    isDirtyRef.current = false;
+  }, [subjectId]);
 
   useEffect(() => {
     if (!selectedMindMapId || !autoSave) return;
@@ -272,12 +337,24 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
    */
   useEffect(() => {
     if (isTaskModalOpen) {
-      db.entities.where({ subjectId, type: 'task_board' }).first().then(ent => {
-        setTaskBoardEntity(ent || null);
-        setSelectedBlockId('new');
+      let cancelled = false;
+      setIsTaskBoardLoading(true);
+      setSelectedBlockId('new');
+      getTaskBoardForSubject(subjectId).then(entity => {
+        if (!cancelled) setTaskBoardEntity(entity);
+      }).catch(error => {
+        if (!cancelled) {
+          setTaskBoardEntity(null);
+          showAlert(error instanceof Error ? error.message : '任务数据加载失败', { title: '无法加载任务' });
+        }
+      }).finally(() => {
+        if (!cancelled) setIsTaskBoardLoading(false);
       });
+      return () => {
+        cancelled = true;
+      };
     }
-  }, [isTaskModalOpen, subjectId]);
+  }, [isTaskModalOpen, subjectId, showAlert]);
 
   /**
    * 为指定节点添加子节点
@@ -365,109 +442,131 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
     setEdges(newEdges);
   }, [nodes, edges, setNodes, setEdges, takeSnapshot]);
 
-  const handleNote = useCallback(async (label: string) => {
-    const exist = await db.entities
-      .where({ subjectId, type: 'note', title: label })
-      .first();
+  const handleNote = useCallback(async (nodeId: string) => {
+    const node = nodes.find(candidate => candidate.id === nodeId);
+    if (!node || !selectedMindMapId) return;
 
-    let noteId = exist?.id;
-
-    if (!exist) {
-      const confirmed = await showConfirm(`是否为 "${label}" 创建详细知识笔记？`, { title: '新建笔记' });
-      if (confirmed) {
-        noteId = generateUUID();
-        await db.entities.add({
-          id: noteId,
-          subjectId,
-          type: 'note',
-          title: label,
-          content: '',
-          createdAt: Date.now(),
-          updatedAt: Date.now()
-        });
-      } else {
+    try {
+      const linkedNote = await getLinkedNote(selectedMindMapId, nodeId, subjectId);
+      if (linkedNote) {
+        onNavigate?.('notes', { noteId: linkedNote.id });
         return;
       }
-    }
 
-    if (onNavigate && noteId) onNavigate('notes', { noteId });
-  }, [subjectId, onNavigate, showConfirm]);
+      // 旧版没有保存显式关系。首次点击时按节点标题恢复一次，并立即写入稳定关系。
+      const normalizedLabel = String(node.data.label ?? '').trim();
+      const exactMatches = (await db.entities.where({ subjectId, type: 'note' }).toArray())
+        .filter(note => note.title.trim() === normalizedLabel)
+        .sort((a, b) => b.updatedAt - a.updatedAt);
+      if (exactMatches.length > 0) {
+        const note = await linkMindMapNodeToNote(
+          selectedMindMapId,
+          nodeId,
+          exactMatches[0].id,
+          subjectId,
+        );
+        onNavigate?.('notes', { noteId: note.id });
+        return;
+      }
+
+      setNoteNodeId(nodeId);
+      setSelectedNoteId('new');
+      setNewNoteTitle(normalizedLabel || '无标题笔记');
+      setIsNoteModalOpen(true);
+    } catch (error) {
+      showAlert(error instanceof Error ? error.message : '关联笔记失败', { title: '无法关联笔记' });
+    }
+  }, [nodes, selectedMindMapId, subjectId, onNavigate, showAlert]);
+
+  const confirmNoteLink = async () => {
+    if (!selectedMindMapId || !noteNodeId || isLinkingNote) return;
+    setIsLinkingNote(true);
+
+    try {
+      const note = selectedNoteId === 'new'
+        ? await createAndLinkMindMapNote(
+            selectedMindMapId,
+            noteNodeId,
+            subjectId,
+            newNoteTitle,
+          )
+        : await linkMindMapNodeToNote(
+            selectedMindMapId,
+            noteNodeId,
+            selectedNoteId,
+            subjectId,
+          );
+      setIsNoteModalOpen(false);
+      setNoteNodeId(null);
+      setIsLinkingNote(false);
+      onNavigate?.('notes', { noteId: note.id });
+    } catch (error) {
+      setIsLinkingNote(false);
+      showAlert(error instanceof Error ? error.message : '关联笔记失败', { title: '无法关联笔记' });
+    }
+  };
 
   const handleTask = useCallback((nodeId: string) => {
     const node = nodes.find(n => n.id === nodeId);
     if (!node) return;
 
+    if (linkedTaskTargets.has(nodeId)) {
+      const taskBlockId = linkedTaskTargets.get(nodeId) ?? undefined;
+      onNavigate?.('tasks', { taskBlockId });
+      return;
+    }
+
+    setTaskSourceNodeId(nodeId);
     setTaskLabelToAdd(node.data.label);
     setNewBlockName(node.data.label);
 
     const childEdges = edges.filter(e => e.source === nodeId);
     const childNodes = nodes.filter(n => childEdges.some(e => e.target === n.id));
-    const childItems = childNodes.map(n => n.data.label);
+    const childItems = childNodes.map(childNode => ({
+      nodeId: childNode.id,
+      text: String(childNode.data.label ?? ''),
+    }));
     setTaskItemsToAdd(childItems);
 
     setIsTaskModalOpen(true);
-  }, [nodes, edges]);
+  }, [nodes, edges, linkedTaskTargets, onNavigate]);
 
   /**
    * 确认将当前节点及子节点转换为任务清单项
    * 处理逻辑包括解析选中的分支并创建/更新对应的任务看板区块数据
    */
   const confirmAddTask = async () => {
-    let entity = taskBoardEntity;
-    let boardNodes = entity?.content?.nodes || [];
-    let boardEdges = entity?.content?.edges || [];
+    if (!selectedMindMapId || !taskSourceNodeId || isAddingTask) return;
+    setIsAddingTask(true);
 
-    if (!entity) {
-      const id = generateUUID();
-      entity = {
-        id,
+    try {
+      const itemsToAdd = taskItemsToAdd.length > 0
+        ? taskItemsToAdd
+        : [{ nodeId: taskSourceNodeId, text: taskLabelToAdd }];
+      const result = await addMindMapTasksToBoard({
         subjectId,
-        type: 'task_board',
-        title: 'Task Board',
-        content: { nodes: [], edges: [] },
-        createdAt: Date.now(),
-        updatedAt: Date.now()
-      };
-      boardNodes = [];
-    }
-
-    const itemsToAdd = taskItemsToAdd.length > 0
-      ? taskItemsToAdd.map(t => ({ id: generateUUID(), text: t, completed: false }))
-      : [{ id: generateUUID(), text: taskLabelToAdd, completed: false }];
-
-    if (selectedBlockId === 'new') {
-      const newNode = {
-        id: generateUUID(),
-        type: 'taskBlock',
-        position: { x: Math.random() * 200 + 100, y: Math.random() * 200 + 100 },
-        data: { title: newBlockName, items: itemsToAdd }
-      };
-      boardNodes.push(newNode);
-    } else {
-      const nodeIndex = boardNodes.findIndex((n: any) => n.id === selectedBlockId);
-      if (nodeIndex !== -1) {
-        const node = boardNodes[nodeIndex];
-        const items = node.data.items || [];
-        boardNodes[nodeIndex] = {
-          ...node,
-          data: { ...node.data, items: [...items, ...itemsToAdd] }
-        };
-      }
-    }
-
-    if (taskBoardEntity) {
-      await db.entities.update(entity.id, {
-        content: { nodes: boardNodes, edges: boardEdges },
-        updatedAt: Date.now()
+        mindMapId: selectedMindMapId,
+        sourceNodeId: taskSourceNodeId,
+        targetBlockId: selectedBlockId,
+        newBlockTitle: newBlockName,
+        items: itemsToAdd,
       });
-    } else {
-      await db.entities.add(entity);
-    }
 
-    setIsTaskModalOpen(false);
-    setTaskLabelToAdd('');
-    setTaskItemsToAdd([]);
-    showAlert('已添加到任务清单', { title: '成功' });
+      setIsTaskModalOpen(false);
+      setTaskSourceNodeId(null);
+      setTaskLabelToAdd('');
+      setTaskItemsToAdd([]);
+      setIsAddingTask(false);
+      const message = result.addedCount > 0
+        ? `已添加 ${result.addedCount} 项到任务清单`
+        : result.recoveredLegacyLinks
+          ? '已有任务已找到，关联已恢复'
+          : '这些任务已经在目标清单中';
+      showAlert(message, { title: '任务已同步' });
+    } catch (error) {
+      setIsAddingTask(false);
+      showAlert(error instanceof Error ? error.message : '添加任务失败', { title: '无法添加任务' });
+    }
   };
 
   /**
@@ -512,6 +611,7 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
       data: { label },
     };
     const newNodes = nodes.concat(newNode);
+    isInitializedRef.current = true;
     takeSnapshot(newNodes, edges);
     setNodes(newNodes);
 
@@ -544,11 +644,13 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
         onAddChild: () => handleAddChild(node.id),
         onAddSibling: () => handleAddSibling(node.id),
         onDelete: () => handleDeleteNode(node.id),
-        onNote: () => handleNote(node.data.label),
+        onNote: () => handleNote(node.id),
         onTask: () => handleTask(node.id),
+        hasNoteLink: linkedNoteNodeIds.has(node.id),
+        hasTaskLink: linkedTaskTargets.has(node.id),
       },
     }));
-  }, [nodes, handleEditNode, handleAddChild, handleAddSibling, handleDeleteNode, handleNote, handleTask]);
+  }, [nodes, handleEditNode, handleAddChild, handleAddSibling, handleDeleteNode, handleNote, handleTask, linkedNoteNodeIds, linkedTaskTargets]);
 
   /**
    * 节点连接事件处理，用户手动拖拽连线时触发
@@ -927,8 +1029,81 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
       )}
 
       <Modal
+        isOpen={isNoteModalOpen}
+        onClose={() => {
+          if (!isLinkingNote) {
+            setIsNoteModalOpen(false);
+            setNoteNodeId(null);
+          }
+        }}
+        title="关联节点笔记"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+              选择笔记
+            </label>
+            <select
+              value={selectedNoteId}
+              onChange={(event) => setSelectedNoteId(event.target.value)}
+              disabled={isLinkingNote}
+              className="w-full px-3 py-2 border rounded-lg dark:bg-zinc-900 dark:border-zinc-700 disabled:opacity-60"
+            >
+              <option value="new">+ 用节点名称创建新笔记</option>
+              {availableNotes.map(note => (
+                <option key={note.id} value={note.id}>{note.title}</option>
+              ))}
+            </select>
+          </div>
+
+          {selectedNoteId === 'new' && (
+            <div>
+              <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+                新笔记标题
+              </label>
+              <input
+                type="text"
+                value={newNoteTitle}
+                onChange={(event) => setNewNoteTitle(event.target.value)}
+                disabled={isLinkingNote}
+                className="w-full px-3 py-2 border rounded-lg dark:bg-zinc-900 dark:border-zinc-700 disabled:opacity-60"
+                placeholder="输入笔记标题"
+                autoFocus
+              />
+            </div>
+          )}
+
+          <p className="text-xs leading-5 text-zinc-500 dark:text-zinc-400">
+            关联会绑定到当前导图节点。以后即使节点或笔记改名，也会打开同一篇笔记。
+          </p>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              onClick={() => {
+                setIsNoteModalOpen(false);
+                setNoteNodeId(null);
+              }}
+              disabled={isLinkingNote}
+              className="px-4 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-colors disabled:opacity-60"
+            >
+              取消
+            </button>
+            <button
+              onClick={confirmNoteLink}
+              disabled={isLinkingNote || (selectedNoteId === 'new' && !newNoteTitle.trim())}
+              className="px-4 py-2 text-sm font-medium bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isLinkingNote ? '正在关联…' : selectedNoteId === 'new' ? '创建并打开' : '关联并打开'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
         isOpen={isTaskModalOpen}
-        onClose={() => setIsTaskModalOpen(false)}
+        onClose={() => {
+          if (!isAddingTask) setIsTaskModalOpen(false);
+        }}
         title="添加到任务清单"
       >
         <div className="space-y-4">
@@ -940,6 +1115,7 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
               type="text"
               value={newBlockName}
               onChange={(e) => setNewBlockName(e.target.value)}
+              disabled={selectedBlockId !== 'new' || isAddingTask}
               className="w-full px-3 py-2 border rounded-lg dark:bg-zinc-900 dark:border-zinc-700"
               placeholder="例如: 重点掌握"
             />
@@ -952,9 +1128,11 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
             <select
               value={selectedBlockId}
               onChange={(e) => setSelectedBlockId(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg dark:bg-zinc-900 dark:border-zinc-700"
+              disabled={isTaskBoardLoading || isAddingTask}
+              className="w-full px-3 py-2 border rounded-lg dark:bg-zinc-900 dark:border-zinc-700 disabled:opacity-60"
             >
               <option value="new">+ 新建清单</option>
+              {isTaskBoardLoading && <option disabled>正在载入旧任务…</option>}
               {taskBoardEntity?.content?.nodes?.map((n: any) => (
                 <option key={n.id} value={n.id}>{n.data.title}</option>
               ))}
@@ -965,10 +1143,10 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
             <div className="text-xs text-zinc-500 mb-2 uppercase tracking-wider font-semibold">将添加以下项:</div>
             <div className="space-y-1">
               {taskItemsToAdd.length > 0 ? (
-                taskItemsToAdd.map((item, idx) => (
-                  <div key={idx} className="text-sm flex items-center gap-2">
+                taskItemsToAdd.map((item) => (
+                  <div key={item.nodeId} className="text-sm flex items-center gap-2">
                     <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                    {item}
+                    {item.text}
                   </div>
                 ))
               ) : (
@@ -983,15 +1161,17 @@ function MindMapInner({ subjectId, onNavigate, initialSessionId }: MindMapEditor
           <div className="flex justify-end gap-3 pt-2">
             <button
               onClick={() => setIsTaskModalOpen(false)}
-              className="px-4 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
+              disabled={isAddingTask}
+              className="px-4 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-colors disabled:opacity-60"
             >
               取消
             </button>
             <button
               onClick={confirmAddTask}
-              className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+              disabled={isTaskBoardLoading || isAddingTask || (selectedBlockId === 'new' && !newBlockName.trim())}
+              className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
             >
-              确认添加
+              {isAddingTask ? '正在添加…' : '确认添加'}
             </button>
           </div>
         </div>

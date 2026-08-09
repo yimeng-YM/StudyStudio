@@ -6,7 +6,7 @@ import {
   ImageIcon, Undo, Redo, ArrowLeft,
   Bold, Italic, Strikethrough, List, ListOrdered, Heading1, Heading2, Heading3,
   Quote, Code, Link as LinkIcon, BookOpen,
-  PanelLeftClose, PanelLeftOpen
+  PanelLeftClose, PanelLeftOpen, Unlink
 } from 'lucide-react';
 import { useSorting, sortItems } from '@/hooks/useSorting';
 import { useManualReorder } from '@/hooks/useManualReorder';
@@ -20,11 +20,17 @@ import { useResizable } from '@/hooks/useResizable';
 import { ResizeHandle } from '@/components/ui/ResizeHandle';
 import { useAIStore } from '@/store/useAIStore';
 import { useNotesContext } from '@/hooks/useUIContext';
+import {
+  deleteEntityAndRelations,
+  MINDMAP_NOTE_RELATION,
+  unlinkNoteFromMindMaps,
+} from '@/services/studyLinks';
 
 interface NotesModuleProps {
   subjectId: string;
   initialNoteId?: string | null;
   initialSessionId?: string | null;
+  onInitialNoteHandled?: (noteId: string) => void;
 }
 
 /** TOC 标题条目 */
@@ -157,7 +163,12 @@ function NotesTOC({
   );
 }
 
-export function NotesModule({ subjectId, initialNoteId, initialSessionId }: NotesModuleProps) {
+export function NotesModule({
+  subjectId,
+  initialNoteId,
+  initialSessionId,
+  onInitialNoteHandled,
+}: NotesModuleProps) {
   const { sortMode, sortDirection } = useSorting();
 
   const setFloatingWindowOpen = useAIStore(s => s.setFloatingWindowOpen);
@@ -180,6 +191,7 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
   const [isEditing, setIsEditing] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'toc' | 'detail'>('list');
   const [scrollTarget, setScrollTarget] = useState<string | null>(null);
+  const handledInitialNoteIdRef = useRef<string | null>(null);
   // 目录侧栏是否完全收起（仅桌面端、查看笔记时生效）
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
@@ -194,7 +206,12 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
   } = useHistory('');
 
   const [editTitle, setEditTitle] = useState('');
-  const { showConfirm } = useDialog();
+  const { showAlert, showConfirm } = useDialog();
+  const mindMapLinks = useLiveQuery(async () => {
+    if (!selectedNote?.id) return [];
+    const relations = await db.relations.where('targetId').equals(selectedNote.id).toArray();
+    return relations.filter(relation => relation.type === MINDMAP_NOTE_RELATION);
+  }, [selectedNote?.id], []);
   const { width: sidebarWidth, startResizing, isResizing } = useResizable({
     initialWidth: 320,
     minWidth: 200,
@@ -204,36 +221,38 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
   });
 
   useEffect(() => {
-    if (!initialNoteId && !initialSessionId) { /* no-op */ }
-  }, [initialNoteId, initialSessionId]);
+    if (!initialNoteId) {
+      handledInitialNoteIdRef.current = null;
+      return;
+    }
+    if (!notes || handledInitialNoteIdRef.current === initialNoteId) return;
+
+    const target = notes.find(note => note.id === initialNoteId);
+    if (!target) return;
+
+    handledInitialNoteIdRef.current = initialNoteId;
+    setSelectedNote(target);
+    resetEditContent(target.content);
+    setEditTitle(target.title);
+    setIsEditing(false);
+    setViewMode('toc');
+    setSidebarCollapsed(false);
+    if (!initialSessionId && target.chatSessionId) {
+      setGlobalSessionId(target.chatSessionId);
+    }
+    onInitialNoteHandled?.(target.id);
+  }, [initialNoteId, notes, resetEditContent, initialSessionId, setGlobalSessionId, onInitialNoteHandled]);
 
   useEffect(() => {
-    if (notes) {
-      if (initialNoteId) {
-        const target = notes.find(n => n.id === initialNoteId);
-        if (target && target.id !== selectedNote?.id) {
-          setSelectedNote(target);
-          resetEditContent(target.content);
-          setEditTitle(target.title);
-          setIsEditing(false);
-          setViewMode('toc');
-          setSidebarCollapsed(false);
-          if (!initialSessionId && target.chatSessionId) {
-            setGlobalSessionId(target.chatSessionId);
-          }
-          return;
-        }
-      }
-      if (selectedNote) {
-        const current = notes.find(n => n.id === selectedNote.id);
-        if (current && current.updatedAt > selectedNote.updatedAt && !isEditing) {
-          setSelectedNote(current);
-          resetEditContent(current.content);
-          setEditTitle(current.title);
-        }
-      }
+    if (!notes || !selectedNote || isEditing) return;
+
+    const current = notes.find(note => note.id === selectedNote.id);
+    if (current && current.updatedAt > selectedNote.updatedAt) {
+      setSelectedNote(current);
+      resetEditContent(current.content);
+      setEditTitle(current.title);
     }
-  }, [initialNoteId, notes, selectedNote?.id, selectedNote?.updatedAt, isEditing, resetEditContent, initialSessionId, setGlobalSessionId]);
+  }, [notes, selectedNote, isEditing, resetEditContent]);
 
   const createNote = async () => {
     const id = generateUUID();
@@ -268,7 +287,7 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
   const deleteNote = async (id: string) => {
     const confirmed = await showConfirm("确认删除此笔记？", { title: "删除笔记" });
     if (confirmed) {
-      await db.entities.delete(id);
+      await deleteEntityAndRelations(id);
       if (selectedNote?.id === id) {
         setSelectedNote(null);
         setIsEditing(false);
@@ -277,6 +296,28 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
         setViewMode('list');
         setSidebarCollapsed(false);
       }
+    }
+  };
+
+  const unlinkSelectedNoteFromMindMaps = async () => {
+    if (!selectedNote || mindMapLinks.length === 0) return;
+    const linkCount = mindMapLinks.length;
+    const confirmed = await showConfirm(
+      linkCount === 1
+        ? '解除这篇笔记与思维导图节点的关联？笔记内容会保留。'
+        : `这篇笔记关联了 ${linkCount} 个思维导图节点，确定全部解除？笔记内容会保留。`,
+      { title: '解除导图关联' },
+    );
+    if (!confirmed) return;
+
+    try {
+      const removedCount = await unlinkNoteFromMindMaps(selectedNote.id);
+      await showAlert(
+        removedCount > 0 ? `已解除 ${removedCount} 个导图关联` : '这篇笔记已经没有导图关联',
+        { title: '解绑完成' },
+      );
+    } catch (error) {
+      await showAlert(error instanceof Error ? error.message : '解除导图关联失败', { title: '无法解绑' });
     }
   };
 
@@ -484,6 +525,8 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
               setIsEditing={setIsEditing}
               saveNote={saveNote}
               deleteNote={deleteNote}
+              mindMapLinkCount={mindMapLinks.length}
+              unlinkFromMindMaps={unlinkSelectedNoteFromMindMaps}
               undoEdit={undoEdit}
               redoEdit={redoEdit}
               canUndo={canUndo}
@@ -572,6 +615,16 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
               ) : (
                 <button onClick={() => setIsEditing(true)} className="p-1.5 text-blue-600 hover:text-blue-700 bg-blue-50 dark:bg-blue-900/20 rounded-lg shrink-0" title="编辑"><Edit size={18} /></button>
               )}
+              {mindMapLinks.length > 0 && (
+                <button
+                  onClick={unlinkSelectedNoteFromMindMaps}
+                  className="p-1.5 text-amber-600 hover:text-amber-700 bg-amber-50 dark:bg-amber-900/20 rounded-lg shrink-0"
+                  title={`解除 ${mindMapLinks.length} 个导图关联`}
+                  aria-label={`解除 ${mindMapLinks.length} 个导图关联`}
+                >
+                  <Unlink size={18} />
+                </button>
+              )}
               <button onClick={() => { if (selectedNote) deleteNote(selectedNote.id); }} className="p-1.5 text-red-600 hover:text-red-700 bg-red-50 dark:bg-red-900/20 rounded-lg shrink-0" title="删除"><Trash size={18} /></button>
             </div>
             <div className="flex-1 min-h-0">
@@ -585,6 +638,8 @@ export function NotesModule({ subjectId, initialNoteId, initialSessionId }: Note
                 setIsEditing={setIsEditing}
                 saveNote={saveNote}
                 deleteNote={deleteNote}
+                mindMapLinkCount={mindMapLinks.length}
+                unlinkFromMindMaps={unlinkSelectedNoteFromMindMaps}
                 undoEdit={undoEdit}
                 redoEdit={redoEdit}
                 canUndo={canUndo}
@@ -661,6 +716,7 @@ function MobileTOC({
 function NoteDetail({
   selectedNote, isEditing, editTitle, editContent, setEditTitle, setEditContent,
   setIsEditing, saveNote, deleteNote, undoEdit, redoEdit, canUndo, canRedo,
+  mindMapLinkCount, unlinkFromMindMaps,
   insertMarkdown, handleImageUpload, textAreaRef, fileInputRef,
   scrollTarget, onScrollComplete, sidebarCollapsed, onExpandSidebar,
 }: any) {
@@ -722,6 +778,16 @@ function NoteDetail({
             </>
           ) : (
             <button onClick={() => setIsEditing(true)} className="text-blue-600 hover:text-blue-700 bg-blue-50 dark:bg-blue-900/20 p-1.5 md:p-2 rounded"><Edit size={18} /></button>
+          )}
+          {mindMapLinkCount > 0 && (
+            <button
+              onClick={unlinkFromMindMaps}
+              className="text-amber-600 hover:text-amber-700 bg-amber-50 dark:bg-amber-900/20 p-1.5 md:p-2 rounded"
+              title={`解除 ${mindMapLinkCount} 个导图关联`}
+              aria-label={`解除 ${mindMapLinkCount} 个导图关联`}
+            >
+              <Unlink size={18} />
+            </button>
           )}
           <button onClick={() => deleteNote(selectedNote.id)} className="text-red-600 hover:text-red-700 bg-red-50 dark:bg-red-900/20 p-1.5 md:p-2 rounded"><Trash size={18} /></button>
         </div>

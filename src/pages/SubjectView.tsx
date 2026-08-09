@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/db';
@@ -39,6 +39,8 @@ export function SubjectView() {
   const [activeTab, setActiveTab] = useState<'mindmap' | 'notes' | 'tasks' | 'quiz'>('mindmap');
   /** 目标笔记 ID，用于模块间跳转定位（如导图 -> 笔记） */
   const [targetNoteId, setTargetNoteId] = useState<string | null>(null);
+  /** 目标任务块 ID，用于从导图关联节点跳转并定位任务块 */
+  const [targetTaskBlockId, setTargetTaskBlockId] = useState<string | null>(null);
   /** 目标 AI 会话 ID，用于在切换模块时保持 AI 上下文一致性 */
   const [targetSessionId, setTargetSessionId] = useState<string | null>(null);
   /** 学科编辑弹窗显示状态 */
@@ -96,12 +98,26 @@ export function SubjectView() {
    * @param {string} tab - 目标标签页
    * @param {object} [params] - 额外参数，如 noteId
    */
-  const handleNavigate = (tab: 'mindmap' | 'notes' | 'tasks', params?: { noteId?: string }) => {
+  const handleNavigate = useCallback((
+    tab: 'mindmap' | 'notes' | 'tasks',
+    params?: { noteId?: string; taskBlockId?: string },
+  ) => {
     setActiveTab(tab);
-    if (params?.noteId) {
-      setTargetNoteId(params.noteId);
+    if (tab === 'notes') {
+      setTargetNoteId(params?.noteId ?? null);
     }
-  };
+    if (tab === 'tasks') {
+      setTargetTaskBlockId(params?.taskBlockId ?? null);
+    }
+  }, []);
+
+  const handleInitialNoteHandled = useCallback((noteId: string) => {
+    setTargetNoteId(current => current === noteId ? null : current);
+  }, []);
+
+  const handleInitialTaskBlockHandled = useCallback((blockId: string) => {
+    setTargetTaskBlockId(current => current === blockId ? null : current);
+  }, []);
 
   if (!subject) return <div className="p-8">加载中...</div>;
 
@@ -185,9 +201,23 @@ export function SubjectView() {
                 initialSessionId={targetSessionId}
               />
             )}
-            {activeTab === 'notes' && <NotesModule subjectId={id || ''} initialNoteId={targetNoteId} initialSessionId={targetSessionId} />}
+            {activeTab === 'notes' && (
+              <NotesModule
+                subjectId={id || ''}
+                initialNoteId={targetNoteId}
+                initialSessionId={targetSessionId}
+                onInitialNoteHandled={handleInitialNoteHandled}
+              />
+            )}
             {activeTab === 'quiz' && <QuizModule subjectId={id || ''} />}
-            {activeTab === 'tasks' && <TasksModule subjectId={id || ''} initialSessionId={targetSessionId} />}
+            {activeTab === 'tasks' && (
+              <TasksModule
+                subjectId={id || ''}
+                initialSessionId={targetSessionId}
+                initialBlockId={targetTaskBlockId}
+                onInitialBlockHandled={handleInitialTaskBlockHandled}
+              />
+            )}
           </motion.div>
         </AnimatePresence>
       </div>

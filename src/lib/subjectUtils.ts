@@ -39,7 +39,16 @@ export async function deleteSubjectWithConfirm(
 
   if (input !== subject.name) return false;
 
-  await db.transaction('rw', db.subjects, db.entities, async () => {
+  await db.transaction('rw', [db.subjects, db.entities, db.relations], async () => {
+    const entityIds = await db.entities.where('subjectId').equals(id).primaryKeys();
+    if (entityIds.length > 0) {
+      const [outgoing, incoming] = await Promise.all([
+        db.relations.where('sourceId').anyOf(entityIds).primaryKeys(),
+        db.relations.where('targetId').anyOf(entityIds).primaryKeys(),
+      ]);
+      const relationIds = [...new Set([...outgoing, ...incoming])];
+      if (relationIds.length > 0) await db.relations.bulkDelete(relationIds);
+    }
     await db.subjects.delete(id);
     await db.entities.where('subjectId').equals(id).delete();
   });

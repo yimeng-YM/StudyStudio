@@ -25,6 +25,13 @@ import { useTheme } from '@/hooks/useTheme';
 import { useAIStore } from '@/store/useAIStore';
 import { ViewControls } from './ViewControls';
 import { useUIContext } from '@/hooks/useUIContext';
+import {
+  getTaskBoardForSubject,
+  normalizeTaskBoardContent,
+  stripTaskNodeHandlers,
+  unlinkMindMapTaskBlocks,
+  unlinkMindMapTaskItems,
+} from '@/services/studyLinks';
 
 /**
  * 任务模块组件属性
@@ -34,12 +41,14 @@ import { useUIContext } from '@/hooks/useUIContext';
 interface TasksModuleProps {
   subjectId: string;
   initialSessionId?: string | null;
+  initialBlockId?: string | null;
+  onInitialBlockHandled?: (blockId: string) => void;
 }
 
-export function TasksModule({ subjectId, initialSessionId }: TasksModuleProps) {
+export function TasksModule(props: TasksModuleProps) {
   return (
     <ReactFlowProvider>
-      <TasksModuleInner subjectId={subjectId} initialSessionId={initialSessionId} />
+      <TasksModuleInner {...props} />
     </ReactFlowProvider>
   );
 }
@@ -64,14 +73,19 @@ function ThemedMiniMap() {
   );
 }
 
-function TasksModuleInner({ subjectId, initialSessionId }: TasksModuleProps) {
+function TasksModuleInner({
+  subjectId,
+  initialSessionId,
+  initialBlockId,
+  onInitialBlockHandled,
+}: TasksModuleProps) {
   /** @type {[Node[], Function, Function]} 画布节点状态（任务清单块） */
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   /** @type {[Edge[], Function, Function]} 画布连线状态（任务依赖关系） */
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   /** @type {[Entity | null, Function]} 任务看板数据库实体对象 */
   const [boardEntity, setBoardEntity] = useState<Entity | null>(null);
-  const { showConfirm } = useDialog();
+  const { showAlert, showConfirm } = useDialog();
   const setFloatingWindowOpen = useAIStore(s => s.setFloatingWindowOpen);
   const setGlobalSessionId = useAIStore(s => s.setGlobalSessionId);
   const { setCenter, getNode } = useReactFlow();
@@ -104,60 +118,53 @@ function TasksModuleInner({ subjectId, initialSessionId }: TasksModuleProps) {
   const nodeTypes = useMemo(() => ({ taskBlock: TaskBoardNode }), []);
 
   const liveEntity = useLiveQuery(
-    () => db.entities.where({ subjectId, type: 'task_board' }).first(),
+    async () => {
+      const boards = await db.entities.where({ subjectId, type: 'task_board' }).toArray();
+      return boards.sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id))[0] ?? null;
+    },
     [subjectId]
   );
 
+  // 迁移属于写操作，不能放在 Dexie 的 liveQuery 只读订阅中执行。
+  useEffect(() => {
+    let cancelled = false;
+    getTaskBoardForSubject(subjectId).catch(error => {
+      if (!cancelled) {
+        showAlert(error instanceof Error ? error.message : '旧任务迁移失败', { title: '无法载入任务' });
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [subjectId, showAlert]);
+
   const lastSaveTimeRef = useRef<number>(0);
+  const isInitializedRef = useRef(false);
+  const handledInitialBlockIdRef = useRef<string | null>(null);
 
   /**
    * 监听看板数据实体变化并同步至画布状态
    * 包含从旧版本 'task' 类型数据迁移至新版看板格式的逻辑
    */
   useEffect(() => {
+    if (liveEntity === undefined) return;
+
     if (liveEntity) {
       setBoardEntity(liveEntity);
       if (liveEntity.updatedAt > lastSaveTimeRef.current) {
         if (liveEntity.content) {
-          setNodes(liveEntity.content.nodes || []);
-          setEdges(liveEntity.content.edges || []);
+          const content = normalizeTaskBoardContent(liveEntity.content);
+          setNodes(content.nodes as Node[]);
+          setEdges(content.edges as unknown as Edge[]);
         }
         lastSaveTimeRef.current = liveEntity.updatedAt;
       }
+      isInitializedRef.current = true;
     } else {
-      // 迁移逻辑：检查旧的 'task' 实体并合并到新的看板区块中
-      db.entities.where({ subjectId, type: 'task' }).toArray().then(oldTasks => {
-        if (oldTasks.length > 0) {
-          const initNodes = [{
-            id: '1',
-            type: 'taskBlock',
-            position: { x: 100, y: 100 },
-            data: {
-              title: '待办事项',
-              items: oldTasks.map(t => ({
-                id: t.id,
-                text: t.title,
-                completed: t.content?.completed || t.content?.status === 'done' || false
-              }))
-            }
-          }];
-
-          const newEntity: Entity = {
-            id: generateUUID(),
-            subjectId,
-            type: 'task_board',
-            title: 'Task Board',
-            content: { nodes: initNodes, edges: [] },
-            createdAt: Date.now(),
-            updatedAt: Date.now()
-          };
-
-          db.entities.add(newEntity).then(() => {
-            setBoardEntity(newEntity);
-            setNodes(initNodes);
-          });
-        }
-      });
+      setBoardEntity(null);
+      setNodes([]);
+      setEdges([]);
+      isInitializedRef.current = true;
     }
   }, [liveEntity, subjectId, setNodes, setEdges]);
 
@@ -170,10 +177,7 @@ function TasksModuleInner({ subjectId, initialSessionId }: TasksModuleProps) {
     // 移除保存时的函数引用，仅持久化纯数据对象
     const cleanNodes = currentNodes.map(n => ({
       ...n,
-      data: {
-        title: n.data.title,
-        items: n.data.items
-      }
+      data: stripTaskNodeHandlers(n.data)
     }));
 
     if (boardEntity) {
@@ -205,8 +209,13 @@ function TasksModuleInner({ subjectId, initialSessionId }: TasksModuleProps) {
 
   useEffect(() => {
     latestDataRef.current = { nodes, edges };
-    isDirtyRef.current = true;
+    if (isInitializedRef.current) isDirtyRef.current = true;
   }, [nodes, edges]);
+
+  useEffect(() => {
+    isInitializedRef.current = false;
+    isDirtyRef.current = false;
+  }, [subjectId]);
 
   /** 自动保存机制，2秒防抖执行 */
   useEffect(() => {
@@ -230,7 +239,7 @@ function TasksModuleInner({ subjectId, initialSessionId }: TasksModuleProps) {
         const now = Date.now();
         const cleanNodes = finalNodes.map(n => ({
           ...n,
-          data: { title: n.data.title, items: n.data.items }
+          data: stripTaskNodeHandlers(n.data)
         }));
 
         db.entities.where({ subjectId, type: 'task_board' }).first().then(entity => {
@@ -261,19 +270,50 @@ function TasksModuleInner({ subjectId, initialSessionId }: TasksModuleProps) {
    * @param {Partial<TaskBlockData>} dataPatch - 需要更新的数据片段
    */
   const onNodeDataChange = useCallback((id: string, dataPatch: Partial<TaskBlockData>) => {
+    const currentNode = nodes.find(node => node.id === id);
+    if (currentNode && Array.isArray(dataPatch.items)) {
+      const nextItems = dataPatch.items as TaskBlockData['items'];
+      const currentItems = (currentNode.data.items ?? []) as TaskBlockData['items'];
+      const nextItemIds = new Set(nextItems.map(item => item.id));
+      const deletedItems = currentItems.filter(item => !nextItemIds.has(item.id));
+
+      if (deletedItems.length > 0) {
+        const deletedItemIds = new Set(deletedItems.map(item => item.id));
+        setEdges(currentEdges => currentEdges.filter(edge =>
+          !(edge.source === id && edge.sourceHandle && deletedItemIds.has(edge.sourceHandle))
+        ));
+        if (boardEntity) {
+          void unlinkMindMapTaskItems(boardEntity.id, id, deletedItems).catch(error => {
+            showAlert(
+              error instanceof Error ? error.message : '任务已删除，但导图关联清理失败',
+              { title: '无法解除任务关联' },
+            );
+          });
+        }
+      }
+    }
+
     setNodes(nds => nds.map(node => {
       if (node.id === id) {
         return { ...node, data: { ...node.data, ...dataPatch } };
       }
       return node;
     }));
-  }, [setNodes]);
+  }, [nodes, boardEntity, setNodes, setEdges, showAlert]);
 
   /** 删除指定任务块及其关联连线 */
   const deleteBlock = useCallback((id: string) => {
+    if (boardEntity) {
+      void unlinkMindMapTaskBlocks(boardEntity.id, [id]).catch(error => {
+        showAlert(
+          error instanceof Error ? error.message : '任务块已删除，但导图关联清理失败',
+          { title: '无法解除任务关联' },
+        );
+      });
+    }
     setNodes(nds => nds.filter(n => n.id !== id));
     setEdges(eds => eds.filter(e => e.source !== id && e.target !== id));
-  }, [setNodes, setEdges]);
+  }, [boardEntity, setNodes, setEdges, showAlert]);
 
   /** 在画布随机位置添加一个新的任务清单块 */
   const addBlock = useCallback(() => {
@@ -342,6 +382,36 @@ function TasksModuleInner({ subjectId, initialSessionId }: TasksModuleProps) {
     }
   }, [getNode, setCenter]);
 
+  useEffect(() => {
+    if (!initialBlockId) {
+      handledInitialBlockIdRef.current = null;
+      return;
+    }
+    if (handledInitialBlockIdRef.current === initialBlockId) return;
+    if (!nodes.some(node => node.id === initialBlockId)) return;
+
+    let cancelled = false;
+    let frame = 0;
+    let attempts = 0;
+    const focusTarget = () => {
+      if (cancelled) return;
+      if (getNode(initialBlockId)) {
+        handledInitialBlockIdRef.current = initialBlockId;
+        jumpToNode(initialBlockId);
+        onInitialBlockHandled?.(initialBlockId);
+        return;
+      }
+      attempts += 1;
+      if (attempts < 10) frame = window.requestAnimationFrame(focusTarget);
+    };
+    frame = window.requestAnimationFrame(focusTarget);
+
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(frame);
+    };
+  }, [initialBlockId, nodes, getNode, jumpToNode, onInitialBlockHandled]);
+
   /** 处理连线点击事件（弹出确认框后删除连接） */
   const onEdgeClick = useCallback((event: React.MouseEvent, edge: Edge) => {
     event.stopPropagation();
@@ -361,11 +431,19 @@ function TasksModuleInner({ subjectId, initialSessionId }: TasksModuleProps) {
     showConfirm(`确定要删除选中的 ${selectedNodes.length} 个任务块和 ${selectedEdges.length} 条连接线吗？`, { title: '批量删除' }).then(confirmed => {
       if (confirmed) {
         const selectedNodeIds = new Set(selectedNodes.map(n => n.id));
+        if (boardEntity && selectedNodeIds.size > 0) {
+          void unlinkMindMapTaskBlocks(boardEntity.id, [...selectedNodeIds]).catch(error => {
+            showAlert(
+              error instanceof Error ? error.message : '任务块已删除，但导图关联清理失败',
+              { title: '无法解除任务关联' },
+            );
+          });
+        }
         setNodes(nds => nds.filter(n => !selectedNodeIds.has(n.id)));
         setEdges(eds => eds.filter(e => !selectedNodeIds.has(e.source) && !selectedNodeIds.has(e.target) && !e.selected));
       }
     });
-  }, [nodes, edges, setNodes, setEdges, showConfirm]);
+  }, [nodes, edges, boardEntity, setNodes, setEdges, showAlert, showConfirm]);
 
   /**
    * 任务完成状态的递归向下传播逻辑

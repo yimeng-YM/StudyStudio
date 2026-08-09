@@ -77,6 +77,14 @@ export interface Relation {
    * - 'reference': 引用和依赖关系
    */
   type: string;
+  /**
+   * 关系的非索引补充信息。
+   *
+   * 关系两端始终使用实体 ID，节点级定位信息（例如导图节点 ID、任务块 ID）
+   * 放在 metadata 中。这样导出/导入时仍可沿用实体 ID 重映射逻辑，不会把节点
+   * 伪装成实体而导致关系在按学科导出时丢失。
+   */
+  metadata?: Record<string, unknown>;
   /** 关系建立的时间戳 */
   createdAt: number;
 }

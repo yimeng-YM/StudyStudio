@@ -15,7 +15,7 @@ export const CustomNode = memo(({ data, isConnectable }: NodeProps) => {
   return (
     <div
       className="group relative"
-      onTouchStart={() => {
+      onClick={() => {
         setShowToolbar(prev => !prev);
       }}
     >
@@ -90,16 +90,18 @@ export const CustomNode = memo(({ data, isConnectable }: NodeProps) => {
           <Plus size={14} />
         </button>
         <button
-          className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded text-amber-600"
+          className={`p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded text-amber-600 ${data.hasNoteLink ? 'bg-amber-50 dark:bg-amber-950/40 ring-1 ring-amber-300/70 dark:ring-amber-700/70' : ''}`}
           onClick={(e) => { e.stopPropagation(); setShowToolbar(false); data.onNote(); }}
-          title="查看/关联笔记"
+          title={data.hasNoteLink ? '打开关联笔记' : '关联笔记'}
+          aria-label={data.hasNoteLink ? '打开关联笔记' : '关联笔记'}
         >
           <FileText size={14} />
         </button>
         <button
-          className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded text-purple-600"
+          className={`p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded text-purple-600 ${data.hasTaskLink ? 'bg-purple-50 dark:bg-purple-950/40 ring-1 ring-purple-300/70 dark:ring-purple-700/70' : ''}`}
           onClick={(e) => { e.stopPropagation(); setShowToolbar(false); data.onTask(); }}
-          title="添加到任务清单"
+          title={data.hasTaskLink ? '打开关联任务' : '添加到任务清单'}
+          aria-label={data.hasTaskLink ? '打开关联任务' : '添加到任务清单'}
         >
           <CheckSquare size={14} />
         </button>
