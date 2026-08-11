@@ -487,7 +487,7 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
                 {mode === 'plan' ? "深度规划模式已开启" : mode === 'research' ? "深度研究模式已开启" : "快速执行模式已开启"}
               </p>
               <p className="text-xs text-zinc-400 max-w-[250px]">
-                {mode === 'plan' ? "Agent 将先进行思考规划，再逐步执行复杂任务。" : mode === 'research' ? "Agent 将多阶段采集资料、委派子Agent并行研究，产出论文级深度报告。" : "Agent 将直接响应请求，快速执行操作。"}
+                {mode === 'plan' ? "Agent 将先进行思考规划，再逐步执行复杂任务。" : mode === 'research' ? "Agent 将自主判断任务难度，按需精简章节、跳过大纲或并行委派子Agent。" : "Agent 将直接响应请求，快速执行操作。"}
               </p>
             </div>
           </div>

@@ -22,7 +22,7 @@ interface ModeSwitcherProps {
 const MODES: { key: AgentMode; label: string; desc: string; Icon: typeof Zap }[] = [
   { key: 'act', label: '快速执行', desc: '直接响应请求，快速执行操作', Icon: Zap },
   { key: 'plan', label: '深度规划', desc: '先思考规划，再逐步执行复杂任务', Icon: Brain },
-  { key: 'research', label: '深度研究', desc: '多阶段数据采集与分析，论文级深度报告', Icon: Microscope },
+  { key: 'research', label: '深度研究', desc: '按任务难度自适应调研与并行协作', Icon: Microscope },
 ];
 
 /** 各模式的视觉风格 token */
