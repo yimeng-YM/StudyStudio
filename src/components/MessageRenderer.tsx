@@ -155,6 +155,7 @@ const TOOL_NAMES: Record<string, string> = {
   'create_quiz': '创建测验',
   'update_quiz': '更新测验',
   'patch_quiz_questions': '精确编辑题库',
+  'reorder_content_list': '快速排序内容',
   'create_taskboard': '创建任务板',
   'update_taskboard': '更新任务板',
   'codebase_search': '代码搜索',
@@ -210,6 +211,7 @@ const getToolDescription = (name: string, args: string) => {
         if (counts.delete) parts.push(`删除 ${counts.delete} 题`);
         return `精确编辑题库: ${parts.join('、') || '无操作'}`;
       }
+      case 'reorder_content_list': return `排序${parsed.content_type === 'quiz_bank' ? '题库' : '笔记'}列表 (${Array.isArray(parsed.ordered_entity_ids) ? parsed.ordered_entity_ids.length : 0} 项)`;
       case 'get_note_lines': return `读取笔记第 ${parsed.start_line}–${parsed.end_line ?? '末尾'} 行`;
       case 'get_quiz_questions': return `读取题库题目`;
       case 'apply_diff': return `应用差异: ${parsed.path}`;
@@ -459,6 +461,8 @@ function getToolResultSummary(name: string, result: string): string {
         const a = parsed.added || 0, u = parsed.updated || 0, d = parsed.deleted || 0;
         return `+${a} ~${u} -${d}`;
       }
+      case 'reorder_content_list':
+        return `已排序 ${parsed.reordered_count || 0} 项`;
       case 'create_subject':
         return parsed.name || '已创建';
       case 'image_search': {
@@ -2136,7 +2140,15 @@ export interface TodoItem {
  * and a completion progress bar. Pinned at the top of the chat (see ChatWindow), so it
  * is kept compact: header + progress bar are always visible, the item list scrolls if long.
  */
-export function TodoCard({ items, sessionId }: { items: TodoItem[]; sessionId?: string | null }) {
+export function TodoCard({
+  items,
+  sessionId,
+  onClose,
+}: {
+  items: TodoItem[];
+  sessionId?: string | null;
+  onClose: () => void;
+}) {
   const completed = items.filter(i => i.status === 'completed').length;
   const pct = items.length > 0 ? Math.round((completed / items.length) * 100) : 0;
   const allCompleted = items.length > 0 && completed === items.length;
@@ -2174,21 +2186,32 @@ export function TodoCard({ items, sessionId }: { items: TodoItem[]; sessionId?: 
 
   return (
     <div className="p-3.5 bg-white/70 dark:bg-zinc-800/80 backdrop-blur-sm rounded-2xl ring-1 ring-zinc-900/5 dark:ring-zinc-100/10 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
-      <button
-        type="button"
-        onClick={toggleCollapsed}
-        aria-expanded={!collapsed}
-        aria-label={collapsed ? '展开任务进度' : '收起任务进度'}
-        className="w-full min-h-11 flex items-center justify-between gap-3 -my-2 px-0 py-2 text-left rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-      >
-        <span className="flex items-center gap-1.5 min-w-0">
-          {collapsed ? <ChevronRight size={15} className="text-zinc-400 shrink-0" /> : <ChevronDown size={15} className="text-zinc-400 shrink-0" />}
-          <span className="text-xs font-semibold text-zinc-600 dark:text-zinc-300 tracking-wide truncate">
-            任务进度{allCompleted ? ' · 已完成' : ''}
+      <div className="flex items-center gap-2 -my-2">
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? '展开任务进度' : '收起任务进度'}
+          className="flex-1 min-w-0 min-h-11 flex items-center justify-between gap-3 px-0 py-2 text-left rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+        >
+          <span className="flex items-center gap-1.5 min-w-0">
+            {collapsed ? <ChevronRight size={15} className="text-zinc-400 shrink-0" /> : <ChevronDown size={15} className="text-zinc-400 shrink-0" />}
+            <span className="text-xs font-semibold text-zinc-600 dark:text-zinc-300 tracking-wide truncate">
+              任务进度{allCompleted ? ' · 已完成' : ''}
+            </span>
           </span>
-        </span>
-        <span className="text-[11px] text-zinc-400 dark:text-zinc-500 whitespace-nowrap">{completed}/{items.length} · {pct}%</span>
-      </button>
+          <span className="text-[11px] text-zinc-400 dark:text-zinc-500 whitespace-nowrap">{completed}/{items.length} · {pct}%</span>
+        </button>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="关闭任务进度卡片"
+          title="关闭任务卡片"
+          className="min-w-11 min-h-11 -mr-2 inline-flex items-center justify-center rounded-lg text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 dark:hover:text-zinc-200 dark:hover:bg-zinc-700/70 active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+        >
+          <X size={16} />
+        </button>
+      </div>
       <div
         className={`w-full h-1.5 bg-zinc-100 dark:bg-zinc-700/70 rounded-full overflow-hidden ${collapsed ? 'mt-2' : 'mt-2 mb-3'}`}
         role="progressbar"

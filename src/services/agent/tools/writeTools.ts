@@ -987,6 +987,109 @@ export const update_taskboard = async ({ entityId, title, content }: { entityId:
 };
 
 /**
+ * 一次性重排指定学科的笔记或题库列表。
+ * ordered_entity_ids 必须是该类型全部实体 ID 的完整排列，避免 AI 遗漏内容时产生隐式副作用。
+ * 写入的 order 会匹配当前全局排序方向，确保切换到手动排序后仍按传入顺序从上到下显示。
+ */
+export const reorder_content_list = async ({
+  subjectId,
+  content_type,
+  ordered_entity_ids,
+}: {
+  subjectId: string;
+  content_type: 'note' | 'quiz_bank';
+  ordered_entity_ids: string[];
+}) => {
+  if (content_type !== 'note' && content_type !== 'quiz_bank') {
+    throw new ToolError(
+      'invalid_content_type',
+      `不支持排序类型 ${content_type}`,
+      { allowed: ['note', 'quiz_bank'] },
+      '请将 content_type 设为 note（笔记）或 quiz_bank（题库）。',
+    );
+  }
+  if (!Array.isArray(ordered_entity_ids)) {
+    throw new ToolError(
+      'invalid_order_list',
+      'ordered_entity_ids 必须是实体 ID 数组。',
+      undefined,
+      '请先调用 get_subject_details，再按期望顺序提供该类型的全部实体 ID。',
+    );
+  }
+
+  const subject = await db.subjects.get(subjectId);
+  if (!subject) {
+    throw new ToolError(
+      'subject_not_found',
+      `未找到学科 ${subjectId}`,
+      { subjectId },
+      '请调用 get_subjects 获取最新的学科 ID。',
+    );
+  }
+
+  const entities = await db.entities.where({ subjectId, type: content_type }).toArray();
+  const entityById = new Map(entities.map(entity => [entity.id, entity]));
+  const seenIds = new Set<string>();
+  const duplicateIds = new Set<string>();
+  for (const id of ordered_entity_ids) {
+    if (seenIds.has(id)) duplicateIds.add(id);
+    seenIds.add(id);
+  }
+  const unexpected = [...new Set(ordered_entity_ids.filter(id => !entityById.has(id)))];
+  const requestedIds = new Set(ordered_entity_ids);
+  const missing = entities.filter(entity => !requestedIds.has(entity.id)).map(entity => entity.id);
+
+  if (duplicateIds.size > 0 || unexpected.length > 0 || missing.length > 0 || ordered_entity_ids.length !== entities.length) {
+    throw new ToolError(
+      'incomplete_entity_order',
+      `排序列表必须完整包含该学科的全部${content_type === 'note' ? '笔记' : '题库'}，且每个 ID 只能出现一次。`,
+      {
+        expected_count: entities.length,
+        received_count: ordered_entity_ids.length,
+        missing_ids: missing,
+        unexpected_ids: unexpected,
+        duplicate_ids: [...duplicateIds],
+      },
+      '请重新调用 get_subject_details 获取最新列表，然后提交该类型全部实体 ID 的完整排列。',
+    );
+  }
+
+  let manualDirection: 'asc' | 'desc' = 'asc';
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const preference = JSON.parse(localStorage.getItem('globalSortPreference') || '{}');
+      if (preference.direction === 'desc') manualDirection = 'desc';
+    }
+  } catch { /* 使用升序兜底 */ }
+
+  const previous = [...entities].sort((a, b) => {
+    const orderDiff = (a.order ?? 0) - (b.order ?? 0);
+    if (orderDiff !== 0) return manualDirection === 'asc' ? orderDiff : -orderDiff;
+    return b.createdAt - a.createdAt;
+  });
+  const reordered = ordered_entity_ids.map(id => entityById.get(id)!);
+  const normalized = reordered.map((entity, index) => ({
+    ...entity,
+    order: manualDirection === 'asc' ? (index + 1) * 1000 : (reordered.length - index) * 1000,
+  }));
+
+  await db.transaction('rw', db.entities, async () => {
+    await db.entities.bulkPut(normalized);
+  });
+
+  const formatOrder = (items: typeof entities) => items.map((item, index) => `${index + 1}. ${item.title}`).join('\n');
+  return {
+    subjectId,
+    subject_title: subject.name,
+    content_type,
+    manual_sort_direction: manualDirection,
+    reordered_count: reordered.length,
+    ordered_items: reordered.map((entity, index) => ({ position: index + 1, id: entity.id, title: entity.title })),
+    _diff: { before: formatOrder(previous), after: formatOrder(reordered) },
+  };
+};
+
+/**
  * Delete an entity (note, quiz, mindmap, or taskboard) by its ID.
  * Use with caution — this is irreversible. The entity and all its content are permanently removed.
  *

@@ -82,6 +82,7 @@ You have a complete set of tools to operate on user data:
 - delete_note_section: Delete a whole section by line range or heading text (no need to match the exact text)
 - create_quiz / update_quiz: Create or fully replace a quiz bank
 - patch_quiz_questions: Add / update / delete individual questions in a quiz bank
+- reorder_content_list: Set the manual top-to-bottom order of all note cards or all quiz-bank cards in a subject
 - create_taskboard / update_taskboard: Manage task boards
 - delete_entity: Permanently delete an entity (note, quiz, mindmap, taskboard). Use to clean up cache notes and unwanted content.
 

@@ -42,6 +42,7 @@ export const ToolRegistry = {
   patch_quiz_questions: writeTools.patch_quiz_questions,
   create_taskboard: writeTools.create_taskboard,
   update_taskboard: writeTools.update_taskboard,
+  reorder_content_list: writeTools.reorder_content_list,
 
   // 流程控制工具，用于在对话中辅助 AI 管理任务流状态
   present_plan: async (_args: { plan_summary: string }) => ({ status: 'success', message: 'Plan presented to user, awaiting confirmation.' }),
@@ -111,6 +112,7 @@ For notes and quizzes, prefer surgical edits over full rewrites:
 | Finding where a term occurs in a note | search_in_note |
 | Gauging a note's size/structure without full read | get_note_stats |
 | Fixing or adding a few questions | patch_quiz_questions |
+| Reordering note or quiz cards | reorder_content_list |
 | Rewriting the majority of a note | update_note |
 | Regenerating most questions | update_quiz |
 
@@ -181,6 +183,12 @@ Structure:
 - Each block MUST contain 5-10 items.
 - **IMPORTANT**: Each item in "items" MUST be an object: { "id": string, "text": string, "completed": boolean }. NEVER use numbers or strings directly in the items array.
 - Ensure logical flow and actionable descriptions.
+
+### Manual Card Ordering (reorder_content_list)
+- Use this tool for quickly arranging note cards or quiz-bank cards in the user's manual sort order.
+- Always call get_subject_details immediately first, then submit the selected type's complete ID list exactly once in the desired top-to-bottom order.
+- Call separately for notes (content_type: "note") and quiz banks (content_type: "quiz_bank").
+- This changes card order only; never rewrite content just to sort a list.
 `;
 
 export const ToolDefinitions = [
@@ -215,7 +223,7 @@ Use this tool to:
 Parameters:
 - subjectId: ID of the subject (required)
 
-Returns: A list of all entities under the specified subject`,
+Returns: A list of all entities under the specified subject, including each entity's current manual order value`,
       parameters: {
         type: 'object',
         properties: {
@@ -1238,6 +1246,41 @@ Returns: Confirmation with the deleted entity's title.`,
           entityId: { type: 'string', description: 'The ID of the entity to delete' }
         },
         required: ['entityId']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'reorder_content_list',
+      description: `Set the manual card order for all notes OR all quiz banks in one subject.
+
+Use this tool when the user asks to sort, arrange, sequence, prioritize, or reorder the note list / quiz-bank list. This changes only the cards' manual order fields; it never edits note content or quiz questions.
+
+Required workflow:
+1. Call get_subject_details immediately before sorting to get the latest entity IDs and current order values.
+2. Select one content type: "note" or "quiz_bank".
+3. Provide ALL entity IDs of that type exactly once in the desired top-to-bottom order.
+4. Call the tool separately if both notes and quiz banks need sorting.
+
+The tool honors the user's current global sort direction, so the supplied order becomes the actual top-to-bottom order when manual sorting is selected.
+
+Parameters:
+- subjectId: ID of the subject whose list will be reordered
+- content_type: "note" for note cards or "quiz_bank" for quiz-bank cards
+- ordered_entity_ids: Complete ordered list of every entity ID of that type, from top to bottom`,
+      parameters: {
+        type: 'object',
+        properties: {
+          subjectId: { type: 'string', description: 'The subject ID containing the cards to reorder' },
+          content_type: { type: 'string', enum: ['note', 'quiz_bank'], description: 'Which card list to reorder' },
+          ordered_entity_ids: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Every entity ID of the selected type exactly once, in desired top-to-bottom order'
+          }
+        },
+        required: ['subjectId', 'content_type', 'ordered_entity_ids']
       }
     }
   },

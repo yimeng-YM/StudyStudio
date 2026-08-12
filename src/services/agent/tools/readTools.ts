@@ -31,6 +31,8 @@ export const get_subject_details = async ({ subjectId }: { subjectId: string }) 
     title: e.title,
     createdAt: e.createdAt,
     updatedAt: e.updatedAt,
+    lastAccessed: e.lastAccessed,
+    order: e.order,
     tags: e.tags
   }));
 };

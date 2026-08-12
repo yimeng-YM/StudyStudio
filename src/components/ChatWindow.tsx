@@ -91,12 +91,36 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
   /** 滚动到顶/底浮钮的可见性（仅在跨越阈值时 setState，避免每像素重渲染） */
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
+  /** 当前会话中被用户关闭的 Todo 任务集合；状态变化不会重新显示，任务集合变化时会重新出现。 */
+  const [dismissedTodoIdentity, setDismissedTodoIdentity] = useState('');
 
   /**
    * 使用自定义 Hook 管理聊天会话
    * 包含消息列表、加载状态、流式渲染状态文字以及发送消息等核心逻辑
    */
   const { messages, loading, status, currentSessionId, sendMessage, clearSession, retry, stop, subAgentStates, todoList, askState, answerAsk } = useChatSession(sessionId || null, mode);
+  const todoIdentity = todoList.map(item => `${item.id}\u0000${item.text}`).join('\u0001');
+  const todoDismissalKey = currentSessionId ? `todo-card-dismissed:${currentSessionId}` : null;
+  const showTodoCard = todoList.length > 0 && dismissedTodoIdentity !== todoIdentity;
+
+  useEffect(() => {
+    if (!todoDismissalKey) {
+      setDismissedTodoIdentity('');
+      return;
+    }
+    try {
+      setDismissedTodoIdentity(localStorage.getItem(todoDismissalKey) || '');
+    } catch {
+      setDismissedTodoIdentity('');
+    }
+  }, [todoDismissalKey]);
+
+  const closeTodoCard = () => {
+    setDismissedTodoIdentity(todoIdentity);
+    if (todoDismissalKey) {
+      try { localStorage.setItem(todoDismissalKey, todoIdentity); } catch { /* ignore */ }
+    }
+  };
 
   /**
    * 实时查询所有历史会话
@@ -467,15 +491,20 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
       {/* 主区域：常驻进度卡片（可选）+ 滚动消息列表 + 滚动导航浮钮 */}
       <div className="flex-1 min-h-0 flex flex-col relative">
         {/* 研究进度卡片：常驻窗口顶部，不随消息滚动（pt-14 避开悬浮的头部按钮） */}
-        {todoList.length > 0 && (
+        {showTodoCard && (
           <div className="shrink-0 px-4 pt-14 pb-1 z-10">
-            <TodoCard key={currentSessionId || 'draft'} items={todoList} sessionId={currentSessionId} />
+            <TodoCard
+              key={currentSessionId || 'draft'}
+              items={todoList}
+              sessionId={currentSessionId}
+              onClose={closeTodoCard}
+            />
           </div>
         )}
         <div
           ref={chatScrollRef}
           onScroll={handleScroll}
-          className={`flex-1 min-h-0 overflow-y-auto p-4 space-y-6 scroll-smooth ${todoList.length > 0 ? 'pt-2' : 'pt-16'}`}
+          className={`flex-1 min-h-0 overflow-y-auto p-4 space-y-6 scroll-smooth ${showTodoCard ? 'pt-2' : 'pt-16'}`}
         >
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-zinc-400 space-y-4">
