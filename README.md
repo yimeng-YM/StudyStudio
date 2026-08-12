@@ -21,7 +21,7 @@
 - Python 3.11 或更高版本
 - Docker Desktop
 
-直接双击 `start.bat`，或在 PowerShell 中运行：
+直接双击 `start.bat`，或在 PowerShell 中运行。启动窗口会持续显示 API 访问日志；关闭该窗口时，启动器会同时停止本地 API 和 SearXNG，因此使用搜索功能期间请保持窗口打开：
 
 ```powershell
 .\start.ps1
