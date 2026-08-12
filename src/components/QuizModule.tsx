@@ -15,7 +15,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { DataManager } from '@/services/dataManager';
 import { cn, generateUUID, handleEditorPasteImage } from '@/lib/utils';
 import { useDialog } from '@/components/ui/DialogProvider';
-import { MessageRenderer } from '@/components/MessageRenderer';
+import { ImagePreviewBoundary, MessageRenderer } from '@/components/MessageRenderer';
 import { useUIContext } from '@/hooks/useUIContext';
 import { useResizable } from '@/hooks/useResizable';
 import { ResizeHandle } from '@/components/ui/ResizeHandle';
@@ -917,10 +917,12 @@ export function QuizModule({ subjectId }: QuizModuleProps) {
   );
 
   return (
-    <div className="flex h-full gap-4 relative">
-      {desktopLayout}
-      {mobileLayout}
-      {contextMenu}
-    </div>
+    <ImagePreviewBoundary>
+      <div className="flex h-full gap-4 relative">
+        {desktopLayout}
+        {mobileLayout}
+        {contextMenu}
+      </div>
+    </ImagePreviewBoundary>
   );
 }

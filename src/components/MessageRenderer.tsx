@@ -1,4 +1,6 @@
-import { useState, useEffect, useRef, useMemo, memo } from 'react';
+import { createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import remarkGfm from 'remark-gfm';
@@ -51,7 +53,7 @@ SyntaxHighlighter.registerLanguage('cpp', cpp);
 
 import 'katex/dist/katex.min.css';
 import { MessageContentPart, ToolCall } from '@/services/ai';
-import { FileText, FileSpreadsheet, FileCode, FileJson, ChevronDown, ChevronRight, CheckCircle2, Check, Loader2, GitCompare, Eye, Code2, XCircle, Brain, PenLine } from 'lucide-react';
+import { FileText, FileSpreadsheet, FileCode, FileJson, ChevronDown, ChevronRight, CheckCircle2, Check, Loader2, GitCompare, Eye, Code2, XCircle, Brain, PenLine, X, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 import ChartRenderer from '@/components/charts/ChartRenderer';
 import type { ChartConfig } from '@/components/charts/ChartRenderer';
 import { KpiGrid } from '@/components/charts/KpiCard';
@@ -942,6 +944,379 @@ interface MessageRendererProps {
   isUser?: boolean;
 }
 
+interface ImagePreviewContextValue {
+  openImage: (src: string, alt?: string, trigger?: HTMLElement | null) => void;
+}
+
+const ImagePreviewContext = createContext<ImagePreviewContextValue | null>(null);
+
+const IMAGE_ZOOM_MIN = 0.5;
+const IMAGE_ZOOM_MAX = 5;
+const IMAGE_ZOOM_STEP = 0.25;
+
+interface ImageViewState {
+  zoom: number;
+  x: number;
+  y: number;
+}
+
+const DEFAULT_IMAGE_VIEW: ImageViewState = { zoom: 1, x: 0, y: 0 };
+
+function clampImageZoom(zoom: number): number {
+  return Math.min(IMAGE_ZOOM_MAX, Math.max(IMAGE_ZOOM_MIN, zoom));
+}
+
+/**
+ * 为指定内容区域启用图片大图预览。
+ * 预览层通过 Portal 挂到 body，避免被笔记/题库内部的 overflow 与动画容器裁切。
+ */
+export function ImagePreviewBoundary({ children }: { children: ReactNode }) {
+  const [preview, setPreview] = useState<{ src: string; alt?: string } | null>(null);
+  const [view, setView] = useState<ImageViewState>(DEFAULT_IMAGE_VIEW);
+  const [isDragging, setIsDragging] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const imageRef = useRef<HTMLImageElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const triggerRef = useRef<HTMLElement | null>(null);
+  const viewRef = useRef<ImageViewState>(DEFAULT_IMAGE_VIEW);
+  const pointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const dragRef = useRef<{ pointerId: number; startX: number; startY: number; originX: number; originY: number } | null>(null);
+  const pinchRef = useRef<{ distance: number; zoom: number } | null>(null);
+  const suppressStageClickRef = useRef(false);
+  const reduceMotion = useReducedMotion();
+
+  const updateView = useCallback((updater: (current: ImageViewState) => ImageViewState) => {
+    setView((current) => {
+      const next = updater(current);
+      viewRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const clampPan = useCallback((x: number, y: number, zoom: number) => {
+    const stage = stageRef.current;
+    const image = imageRef.current;
+    if (!stage || !image || zoom <= 1) return { x: 0, y: 0 };
+
+    const maxX = Math.max(0, (image.offsetWidth * zoom - stage.clientWidth) / 2);
+    const maxY = Math.max(0, (image.offsetHeight * zoom - stage.clientHeight) / 2);
+    return {
+      x: Math.min(maxX, Math.max(-maxX, x)),
+      y: Math.min(maxY, Math.max(-maxY, y)),
+    };
+  }, []);
+
+  const setZoomLevel = useCallback((zoom: number) => {
+    updateView((current) => {
+      const nextZoom = clampImageZoom(zoom);
+      const position = clampPan(current.x, current.y, nextZoom);
+      return { zoom: nextZoom, ...position };
+    });
+  }, [clampPan, updateView]);
+
+  const adjustZoom = useCallback((delta: number) => {
+    updateView((current) => {
+      const nextZoom = clampImageZoom(current.zoom + delta);
+      const position = clampPan(current.x, current.y, nextZoom);
+      return { zoom: nextZoom, ...position };
+    });
+  }, [clampPan, updateView]);
+
+  const resetView = useCallback(() => {
+    viewRef.current = DEFAULT_IMAGE_VIEW;
+    setView(DEFAULT_IMAGE_VIEW);
+  }, []);
+
+  const openImage = useCallback((src: string, alt?: string, trigger?: HTMLElement | null) => {
+    if (!src) return;
+    triggerRef.current = trigger ?? null;
+    resetView();
+    setPreview({ src, alt: alt?.trim() || undefined });
+  }, [resetView]);
+
+  const closePreview = useCallback(() => setPreview(null), []);
+  const contextValue = useMemo(() => ({ openImage }), [openImage]);
+
+  useEffect(() => {
+    if (!preview) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const focusTimer = window.setTimeout(() => closeButtonRef.current?.focus(), 0);
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closePreview();
+      } else if (event.key === '+' || event.key === '=') {
+        event.preventDefault();
+        adjustZoom(IMAGE_ZOOM_STEP);
+      } else if (event.key === '-' || event.key === '_') {
+        event.preventDefault();
+        adjustZoom(-IMAGE_ZOOM_STEP);
+      } else if (event.key === '0') {
+        event.preventDefault();
+        resetView();
+      } else if (event.key === 'Tab') {
+        const focusable = Array.from(dialogRef.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? []);
+        if (focusable.length === 0) return;
+        const currentIndex = focusable.indexOf(document.activeElement as HTMLButtonElement);
+        const nextIndex = event.shiftKey
+          ? (currentIndex <= 0 ? focusable.length - 1 : currentIndex - 1)
+          : (currentIndex === focusable.length - 1 ? 0 : currentIndex + 1);
+        event.preventDefault();
+        focusable[nextIndex]?.focus();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.clearTimeout(focusTimer);
+      window.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      triggerRef.current?.focus();
+      triggerRef.current = null;
+    };
+  }, [preview, closePreview, adjustZoom, resetView]);
+
+  useEffect(() => {
+    if (!preview) return;
+    const clampCurrentPan = () => {
+      updateView((current) => ({ ...current, ...clampPan(current.x, current.y, current.zoom) }));
+    };
+    window.addEventListener('resize', clampCurrentPan);
+    return () => window.removeEventListener('resize', clampCurrentPan);
+  }, [preview, clampPan, updateView]);
+
+  const handlePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+    const pointers = Array.from(pointersRef.current.values());
+    if (pointers.length >= 2) {
+      const [first, second] = pointers;
+      pinchRef.current = {
+        distance: Math.hypot(second.x - first.x, second.y - first.y),
+        zoom: viewRef.current.zoom,
+      };
+      dragRef.current = null;
+      setIsDragging(true);
+      return;
+    }
+
+    if (viewRef.current.zoom > 1) {
+      dragRef.current = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        originX: viewRef.current.x,
+        originY: viewRef.current.y,
+      };
+      setIsDragging(true);
+    }
+  }, []);
+
+  const handlePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (!pointersRef.current.has(event.pointerId)) return;
+    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    const pointers = Array.from(pointersRef.current.values());
+
+    if (pointers.length >= 2 && pinchRef.current) {
+      const [first, second] = pointers;
+      const distance = Math.hypot(second.x - first.x, second.y - first.y);
+      if (pinchRef.current.distance > 0) {
+        setZoomLevel(pinchRef.current.zoom * (distance / pinchRef.current.distance));
+        suppressStageClickRef.current = true;
+      }
+      return;
+    }
+
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const deltaX = event.clientX - drag.startX;
+    const deltaY = event.clientY - drag.startY;
+    if (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) suppressStageClickRef.current = true;
+    updateView((current) => ({
+      ...current,
+      ...clampPan(drag.originX + deltaX, drag.originY + deltaY, current.zoom),
+    }));
+  }, [clampPan, setZoomLevel, updateView]);
+
+  const handlePointerEnd = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    pointersRef.current.delete(event.pointerId);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    const remaining = Array.from(pointersRef.current.entries());
+    if (remaining.length < 2) pinchRef.current = null;
+    if (remaining.length === 1 && viewRef.current.zoom > 1) {
+      const [pointerId, point] = remaining[0];
+      dragRef.current = {
+        pointerId,
+        startX: point.x,
+        startY: point.y,
+        originX: viewRef.current.x,
+        originY: viewRef.current.y,
+      };
+      setIsDragging(true);
+    } else {
+      dragRef.current = null;
+      setIsDragging(false);
+    }
+  }, []);
+
+  const handleStageClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    // 画布自行判断空白点击；阻止事件继续冒泡到最外层遮罩，
+    // 否则拖拽结束后用于抑制的 click 仍会触发遮罩关闭。
+    event.stopPropagation();
+    if (suppressStageClickRef.current) {
+      suppressStageClickRef.current = false;
+      return;
+    }
+    if (event.target === event.currentTarget) closePreview();
+  }, [closePreview]);
+
+  const controlButtonClass = 'flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-white transition-colors hover:bg-white/15 active:bg-white/25 disabled:cursor-not-allowed disabled:opacity-35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white';
+  const isReset = view.zoom === 1 && view.x === 0 && view.y === 0;
+
+  const previewLayer = typeof document !== 'undefined' ? createPortal(
+    <AnimatePresence>
+      {preview && (
+        <motion.div
+          ref={dialogRef}
+          className="fixed inset-0 z-[1000] flex min-h-0 flex-col items-center bg-black/85 backdrop-blur-sm"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: reduceMotion ? 0 : 0.18 }}
+          onClick={(event) => {
+            if (event.target === event.currentTarget) closePreview();
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-label={preview.alt ? `查看大图：${preview.alt}` : '查看大图'}
+          aria-describedby="image-preview-help"
+        >
+          <button
+            ref={closeButtonRef}
+            type="button"
+            onClick={(event) => { event.stopPropagation(); closePreview(); }}
+            className="absolute right-4 top-4 z-10 flex h-12 w-12 items-center justify-center rounded-full bg-black/55 text-white shadow-lg ring-1 ring-white/25 transition-colors hover:bg-black/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+            style={{ top: 'max(1rem, env(safe-area-inset-top))', right: 'max(1rem, env(safe-area-inset-right))' }}
+            aria-label="关闭大图预览"
+            title="关闭（Esc）"
+          >
+            <X size={26} aria-hidden="true" />
+          </button>
+
+          <motion.div
+            ref={stageRef}
+            className={`flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden px-4 pb-3 pt-16 ${view.zoom > 1 ? (isDragging ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-default'}`}
+            initial={{ opacity: 0, scale: reduceMotion ? 1 : 0.96 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: reduceMotion ? 1 : 0.98 }}
+            transition={{ duration: reduceMotion ? 0 : 0.2, ease: 'easeOut' }}
+            onClick={handleStageClick}
+            onDoubleClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              if (view.zoom > 1) resetView();
+              else setZoomLevel(2);
+            }}
+            onWheel={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              adjustZoom(event.deltaY < 0 ? IMAGE_ZOOM_STEP : -IMAGE_ZOOM_STEP);
+            }}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerEnd}
+            onPointerCancel={handlePointerEnd}
+            style={{ touchAction: 'none' }}
+          >
+            <img
+              ref={imageRef}
+              src={preview.src}
+              alt={preview.alt || ''}
+              className={`max-h-[calc(100%-2rem)] max-w-[calc(100%-2rem)] select-none object-contain will-change-transform ${isDragging || reduceMotion ? 'transition-none' : 'transition-transform duration-150 ease-out'}`}
+              style={{ transform: `translate3d(${view.x}px, ${view.y}px, 0) scale(${view.zoom})` }}
+              draggable={false}
+              onClick={(event) => {
+                event.stopPropagation();
+                suppressStageClickRef.current = false;
+              }}
+            />
+          </motion.div>
+
+          {preview.alt && (
+            <p className="mx-4 mb-3 max-w-[min(90vw,48rem)] shrink-0 truncate rounded-full bg-black/55 px-4 py-2 text-center text-sm text-white/90" title={preview.alt} onClick={(event) => event.stopPropagation()}>
+              {preview.alt}
+            </p>
+          )}
+
+          <motion.div
+            className="mb-4 flex shrink-0 items-center gap-1 rounded-2xl bg-black/65 p-1.5 text-white shadow-2xl ring-1 ring-white/20 backdrop-blur-md"
+            style={{ marginBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+            initial={{ opacity: 0, y: reduceMotion ? 0 : 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: reduceMotion ? 0 : 8 }}
+            transition={{ duration: reduceMotion ? 0 : 0.2 }}
+            role="toolbar"
+            aria-label="图片缩放控件"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className={controlButtonClass}
+              onClick={() => adjustZoom(-IMAGE_ZOOM_STEP)}
+              disabled={view.zoom <= IMAGE_ZOOM_MIN}
+              aria-label="缩小图片"
+              title="缩小（-）"
+            >
+              <ZoomOut size={22} aria-hidden="true" />
+            </button>
+            <output className="min-w-16 select-none text-center text-sm font-semibold tabular-nums" aria-live="polite" aria-label={`当前缩放比例 ${Math.round(view.zoom * 100)}%`}>
+              {Math.round(view.zoom * 100)}%
+            </output>
+            <button
+              type="button"
+              className={controlButtonClass}
+              onClick={() => adjustZoom(IMAGE_ZOOM_STEP)}
+              disabled={view.zoom >= IMAGE_ZOOM_MAX}
+              aria-label="放大图片"
+              title="放大（+）"
+            >
+              <ZoomIn size={22} aria-hidden="true" />
+            </button>
+            <div className="mx-1 h-7 w-px bg-white/20" aria-hidden="true" />
+            <button
+              type="button"
+              className={controlButtonClass}
+              onClick={resetView}
+              disabled={isReset}
+              aria-label="重置图片大小和位置"
+              title="重置视图（0）"
+            >
+              <RotateCcw size={21} aria-hidden="true" />
+            </button>
+          </motion.div>
+          <p id="image-preview-help" className="sr-only">使用加减按钮、键盘加减键或鼠标滚轮缩放；放大后可拖动图片，双击或按数字 0 复位，按 Esc 关闭。</p>
+        </motion.div>
+      )}
+    </AnimatePresence>,
+    document.body,
+  ) : null;
+
+  return (
+    <ImagePreviewContext.Provider value={contextValue}>
+      {children}
+      {previewLayer}
+    </ImagePreviewContext.Provider>
+  );
+}
+
 /**
  * 宽松检测：内容是否包含任何 HTML 标签（用于决定是否显示 View/Code 切换按钮）
  */
@@ -1024,13 +1399,17 @@ export function ViewCodeToggle({ mode, onChange, className = '' }: { mode: 'view
  * HTML 预览组件：view 模式用 iframe 渲染可交互 HTML，code 模式用 SyntaxHighlighter 展示源码
  */
 /** 将用户 HTML 包装为安全的 iframe srcdoc：注入防溢出样式，防止错误文本撑开布局 */
-function wrapHtmlForIframe(html: string, reportSelection: boolean): string {
+function wrapHtmlForIframe(html: string, reportSelection: boolean, enableImagePreview: boolean): string {
+  const imagePreviewCSS = enableImagePreview
+    ? 'img{cursor:zoom-in!important}img:focus-visible{outline:3px solid #3b82f6!important;outline-offset:3px!important}'
+    : '';
   const overflowCSS = `<style>
 *,*::before,*::after{max-width:100%!important;overflow-wrap:break-word!important;word-break:break-word!important;box-sizing:border-box!important}
 pre,code{white-space:pre-wrap!important;overflow-wrap:break-word!important;word-break:break-all!important;max-width:100%!important;display:block!important}
 img,svg,canvas,video,iframe,object{max-width:100%!important;height:auto!important}
 table{max-width:100%!important;display:block!important;overflow-x:auto!important}
 body{margin:0;padding:8px;font-family:system-ui,sans-serif;font-size:14px;max-width:100%!important;overflow-x:hidden!important}
+${imagePreviewCSS}
 </style>`;
   // iframe 仅开放 allow-scripts（不透明源），父页面无法读取 contentDocument，
   // 故注入脚本主动通过 postMessage 上报内容高度，供父组件按需调整 iframe 高度
@@ -1069,8 +1448,51 @@ body{margin:0;padding:8px;font-family:system-ui,sans-serif;font-size:14px;max-wi
       parent.postMessage({ __htmlPreviewSelection: { text: text, section: section, x: event.clientX, y: event.clientY } }, '*');
     } catch (e) {}
   });
+  })();</script>` : '';
+  const imagePreviewScript = enableImagePreview ? `<script>(function () {
+  function imageFromTarget(target) {
+    return target && target.closest ? target.closest('img') : null;
+  }
+  function prepareImages() {
+    var images = document.querySelectorAll('img');
+    for (var i = 0; i < images.length; i++) {
+      images[i].setAttribute('tabindex', '0');
+      images[i].setAttribute('role', 'button');
+      if (!images[i].getAttribute('aria-label')) {
+        images[i].setAttribute('aria-label', images[i].getAttribute('alt') ? '查看大图：' + images[i].getAttribute('alt') : '查看大图');
+      }
+    }
+  }
+  function openImage(image) {
+    var src = image.currentSrc || image.src || image.getAttribute('src') || '';
+    if (!src) return;
+    try {
+      parent.postMessage({ __htmlPreviewImage: { src: src, alt: image.getAttribute('alt') || '' } }, '*');
+    } catch (e) {}
+  }
+  document.addEventListener('click', function (event) {
+    var image = imageFromTarget(event.target);
+    if (!image) return;
+    event.preventDefault();
+    event.stopPropagation();
+    openImage(image);
+  }, true);
+  document.addEventListener('keydown', function (event) {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    var image = imageFromTarget(event.target);
+    if (!image) return;
+    event.preventDefault();
+    event.stopPropagation();
+    openImage(image);
+  }, true);
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', prepareImages);
+  else prepareImages();
+  window.addEventListener('load', prepareImages);
+  if (window.MutationObserver && document.documentElement) {
+    try { new MutationObserver(prepareImages).observe(document.documentElement, { childList: true, subtree: true }); } catch (e) {}
+  }
 })();</script>` : '';
-  const headInject = overflowCSS + heightReportScript + selectionReportScript;
+  const headInject = overflowCSS + heightReportScript + selectionReportScript + imagePreviewScript;
   const trimmed = html.trim();
   // 已有完整 HTML 结构：注入到 head 中
   if (/^\s*<(!DOCTYPE|html)/i.test(trimmed)) {
@@ -1088,10 +1510,14 @@ body{margin:0;padding:8px;font-family:system-ui,sans-serif;font-size:14px;max-wi
 
 export function HtmlPreview({ content, mode, autoHeight = true, className = '', onSelectionContextMenu }: { content: string; mode: 'view' | 'code'; autoHeight?: boolean; className?: string; onSelectionContextMenu?: (details: { text: string; section?: string; clientX: number; clientY: number }) => void }) {
   const isDark = useIsDark();
+  const imagePreview = useContext(ImagePreviewContext);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [measuredHeight, setMeasuredHeight] = useState(300);
 
-  const srcdoc = useMemo(() => (mode === 'view' ? wrapHtmlForIframe(content, Boolean(onSelectionContextMenu)) : ''), [mode, content, onSelectionContextMenu]);
+  const srcdoc = useMemo(
+    () => (mode === 'view' ? wrapHtmlForIframe(content, Boolean(onSelectionContextMenu), Boolean(imagePreview)) : ''),
+    [mode, content, onSelectionContextMenu, imagePreview],
+  );
 
   // autoHeight 模式：监听 iframe 内通过 postMessage 上报的内容高度
   // iframe 仅开放 allow-scripts（不透明源），父页面无法读取 contentDocument，
@@ -1134,6 +1560,19 @@ export function HtmlPreview({ content, mode, autoHeight = true, className = '', 
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
   }, [mode, onSelectionContextMenu, srcdoc]);
+
+  useEffect(() => {
+    if (mode !== 'view' || !imagePreview || !iframeRef.current) return;
+    const iframe = iframeRef.current;
+    const onMessage = (event: MessageEvent) => {
+      if (event.source !== iframe.contentWindow) return;
+      const image = (event.data as { __htmlPreviewImage?: { src?: unknown; alt?: unknown } } | null)?.__htmlPreviewImage;
+      if (!image || typeof image.src !== 'string' || !image.src) return;
+      imagePreview.openImage(image.src, typeof image.alt === 'string' ? image.alt : undefined, iframe);
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [mode, imagePreview, srcdoc]);
 
   if (mode === 'code') {
     return (
@@ -1272,7 +1711,8 @@ const TONE_CLASSES: Record<'blue' | 'green' | 'violet' | 'amber' | 'red' | 'oran
  * 支持从 Dexie (IndexedDB) 加载 attachment: 协议的本地图片数据
  */
 function AsyncImage(props: any) {
-  const { src, alt, className } = props;
+  const { src, alt, className, onClick, onKeyDown, ...imageProps } = props;
+  const imagePreview = useContext(ImagePreviewContext);
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -1315,7 +1755,36 @@ function AsyncImage(props: any) {
     </span>
   );
 
-  return <img src={imageSrc} alt={alt} className={className} />;
+  const previewLabel = alt?.trim() ? `查看大图：${alt}` : '查看大图';
+  const interactiveClassName = imagePreview
+    ? 'cursor-zoom-in transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-zinc-900'
+    : '';
+
+  return (
+    <img
+      {...imageProps}
+      src={imageSrc}
+      alt={alt}
+      className={`${className || ''} ${interactiveClassName}`.trim()}
+      role={imagePreview ? 'button' : imageProps.role}
+      tabIndex={imagePreview ? 0 : imageProps.tabIndex}
+      aria-label={imagePreview ? previewLabel : imageProps['aria-label']}
+      onClick={(event) => {
+        onClick?.(event);
+        if (!imagePreview || event.defaultPrevented) return;
+        event.preventDefault();
+        event.stopPropagation();
+        imagePreview.openImage(imageSrc, alt, event.currentTarget);
+      }}
+      onKeyDown={(event) => {
+        onKeyDown?.(event);
+        if (!imagePreview || event.defaultPrevented || (event.key !== 'Enter' && event.key !== ' ')) return;
+        event.preventDefault();
+        event.stopPropagation();
+        imagePreview.openImage(imageSrc, alt, event.currentTarget);
+      }}
+    />
+  );
 }
 
 /**

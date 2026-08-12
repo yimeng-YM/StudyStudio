@@ -12,7 +12,7 @@ import { useSorting, sortItems } from '@/hooks/useSorting';
 import { useManualReorder } from '@/hooks/useManualReorder';
 import { SortControls } from '@/components/ui/SortControls';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageRenderer, isHtmlContent, HtmlPreview } from './MessageRenderer';
+import { ImagePreviewBoundary, MessageRenderer, isHtmlContent, HtmlPreview } from './MessageRenderer';
 import { cn, generateUUID, handleEditorPasteImage } from '@/lib/utils';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useHistory } from '@/hooks/useHistory';
@@ -735,11 +735,13 @@ export function NotesModule({
   );
 
   return (
-    <div className="flex h-full gap-4 relative">
-      {desktopLayout}
-      {mobileLayout}
-      {contextMenu}
-    </div>
+    <ImagePreviewBoundary>
+      <div className="flex h-full gap-4 relative">
+        {desktopLayout}
+        {mobileLayout}
+        {contextMenu}
+      </div>
+    </ImagePreviewBoundary>
   );
 }
 
