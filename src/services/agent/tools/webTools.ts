@@ -1,5 +1,6 @@
 import { db } from '@/db';
 import { DEFAULT_LOCAL_SEARCH_BASE_URL, getLocalSearchBaseUrl, getSearchBackend } from '@/lib/toolConfig';
+import { fetchLocalNetwork } from '@/lib/localNetwork';
 
 /**
  * 联网工具集（web_search / read_url / image_search / Wikipedia）。
@@ -87,6 +88,16 @@ async function fetchWithTimeout(url: string, init: RequestInit, ms = REQUEST_TIM
   }
 }
 
+async function fetchLocalWithTimeout(url: string, init: RequestInit, ms = REQUEST_TIMEOUT_MS): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetchLocalNetwork(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /**
  * 读取用户配置的 Jina API Key（存于 AIConfig.jinaApiKey），组装 Jina 请求头。
  * 无 Key 时仅带 Accept 头，read_url（Jina Reader）仍可免 Key 工作；web_search（Jina）若 401 会转为提示文案。
@@ -129,10 +140,15 @@ async function requestLocalBackend(
   payload: Record<string, unknown>,
   timeoutMs = REQUEST_TIMEOUT_MS,
 ): Promise<any> {
-  const response = await fetchWithTimeout(`${localBaseUrl}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+  // Keep LAN calls CORS-simple. JSON POST requests require an OPTIONS preflight,
+  // which mobile browsers can block even after the simple health GET succeeds.
+  const url = new URL(`${localBaseUrl}${path}`, window.location.href);
+  Object.entries(payload).forEach(([key, value]) => {
+    if (value !== undefined && value !== null) url.searchParams.set(key, String(value));
+  });
+  const response = await fetchLocalWithTimeout(url.toString(), {
+    method: 'GET',
+    cache: 'no-store',
   }, timeoutMs);
   const text = await response.text();
   let data: any;

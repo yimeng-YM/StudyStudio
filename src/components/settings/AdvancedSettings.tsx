@@ -4,6 +4,7 @@ import { SegmentSlider } from '@/components/ui/SegmentSlider';
 import { DEFAULT_MAX_TOKENS } from '@/services/promptConfig';
 import { cn } from '@/lib/utils';
 import { DEFAULT_LOCAL_SEARCH_BASE_URL, getSearchBackend } from '@/lib/toolConfig';
+import { fetchLocalNetwork } from '@/lib/localNetwork';
 import { Search, ChevronDown, Check, SlidersHorizontal, Tag, Globe, RefreshCw } from 'lucide-react';
 
 /**
@@ -83,7 +84,10 @@ export function AdvancedSettings() {
     const controller = new AbortController();
     const timer = window.setTimeout(() => controller.abort(), 5000);
     try {
-      const response = await fetch(`${localApiBase}/health`, { signal: controller.signal });
+      const response = await fetchLocalNetwork(`${localApiBase}/health`, {
+        signal: controller.signal,
+        cache: 'no-store',
+      });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
       setLocalHealth(data?.gateway === true && data?.searxng === true ? 'ready' : 'degraded');

@@ -57,7 +57,7 @@ echo.
 echo %c_cyan%[3/3] 正在启动 StudyStudio...%c_reset%
 if /i not "%STUDYSTUDIO_SKIP_SEARCH%"=="1" (
   if exist "%~dp0search\start.bat" (
-    powershell.exe -NoLogo -NoProfile -Command "try { $r = Invoke-RestMethod -Uri 'http://127.0.0.1:17890/api/health' -TimeoutSec 2; if ($r.gateway) { exit 0 } } catch {}; exit 1" >nul 2>&1
+    powershell.exe -NoLogo -NoProfile -Command "try { $r = Invoke-RestMethod -Uri 'http://127.0.0.1:17890/api/health' -TimeoutSec 2; if ($r.gateway -and $r.status -eq 'ok') { exit 0 } } catch {}; exit 1" >nul 2>&1
     if errorlevel 1 (
       echo %c_yell%正在单独窗口启动本地搜索服务...%c_reset%
       start "StudyStudio Search Service" "%ComSpec%" /d /c call "%~dp0start-search.bat"

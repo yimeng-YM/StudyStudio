@@ -162,6 +162,7 @@ git clone --branch search --single-branch https://github.com/yimeng-YM/StudyStud
 - `POST /api/web/search`
 - `POST /api/web/images`
 - `POST /api/web/extract`
+- `GET /api/web/search`、`GET /api/web/images`、`GET /api/web/extract`（HTTPS 前端访问局域网服务时使用，避免手机浏览器的跨域预检）
 
 ### Vercel 前端连接本机搜索服务
 
