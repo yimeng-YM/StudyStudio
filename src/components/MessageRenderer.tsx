@@ -2136,24 +2136,73 @@ export interface TodoItem {
  * and a completion progress bar. Pinned at the top of the chat (see ChatWindow), so it
  * is kept compact: header + progress bar are always visible, the item list scrolls if long.
  */
-export function TodoCard({ items }: { items: TodoItem[] }) {
-  if (!items || items.length === 0) return null;
+export function TodoCard({ items, sessionId }: { items: TodoItem[]; sessionId?: string | null }) {
   const completed = items.filter(i => i.status === 'completed').length;
-  const pct = Math.round((completed / items.length) * 100);
+  const pct = items.length > 0 ? Math.round((completed / items.length) * 100) : 0;
+  const allCompleted = items.length > 0 && completed === items.length;
+  const storageKey = sessionId ? `todo-card-collapsed:${sessionId}` : null;
+  const [collapsed, setCollapsed] = useState(() => {
+    if (!storageKey) return allCompleted;
+    try {
+      const saved = localStorage.getItem(storageKey);
+      return saved === null ? allCompleted : saved === 'true';
+    } catch { return allCompleted; }
+  });
+  const wasAllCompleted = useRef(allCompleted);
+
+  useEffect(() => {
+    if (wasAllCompleted.current === allCompleted) return;
+    // 完成时自动收起；若随后新增或恢复未完成任务，则自动展开以展示当前工作。
+    setCollapsed(allCompleted);
+    if (storageKey) {
+      try { localStorage.setItem(storageKey, String(allCompleted)); } catch { /* ignore */ }
+    }
+    wasAllCompleted.current = allCompleted;
+  }, [allCompleted, storageKey]);
+
+  const toggleCollapsed = () => {
+    setCollapsed(current => {
+      const next = !current;
+      if (storageKey) {
+        try { localStorage.setItem(storageKey, String(next)); } catch { /* ignore */ }
+      }
+      return next;
+    });
+  };
+
+  if (!items || items.length === 0) return null;
 
   return (
     <div className="p-3.5 bg-white/70 dark:bg-zinc-800/80 backdrop-blur-sm rounded-2xl ring-1 ring-zinc-900/5 dark:ring-zinc-100/10 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
-      <div className="flex items-center justify-between mb-2.5">
-        <span className="text-xs font-semibold text-zinc-600 dark:text-zinc-300 tracking-wide">研究进度</span>
-        <span className="text-[11px] text-zinc-400 dark:text-zinc-500">{completed}/{items.length} · {pct}%</span>
-      </div>
-      <div className="w-full h-1.5 bg-zinc-100 dark:bg-zinc-700/70 rounded-full mb-3 overflow-hidden">
+      <button
+        type="button"
+        onClick={toggleCollapsed}
+        aria-expanded={!collapsed}
+        aria-label={collapsed ? '展开任务进度' : '收起任务进度'}
+        className="w-full min-h-11 flex items-center justify-between gap-3 -my-2 px-0 py-2 text-left rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+      >
+        <span className="flex items-center gap-1.5 min-w-0">
+          {collapsed ? <ChevronRight size={15} className="text-zinc-400 shrink-0" /> : <ChevronDown size={15} className="text-zinc-400 shrink-0" />}
+          <span className="text-xs font-semibold text-zinc-600 dark:text-zinc-300 tracking-wide truncate">
+            任务进度{allCompleted ? ' · 已完成' : ''}
+          </span>
+        </span>
+        <span className="text-[11px] text-zinc-400 dark:text-zinc-500 whitespace-nowrap">{completed}/{items.length} · {pct}%</span>
+      </button>
+      <div
+        className={`w-full h-1.5 bg-zinc-100 dark:bg-zinc-700/70 rounded-full overflow-hidden ${collapsed ? 'mt-2' : 'mt-2 mb-3'}`}
+        role="progressbar"
+        aria-label="任务完成进度"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={pct}
+      >
         <div
           className="h-full bg-blue-500 dark:bg-blue-400 rounded-full transition-all duration-500 ease-out"
           style={{ width: `${pct}%` }}
         />
       </div>
-      <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1 -mr-1">
+      {!collapsed && <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1 -mr-1 animate-in fade-in duration-200">
         {items.map(item => {
           const icon =
             item.status === 'completed' ? <CheckCircle2 size={14} className="text-green-500 dark:text-green-400 shrink-0 mt-0.5" /> :
@@ -2168,7 +2217,7 @@ export function TodoCard({ items }: { items: TodoItem[] }) {
             </div>
           );
         })}
-      </div>
+      </div>}
     </div>
   );
 }

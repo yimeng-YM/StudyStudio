@@ -1284,17 +1284,21 @@ Parameters:
     type: 'function',
     function: {
       name: 'ask_user',
-      description: `Ask the user a question to clarify requirements, confirm direction, or resolve ambiguity.
+      description: `Ask the user a focused question to clarify requirements, capture a high-impact preference, confirm direction, or resolve ambiguity. Use it proactively when the answer would materially improve the result; it is not limited to hard blockers.
 Use this tool when:
 - The research scope is ambiguous and you need clarification
 - You need to confirm a design choice before proceeding
 - You want the user to select from multiple valid approaches
 - You need additional details to improve research quality
+- Audience, difficulty, depth, output format, time range, or target subject/entity is unspecified and would change the result
+- A broad creation/editing request has a meaningful unresolved preference
 - Asking which research files to keep at the end of research (NEVER delete files before asking)
 
 The question is displayed as an interactive card in the chat UI. The user's answer will be returned as this tool's result.
 
 IMPORTANT: The UI ALWAYS provides a manual free-text input alongside whatever preset options you supply. You therefore never need to enumerate every conceivable answer — provide a few sensible presets (e.g. keep-all / delete-caches / report-only) and the user can type a custom answer for anything else.
+
+Ask one compact, high-impact question at a time. Skip it when the user already supplied the preference, the task is trivial, or an obvious reversible default will not materially affect the outcome.
 
 Parameters:
 - question: The question to ask the user, in Chinese (required)

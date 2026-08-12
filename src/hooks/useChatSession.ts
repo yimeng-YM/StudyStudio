@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { db } from '@/db';
+import { db, type ChatMessage } from '@/db';
 import { generateUUID, isJsonComplete, parseToolArguments, AI_ONLY_HINT_PREFIX } from '@/lib/utils';
 import { Message, ToolCall, streamAICompletion } from '@/services/ai';
 import { useAIStore, getFullContextPrompt } from '@/store/useAIStore';
@@ -46,6 +46,88 @@ export interface SubAgentState {
   error?: string;
 }
 
+export interface TodoItem {
+  id: string;
+  text: string;
+  status: 'pending' | 'in_progress' | 'completed';
+}
+
+export interface AskState {
+  active: boolean;
+  question: string;
+  type: 'single' | 'multi' | 'text';
+  options?: string[];
+  toolCallId: string;
+}
+
+/**
+ * 从持久化消息中恢复工作流 UI 状态。
+ * update_task_list / ask_user 已经是会话消息的一部分，因此以消息日志作为唯一事实源，
+ * 避免再维护一份可能与对话分叉的独立任务数据。
+ */
+export function restoreWorkflowState(messages: ChatMessage[]): { todoList: TodoItem[]; askState: AskState | null } {
+  let todoList: TodoItem[] = [];
+  let askState: AskState | null = null;
+  const resolvedToolCalls = new Set(
+    messages
+      .filter(message => message.role === 'tool' && message.tool_call_id)
+      .map(message => message.tool_call_id as string)
+  );
+
+  for (const message of messages) {
+    if (message.role !== 'assistant' || !Array.isArray(message.tool_calls)) continue;
+
+    for (const toolCall of message.tool_calls) {
+      const name = toolCall?.function?.name;
+      if (name !== 'update_task_list' && name !== 'ask_user') continue;
+
+      try {
+        const args = parseToolArguments(toolCall.function.arguments || '{}');
+        if (name === 'update_task_list' && Array.isArray(args.items)) {
+          todoList = args.items.flatMap((item: unknown) => {
+            if (!item || typeof item !== 'object') return [];
+            const candidate = item as { id?: unknown; text?: unknown; status?: unknown };
+            if (
+              typeof candidate.id !== 'string'
+              || typeof candidate.text !== 'string'
+              || !['pending', 'in_progress', 'completed'].includes(String(candidate.status))
+            ) return [];
+            return [{
+              id: candidate.id,
+              text: candidate.text,
+              status: candidate.status as TodoItem['status'],
+            }];
+          });
+        }
+
+        if (
+          name === 'ask_user'
+          && typeof toolCall.id === 'string'
+          && !resolvedToolCalls.has(toolCall.id)
+          && typeof args.question === 'string'
+          && args.question.trim()
+        ) {
+          const type: AskState['type'] = ['single', 'multi', 'text'].includes(args.type) ? args.type : 'text';
+          const options = Array.isArray(args.options)
+            ? args.options.filter((option: unknown): option is string => typeof option === 'string')
+            : undefined;
+          askState = {
+            active: true,
+            question: args.question,
+            type,
+            options,
+            toolCallId: toolCall.id,
+          };
+        }
+      } catch {
+        // 忽略历史中的残缺工具参数，继续尝试恢复其它有效状态。
+      }
+    }
+  }
+
+  return { todoList, askState };
+}
+
 /**
  * 管理 AI 聊天会话状态及核心执行流的 Hook
  * 处理消息存储、Agent 循环、工具调用及计划（Plan）模式的特殊工作流
@@ -85,16 +167,10 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act' | 
   const [subAgentStates, setSubAgentStates] = useState<Record<string, SubAgentState>>({});
 
   // 研究任务进度列表，由 update_task_list 工具调用驱动
-  const [todoList, setTodoList] = useState<{ id: string; text: string; status: 'pending' | 'in_progress' | 'completed' }[]>([]);
+  const [todoList, setTodoList] = useState<TodoItem[]>([]);
 
   // ask_user 交互状态：非 null 表示正在等待用户回答
-  const [askState, setAskState] = useState<{
-    active: boolean;
-    question: string;
-    type: 'single' | 'multi' | 'text';
-    options?: string[];
-    toolCallId: string;
-  } | null>(null);
+  const [askState, setAskState] = useState<AskState | null>(null);
 
   // 安全合并更新某个子 Agent 的状态（处理尚未初始化的 id）。
   // 同时维护 ref 快照，供 delegate 完成时将子工具调用列表嵌入 tool 消息持久化。
@@ -113,9 +189,15 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act' | 
   };
 
   useEffect(() => {
+    let disposed = false;
+
     if (sessionId) {
       setCurrentSessionId(sessionId);
+      setTodoList([]);
+      setAskState(null);
+      setSubAgentStates({});
       db.chatMessages.where('sessionId').equals(sessionId).sortBy('createdAt').then(msgs => {
+        if (disposed) return;
         setMessages(msgs.map(m => ({
           role: m.role as any,
           content: m.content,
@@ -152,6 +234,9 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act' | 
           }
         }
         setSubAgentStates(rebuilt);
+        const restoredWorkflow = restoreWorkflowState(msgs);
+        setTodoList(restoredWorkflow.todoList);
+        setAskState(restoredWorkflow.askState);
       });
     } else {
       setCurrentSessionId(null);
@@ -164,6 +249,10 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act' | 
       setAskState(null);
       setSubAgentStates({});
     }
+
+    return () => {
+      disposed = true;
+    };
   }, [sessionId]);
 
   /**

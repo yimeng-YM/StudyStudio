@@ -469,7 +469,7 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
         {/* 研究进度卡片：常驻窗口顶部，不随消息滚动（pt-14 避开悬浮的头部按钮） */}
         {todoList.length > 0 && (
           <div className="shrink-0 px-4 pt-14 pb-1 z-10">
-            <TodoCard items={todoList} />
+            <TodoCard key={currentSessionId || 'draft'} items={todoList} sessionId={currentSessionId} />
           </div>
         )}
         <div
