@@ -78,6 +78,9 @@ python3 -m venv .venv
 | `POST` | `/api/web/search` | 网页搜索 |
 | `POST` | `/api/web/images` | 图片搜索 |
 | `POST` | `/api/web/extract` | 提取公开网页正文 |
+| `GET` | `/api/web/search` | 网页搜索（查询参数，用于手机浏览器的无预检局域网请求） |
+| `GET` | `/api/web/images` | 图片搜索（查询参数，用于手机浏览器的无预检局域网请求） |
+| `GET` | `/api/web/extract` | 提取公开网页正文（查询参数，用于手机浏览器的无预检局域网请求） |
 
 搜索请求：
 

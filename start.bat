@@ -28,7 +28,7 @@ echo %c_blue%============================================================%c_rese
 echo.
 :search_banner_done
 
-powershell.exe -NoLogo -NoProfile -Command "try { $r = Invoke-RestMethod -Uri 'http://127.0.0.1:17890/api/health' -TimeoutSec 2; if ($r.gateway) { exit 0 } } catch {}; exit 1" >nul 2>&1
+powershell.exe -NoLogo -NoProfile -Command "try { $r = Invoke-RestMethod -Uri 'http://127.0.0.1:17890/api/health' -TimeoutSec 2; if ($r.gateway -and $r.status -eq 'ok') { exit 0 } } catch {}; exit 1" >nul 2>&1
 if not errorlevel 1 (
   echo %c_green%本地搜索服务已在运行：http://127.0.0.1:17890/api%c_reset%
   echo %c_yell%无需重复启动，按任意键关闭此窗口。%c_reset%
@@ -53,7 +53,7 @@ if not "%search_exit%"=="0" (
 )
 
 echo.
-echo %c_yell%搜索服务已停止。%c_reset%
-echo %c_yell%按任意键关闭此窗口，以便查看上方的运行信息。%c_reset%
+echo %c_green%搜索服务已就绪。%c_reset%
+echo %c_yell%按任意键关闭此启动窗口；正在运行的搜索服务不会受到影响。%c_reset%
 pause >nul
 exit /b 0

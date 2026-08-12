@@ -16,6 +16,24 @@ search:
     - html
     - json
 
+# The default engines currently rate-limit this home connection. Prefer the
+# engines verified to return results from the SearXNG container.
+engines:
+  - name: bing
+    disabled: false
+  - name: baidu
+    disabled: false
+  - name: brave
+    disabled: true
+  - name: duckduckgo
+    disabled: true
+  - name: google cse
+    disabled: true
+  - name: startpage
+    disabled: true
+  - name: wikipedia
+    disabled: true
+
 server:
   bind_address: "0.0.0.0"
   port: 8080

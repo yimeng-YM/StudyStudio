@@ -79,6 +79,24 @@ def test_web_search_route_preserves_api_contract(tmp_path) -> None:
     search_mock.assert_awaited_once_with("portable search", 4)
 
 
+def test_web_search_get_avoids_mobile_cors_preflight(tmp_path) -> None:
+    settings = replace(get_settings(), cache_path=tmp_path / "cache.sqlite3")
+    result = {"query": "phone search", "count": 1, "results": [{"url": "https://example.com"}]}
+    search_mock = AsyncMock(return_value=result)
+    with patch.object(SearchService, "search", search_mock):
+        with TestClient(create_app(settings)) as lifecycle_client:
+            response = lifecycle_client.get(
+                "/api/web/search",
+                params={"query": "phone search", "max_results": 3},
+                headers={"Origin": settings.allowed_origins[0]},
+            )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == settings.allowed_origins[0]
+    assert response.json() == result
+    search_mock.assert_awaited_once_with("phone search", 3)
+
+
 def test_image_search_route_selects_image_category(tmp_path) -> None:
     settings = replace(get_settings(), cache_path=tmp_path / "cache.sqlite3")
     search_mock = AsyncMock(return_value={"query": "diagram", "count": 0, "results": []})
@@ -109,5 +127,23 @@ def test_extract_route_preserves_api_contract(tmp_path) -> None:
             )
 
     assert response.status_code == 200
+    assert response.json() == result
+    extract_mock.assert_awaited_once_with("https://example.com/article", 5000)
+
+
+def test_extract_get_avoids_mobile_cors_preflight(tmp_path) -> None:
+    settings = replace(get_settings(), cache_path=tmp_path / "cache.sqlite3")
+    result = {"url": "https://example.com/article", "title": "Example", "content": "Body"}
+    extract_mock = AsyncMock(return_value=result)
+    with patch.object(ExtractionService, "extract", extract_mock):
+        with TestClient(create_app(settings)) as lifecycle_client:
+            response = lifecycle_client.get(
+                "/api/web/extract",
+                params={"url": "https://example.com/article", "max_chars": 5000},
+                headers={"Origin": settings.allowed_origins[0]},
+            )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == settings.allowed_origins[0]
     assert response.json() == result
     extract_mock.assert_awaited_once_with("https://example.com/article", 5000)

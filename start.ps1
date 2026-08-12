@@ -60,6 +60,20 @@ function Invoke-NativeCommand {
   }
 }
 
+function Get-RunningGatewayHealth {
+  param([Parameter(Mandatory = $true)][string]$Port)
+
+  try {
+    $response = Invoke-RestMethod -Uri "http://127.0.0.1:${Port}/api/health" -TimeoutSec 2
+    if ($response.gateway) {
+      return $response
+    }
+  } catch {
+    # The gateway is not listening yet, or the port belongs to another service.
+  }
+  return $null
+}
+
 $serviceRoot = $PSScriptRoot
 Import-LocalEnvironment -Path (Join-Path $serviceRoot ".env")
 
@@ -91,6 +105,44 @@ $searxngUrl = if ($env:SEARXNG_URL) {
 }
 $searxngStarted = $false
 $searxngWasRunning = $false
+$gatewayHealth = Get-RunningGatewayHealth -Port $gatewayPort
+if ($gatewayHealth -and $gatewayHealth.status -eq "ok") {
+  Write-Host "本地搜索服务已在运行：http://127.0.0.1:${gatewayPort}/api" -ForegroundColor Green
+  return
+}
+
+# Keep startup atomic. The batch launcher performs a quick health check, but
+# two launchers can still pass it before Uvicorn has bound the port.
+$mutexPort = $gatewayPort -replace "[^0-9A-Za-z_-]", "_"
+$startupMutex = New-Object Threading.Mutex($false, "Local\StudyStudioLocalSearch_${mutexPort}")
+$hasStartupMutex = $false
+try {
+  try {
+    $hasStartupMutex = $startupMutex.WaitOne(0)
+  } catch [Threading.AbandonedMutexException] {
+    $hasStartupMutex = $true
+  }
+
+  if (-not $hasStartupMutex) {
+    Write-Host "另一启动流程正在准备本地搜索服务，正在等待..." -ForegroundColor Yellow
+    for ($attempt = 1; $attempt -le 60; $attempt++) {
+      Start-Sleep -Seconds 1
+      $gatewayHealth = Get-RunningGatewayHealth -Port $gatewayPort
+      if ($gatewayHealth -and $gatewayHealth.status -eq "ok") {
+        Write-Host "本地搜索服务已启动：http://127.0.0.1:${gatewayPort}/api" -ForegroundColor Green
+        return
+      }
+    }
+    throw "另一本地搜索服务启动流程仍在运行，但服务未能在 60 秒内就绪。"
+  }
+
+  # Recheck after taking the mutex in case another launcher completed just
+  # before this process acquired it.
+  $gatewayHealth = Get-RunningGatewayHealth -Port $gatewayPort
+  if ($gatewayHealth -and $gatewayHealth.status -eq "ok") {
+    Write-Host "本地搜索服务已在运行：http://127.0.0.1:${gatewayPort}/api" -ForegroundColor Green
+    return
+  }
 
 Write-Host "[1/5] 正在检查 Docker Desktop..." -ForegroundColor Cyan
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
@@ -132,6 +184,16 @@ try {
   }
   if (-not $searxngReady) {
     throw "SearXNG 未能在 ${searxngUrl} 正常就绪。"
+  }
+
+  # A previous gateway may still be running while its SearXNG container was
+  # stopped by a competing launcher. In that case, recover the backend and
+  # leave it running instead of trying to bind a second Uvicorn process.
+  $gatewayHealth = Get-RunningGatewayHealth -Port $gatewayPort
+  if ($gatewayHealth) {
+    $searxngStarted = $false
+    Write-Host "已恢复现有搜索服务的 SearXNG 后端：http://127.0.0.1:${gatewayPort}/api" -ForegroundColor Green
+    return
   }
 
   Write-Host "[3/5] 正在准备 Python 环境..." -ForegroundColor Cyan
@@ -205,9 +267,41 @@ try {
 
   Push-Location $serviceRoot
   try {
-    & $venvPython -m uvicorn app.main:app --host $gatewayHost --port $gatewayPort
-    if ($LASTEXITCODE -ne 0) {
-      throw "本地搜索 API 已停止，退出代码：$LASTEXITCODE。"
+    $uvicornProcess = Start-Process `
+      -FilePath $venvPython `
+      -ArgumentList @("-m", "uvicorn", "app.main:app", "--host", $gatewayHost, "--port", $gatewayPort) `
+      -NoNewWindow `
+      -PassThru
+    $gatewayReady = $false
+    for ($attempt = 1; $attempt -le 30; $attempt++) {
+      Start-Sleep -Seconds 1
+      if ($uvicornProcess.HasExited) {
+        break
+      }
+      $gatewayHealth = Get-RunningGatewayHealth -Port $gatewayPort
+      if ($gatewayHealth -and $gatewayHealth.status -eq "ok") {
+        $gatewayReady = $true
+        break
+      }
+    }
+    if (-not $gatewayReady) {
+      if (-not $uvicornProcess.HasExited) {
+        Stop-Process -Id $uvicornProcess.Id -Force
+        $uvicornProcess.WaitForExit()
+      }
+      throw "本地搜索 API 未能在 30 秒内启动。"
+    }
+
+    # The service owns the port now, so competing launchers can safely observe
+    # it as healthy and return without attempting another bind.
+    if ($hasStartupMutex) {
+      $startupMutex.ReleaseMutex()
+      $hasStartupMutex = $false
+    }
+
+    $uvicornProcess.WaitForExit()
+    if ($uvicornProcess.ExitCode -ne 0) {
+      throw "本地搜索 API 已停止，退出代码：$($uvicornProcess.ExitCode)。"
     }
   } finally {
     Pop-Location
@@ -217,4 +311,10 @@ try {
     Write-Host "正在停止 SearXNG..." -ForegroundColor DarkGray
     Invoke-NativeCommand -Quiet { docker compose -f $composeFile stop }
   }
+}
+} finally {
+  if ($hasStartupMutex) {
+    $startupMutex.ReleaseMutex()
+  }
+  $startupMutex.Dispose()
 }
