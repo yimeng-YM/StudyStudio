@@ -6,7 +6,8 @@
   "outputDirectory": "dist",
   "git": {
     "deploymentEnabled": {
-      "search": false
+      "search": false,
+      "android": false
     }
   },
   "headers": [

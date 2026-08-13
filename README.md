@@ -170,6 +170,18 @@ SearXNG/Docker 后端本身不部署到 Vercel。部署在 `https://mengstudystu
 
 StudyStudio 根启动器会把正式域名加入 CORS 白名单。Vercel Preview 或其他域名需要通过 `LOCAL_SEARCH_ALLOWED_ORIGINS` 把精确的 HTTPS Origin 加入白名单，然后重启搜索服务。不要使用 `*`，避免任意网站调用本机服务。完整的独立部署、API 与配置说明见 [`search` 分支 README](https://github.com/yimeng-YM/StudyStudio/tree/search)。
 
+### 📱 Android App
+
+Android 版通过 Capacitor 将完整前端打入 APK，并在 App 进程内启动仅监听 `127.0.0.1` 的原生搜索网关；无需 Docker、Python、`start-search.bat` 或另一台电脑。App 内提供网页搜索、图片搜索、静态网页正文提取、缓存和 SSRF 防护，并复用现有 `/api` 协议。
+
+在已安装 Android SDK 36 与 JDK 21 的 Windows 环境中运行：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build-android.ps1
+```
+
+脚本会生成品牌图标、构建前端、同步 Android 工程并按当前版本输出可直接安装的 debug 签名 APK 到 `release\StudyStudio-v<version>-debug.apk`。详细架构、安全边界、能力差异与构建说明见 [ANDROID.md](./ANDROID.md)。
+
 ## 📦 手动运行
 
 如果您更喜欢手动操作：

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">StudyStudio</string>
+    <string name="title_activity_main">StudyStudio</string>
+    <string name="package_name">cn.mengstudystudio.app</string>
+    <string name="custom_url_scheme">cn.mengstudystudio.app</string>
+</resources>

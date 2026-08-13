@@ -90,7 +90,11 @@ export function AdvancedSettings() {
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
-      setLocalHealth(data?.gateway === true && data?.searxng === true ? 'ready' : 'degraded');
+      setLocalHealth(
+        data?.gateway === true && (data?.searxng === true || data?.native_search === true)
+          ? 'ready'
+          : 'degraded',
+      );
     } catch {
       setLocalHealth('offline');
     } finally {

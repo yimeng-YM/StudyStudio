@@ -8,6 +8,25 @@
   mix-blend-mode: normal;
 }
 
+::view-transition-old(root) {
+  z-index: 1;
+}
+
+::view-transition-new(root) {
+  z-index: 2;
+}
+
+/*
+ * View Transition 快照必须是已经完全切换后的主题。全局和组件上的颜色
+ * transition 若继续运行，新快照会停留在中间色，视觉上就像圆形没有铺满。
+ */
+html.theme-view-transition,
+html.theme-view-transition *,
+html.theme-view-transition *::before,
+html.theme-view-transition *::after {
+  transition: none !important;
+}
+
 @layer base {
   /* Deep Minimalist Theme (Zinc/Neutral based) */
   :root {
@@ -223,11 +242,20 @@
 @layer utilities {
   /* Safe area padding for notched devices */
   .safe-area-bottom {
-    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
   }
 
   .safe-area-top {
-    padding-top: env(safe-area-inset-top, 0px);
+    padding-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  }
+
+  /*
+   * Capacitor 8 在 Android WebView 中注入 --safe-area-inset-*；较旧的
+   * WebView 则由原生容器消费系统栏 inset。额外 4px 让顶栏不贴住状态栏。
+   * 此类仅由原生壳层挂载，因此普通网页布局不会平白增加顶部间距。
+   */
+  .native-safe-area-top {
+    padding-top: calc(var(--safe-area-inset-top, env(safe-area-inset-top, 0px)) + 4px);
   }
 
   /* Hide scrollbar utility */

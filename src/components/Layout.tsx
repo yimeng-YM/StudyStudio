@@ -6,18 +6,26 @@ import { useAIStore } from '@/store/useAIStore';
 import { AnimatePresence, motion } from 'framer-motion';
 import { AIFloatingWindow } from './AIFloatingWindow';
 import { useIsMobile } from '@/hooks/useIsMobile';
+import { Capacitor } from '@capacitor/core';
+import { cn } from '@/lib/utils';
 
 export function Layout() {
   const loadSettings = useAIStore(s => s.loadSettings);
   const location = useLocation();
   const isMobile = useIsMobile();
+  const runsInNativeShell = Capacitor.isNativePlatform();
 
   useEffect(() => {
     loadSettings();
   }, [loadSettings]);
 
   return (
-    <div className="app-root-bg flex h-screen w-full overflow-hidden">
+    <div
+      className={cn(
+        'app-root-bg flex h-screen w-full overflow-hidden',
+        runsInNativeShell && 'native-safe-area-top',
+      )}
+    >
       {/* 自定义网页背景层（全局，作用于所有页面与侧边栏） */}
       <div className="app-bg-layer" aria-hidden="true" />
 

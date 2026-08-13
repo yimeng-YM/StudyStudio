@@ -1,4 +1,5 @@
 import type { AIConfig } from '@/db';
+import { Capacitor } from '@capacitor/core';
 
 /**
  * 联网工具的开关与状态聚合工具。
@@ -21,6 +22,7 @@ export type SearchBackend = 'local' | 'jina' | 'serper';
 const pageRunsLocally = typeof window === 'undefined'
   || window.location.hostname === 'localhost'
   || window.location.hostname === '127.0.0.1';
+const runsInNativeApp = typeof window !== 'undefined' && Capacitor.isNativePlatform();
 
 /**
  * Local development uses Vite's /api proxy. A deployed frontend calls the
@@ -28,7 +30,7 @@ const pageRunsLocally = typeof window === 'undefined'
  */
 export const DEFAULT_LOCAL_SEARCH_BASE_URL = (
   (import.meta.env.VITE_LOCAL_SEARCH_BASE_URL as string | undefined)?.trim()
-  || (pageRunsLocally ? '/api' : 'http://127.0.0.1:17890/api')
+  || (runsInNativeApp ? 'http://127.0.0.1:17890/api' : pageRunsLocally ? '/api' : 'http://127.0.0.1:17890/api')
 ).replace(/\/+$/, '');
 
 /** 当前选用的搜索/读取后端；未保存偏好时默认使用本地服务。 */
