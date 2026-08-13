@@ -16,7 +16,7 @@ import { DataManager } from '@/services/dataManager';
 import { cn, generateUUID, handleEditorPasteImage } from '@/lib/utils';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { ImagePreviewBoundary, MessageRenderer } from '@/components/MessageRenderer';
-import { useUIContext } from '@/hooks/useUIContext';
+import { useQuizContext } from '@/hooks/useUIContext';
 import { useResizable } from '@/hooks/useResizable';
 import { ResizeHandle } from '@/components/ui/ResizeHandle';
 import { shouldPreserveNativeContextMenu, useContextMenu } from '@/components/ui/ContextMenu';
@@ -632,8 +632,6 @@ function QuizEditor({ quiz, isEditingTitle, setIsEditingTitle, editTitle, setEdi
 export function QuizModule({ subjectId }: QuizModuleProps) {
   const { sortMode, sortDirection, setSortMode, toggleDirection } = useSorting();
   const subject = useLiveQuery(() => db.subjects.get(subjectId), [subjectId]);
-  const getCustomContext = useMemo(() => () => `用户正在查看题库模块。可以使用工具来管理题目。`, []);
-  useUIContext({ location: 'quiz_module', subjectId, subjectName: subject?.name, contextId: `quiz-module-${subjectId}`, getCustomContext });
 
   const quizzes = useLiveQuery(async () => {
     const all = await db.entities.where({ subjectId, type: 'quiz_bank' }).toArray();
@@ -642,6 +640,14 @@ export function QuizModule({ subjectId }: QuizModuleProps) {
 
   const [selectedQuizId, setSelectedQuizId] = useState<string | null>(null);
   const selectedQuiz = quizzes?.find(q => q.id === selectedQuizId) || null;
+  const selectedQuizQuestionCount = (selectedQuiz?.content as QuizContent | undefined)?.questions?.length;
+  useQuizContext(
+    subjectId,
+    subject?.name,
+    selectedQuiz?.id,
+    selectedQuiz?.title,
+    selectedQuizQuestionCount
+  );
   const [viewMode, setViewMode] = useState<'list' | 'nav' | 'detail'>('list');
   const [scrollToIndex, setScrollToIndex] = useState<number | null>(null);
   const [isEditingTitle, setIsEditingTitle] = useState(false);

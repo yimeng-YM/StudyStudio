@@ -49,6 +49,12 @@ Thumbs.db
 # Test coverage
 coverage
 
+# Android / Capacitor outputs (not tracked on master)
+/android/
+/release/
+*.apk
+*.aab
+
 # Independent checkout of the search branch
 /search/
 
