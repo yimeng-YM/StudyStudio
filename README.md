@@ -121,7 +121,7 @@ Invoke-RestMethod `
 | --- | --- | --- |
 | `LOCAL_SEARCH_HOST` | `127.0.0.1` | API 监听地址 |
 | `LOCAL_SEARCH_PORT` | `17890` | API 监听端口 |
-| `LOCAL_SEARCH_ALLOWED_ORIGINS` | 本机 5173/17890 Origin | 允许调用 API 的精确浏览器 Origin，逗号分隔 |
+| `LOCAL_SEARCH_ALLOWED_ORIGINS` | 本机 5273/17890 Origin | 允许调用 API 的精确浏览器 Origin，逗号分隔 |
 | `LOCAL_SEARCH_ADDITIONAL_ORIGINS` | 空 | 追加 Origin，不覆盖基础白名单 |
 | `LOCAL_SEARCH_ALLOWED_HOSTS` | 本机 Host | FastAPI 允许的 Host，逗号分隔 |
 | `LOCAL_SEARCH_CACHE_PATH` | `data/web-cache.sqlite3` | SQLite 缓存路径 |

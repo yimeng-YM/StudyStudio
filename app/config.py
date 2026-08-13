@@ -64,6 +64,8 @@ def get_settings() -> Settings:
         "STUDYSTUDIO_ALLOWED_ORIGINS",
         ",".join(
             (
+                "http://127.0.0.1:5273",
+                "http://localhost:5273",
                 "http://127.0.0.1:5173",
                 "http://localhost:5173",
                 f"http://127.0.0.1:{port}",
