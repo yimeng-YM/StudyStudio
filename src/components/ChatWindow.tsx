@@ -6,13 +6,13 @@ import { processFile } from '@/lib/fileProcessor';
 import { generateUUID } from '@/lib/utils';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useDialog } from '@/components/ui/DialogProvider';
-import { useChatSession } from '@/hooks/useChatSession';
 import { ModelSwitcher } from './ModelSwitcher';
 import { ModeSwitcher } from './ModeSwitcher';
 import { ToolConfigSwitcher } from './ToolConfigSwitcher';
 import { useAIStore } from '@/store/useAIStore';
 import { useContextMenu } from '@/components/ui/ContextMenu';
 import { buildChatTranscript } from '@/lib/chatTranscript';
+import { useAIBackgroundRuntime, useAITask, type AITaskMode } from '@/services/aiTaskRuntime';
 
 /**
  * 格式化文件大小为易读字符串
@@ -86,7 +86,7 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
    * 'act': 快速执行模式，直接响应
    * 'plan': 深度规划模式，先思考后执行
    */
-  const [mode, setMode] = useState<'act' | 'plan' | 'research'>('act');
+  const [mode, setMode] = useState<AITaskMode>('act');
 
   /** 滚动到顶/底浮钮的可见性（仅在跨越阈值时 setState，避免每像素重渲染） */
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -94,11 +94,31 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
   /** 当前会话中被用户关闭的 Todo 任务集合；状态变化不会重新显示，任务集合变化时会重新出现。 */
   const [dismissedTodoIdentity, setDismissedTodoIdentity] = useState('');
 
-  /**
-   * 使用自定义 Hook 管理聊天会话
-   * 包含消息列表、加载状态、流式渲染状态文字以及发送消息等核心逻辑
-   */
-  const { messages, loading, status, currentSessionId, sendMessage, clearSession, retry, stop, subAgentStates, todoList, askState, answerAsk } = useChatSession(sessionId || null, mode);
+  /** AI 执行器常驻应用根节点；聊天窗口只订阅当前会话，因此隐藏/切页不会中断任务。 */
+  const runtime = useAIBackgroundRuntime();
+  const task = useAITask(sessionId || null);
+  const currentSessionId = sessionId || null;
+  const messages = task?.messages ?? [];
+  const loading = task?.loading ?? false;
+  const status = task?.status ?? '';
+  const subAgentStates = task?.subAgentStates ?? {};
+  const todoList = task?.todoList ?? [];
+  const askState = task?.askState ?? null;
+  const retry = task?.retry ?? (async () => {});
+  const stop = task?.stop ?? (() => {});
+  const answerAsk = task?.answerAsk ?? (async () => {});
+
+  useEffect(() => {
+    if (!currentSessionId) return;
+    let cancelled = false;
+    void db.chatSessions.get(currentSessionId).then(session => {
+      if (cancelled) return;
+      const sessionMode = session?.mode || 'act';
+      setMode(sessionMode);
+      runtime.attachSession(currentSessionId, sessionMode);
+    });
+    return () => { cancelled = true; };
+  }, [currentSessionId, runtime.attachSession]);
   const todoIdentity = todoList.map(item => `${item.id}\u0000${item.text}`).join('\u0001');
   const todoDismissalKey = currentSessionId ? `todo-card-dismissed:${currentSessionId}` : null;
   const showTodoCard = todoList.length > 0 && dismissedTodoIdentity !== todoIdentity;
@@ -133,7 +153,7 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
   /** 暴露给父组件的实例方法 */
   useImperativeHandle(ref, () => ({
     reset: () => {
-      clearSession();
+      if (onSessionChange) onSessionChange(null);
       setInput('');
       setComposerHiddenContext('');
       setComposerSourceLabel('');
@@ -330,9 +350,9 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
    * 清除当前会话状态并重置 UI
    */
   const handleNewChat = () => {
-    clearSession();
     setShowHistory(false);
     if (onSessionChange) onSessionChange(null);
+    setMode('act');
     setComposerHiddenContext('');
     setComposerSourceLabel('');
   };
@@ -353,11 +373,16 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
    * @param {string} id - 会话 ID
    */
   const deleteSessionById = async (id: string) => {
+    if (runtime.snapshots[id]?.loading) {
+      showAlert('该任务仍在后台运行。请先打开会话并停止任务，再删除记录。', { title: '任务运行中' });
+      return;
+    }
     const confirmed = await showConfirm('确定要删除此对话吗？', { title: '删除对话' });
     if (!confirmed) return;
 
     await db.chatMessages.where('sessionId').equals(id).delete();
     await db.chatSessions.delete(id);
+    runtime.detachSession(id);
 
     if (currentSessionId === id) {
       handleNewChat();
@@ -399,6 +424,7 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
    */
   const handleSend = async () => {
     if ((!input.trim() && selectedFiles.length === 0)) return;
+    if (loading) return;
 
     const content = input;
     const files = selectedFiles;
@@ -412,10 +438,27 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
     // 发送新消息时重置滚动状态，确保能看到自己的消息
     userScrolledUp.current = false;
 
-    const newSessionId = await sendMessage(content, files, hiddenContext);
-    if (newSessionId && newSessionId !== currentSessionId && onSessionChange) {
-      onSessionChange(newSessionId);
+    let targetSessionId = currentSessionId;
+    let newSession = false;
+    if (!targetSessionId) {
+      newSession = true;
+      targetSessionId = generateUUID();
+      const now = Date.now();
+      await db.chatSessions.add({
+        id: targetSessionId,
+        title: content.slice(0, 50) || '新任务',
+        mode,
+        createdAt: now,
+        updatedAt: now,
+      });
+      if (onSessionChange) onSessionChange(targetSessionId);
     }
+
+    // 只把任务交给根节点常驻执行器。此处不等待完整 AI 响应，用户可以立即
+    // 收起窗口、切换页面、打开历史会话或创建下一个并行任务。
+    void runtime.sendMessage(targetSessionId, mode, { content, files, hiddenContext, newSession }).catch(error => {
+      console.error('后台 AI 任务启动失败:', error);
+    });
   };
 
   return (
@@ -425,15 +468,17 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
         <div className="flex items-center gap-2 pointer-events-auto">
           <button
             onClick={handleNewChat}
-            className="p-2 bg-white dark:bg-zinc-800 rounded-full shadow-md text-zinc-500 hover:text-primary border dark:border-zinc-700 transition-colors"
+            className="min-w-11 min-h-11 inline-flex items-center justify-center bg-white dark:bg-zinc-800 rounded-full shadow-md text-zinc-500 hover:text-primary border dark:border-zinc-700 transition-colors"
             title="新建对话"
+            aria-label="新建 AI 任务会话"
           >
             <Plus size={18} />
           </button>
           <button
             onClick={() => setShowHistory(!showHistory)}
-            className="p-2 bg-white dark:bg-zinc-800 rounded-full shadow-md text-zinc-500 hover:text-blue-600 border dark:border-zinc-700 transition-colors"
+            className="min-w-11 min-h-11 inline-flex items-center justify-center bg-white dark:bg-zinc-800 rounded-full shadow-md text-zinc-500 hover:text-blue-600 border dark:border-zinc-700 transition-colors"
             title="历史对话"
+            aria-label="打开 AI 任务历史"
           >
             <History size={18} />
           </button>
@@ -445,7 +490,7 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
         <div className="absolute inset-0 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl z-30 flex flex-col p-4 animate-in fade-in zoom-in-95 duration-200">
           <div className="flex justify-between items-center mb-4">
             <h3 className="font-bold text-lg text-zinc-800 dark:text-zinc-100">全局任务历史</h3>
-            <button onClick={() => setShowHistory(false)} className="p-2 bg-zinc-100 dark:bg-zinc-800 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"><X size={18} /></button>
+            <button onClick={() => setShowHistory(false)} className="min-w-11 min-h-11 inline-flex items-center justify-center bg-zinc-100 dark:bg-zinc-800 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors" aria-label="关闭任务历史"><X size={18} /></button>
           </div>
           <button
             onClick={handleNewChat}
@@ -454,7 +499,18 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
             <Plus size={18} /> 新建任务会话
           </button>
           <div className="flex-1 overflow-y-auto space-y-2 pr-2">
-            {history?.map(s => (
+            {history?.map(s => {
+                const historyTask = runtime.snapshots[s.id];
+                const taskLabel = historyTask?.loading
+                  ? '运行中'
+                  : historyTask?.phase === 'waiting_user'
+                    ? '等待操作'
+                    : historyTask?.phase === 'completed'
+                      ? '已完成'
+                      : historyTask?.phase === 'stopped'
+                        ? '已停止'
+                        : '';
+                return (
               <div
                 key={s.id}
                 onClick={() => switchSession(s.id)}
@@ -472,17 +528,31 @@ export const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(({
                   <div className="text-xs text-zinc-400 mt-0.5 flex items-center gap-2">
                     <span>{new Date(s.updatedAt).toLocaleString()}</span>
                     <span className="capitalize px-1.5 py-0.5 rounded-sm bg-zinc-100 dark:bg-zinc-800 text-[10px]">{s.mode || 'act'}</span>
+                    {taskLabel && (
+                      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${historyTask?.loading
+                        ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
+                        : historyTask?.phase === 'waiting_user'
+                          ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+                          : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+                      }`}>
+                        {historyTask?.loading && <Loader2 size={10} className="animate-spin" />}
+                        {taskLabel}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <button
                   onClick={(e) => deleteSession(e, s.id)}
-                  className="opacity-0 group-hover:opacity-100 p-2 text-zinc-400 hover:text-destructive hover:bg-destructive/10 rounded-full transition-all"
+                  className="min-w-11 min-h-11 inline-flex items-center justify-center opacity-100 md:opacity-0 md:group-hover:opacity-100 text-zinc-400 hover:text-destructive hover:bg-destructive/10 rounded-full transition-all disabled:opacity-30"
                   title="删除对话"
+                  aria-label={`删除会话：${s.title || '未命名会话'}`}
+                  disabled={historyTask?.loading}
                 >
                   <Trash2 size={16} />
                 </button>
               </div>
-            ))}
+                );
+            })}
             {history?.length === 0 && <div className="text-center text-zinc-500 mt-10">暂无任务记录</div>}
           </div>
         </div>

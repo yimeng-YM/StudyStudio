@@ -6,11 +6,13 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "android:build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-android.ps1",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "search": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-search.ps1"
   },
   "dependencies": {
+    "@capacitor/core": "8.5.0",
     "@tailwindcss/typography": "^0.5.19",
     "@types/dagre": "^0.7.53",
     "class-variance-authority": "^0.7.1",
@@ -44,6 +46,8 @@
     "zustand": "^5.0.9"
   },
   "devDependencies": {
+    "@capacitor/android": "8.5.0",
+    "@capacitor/cli": "8.5.0",
     "@types/node": "^25.0.3",
     "@types/react": "^18.2.66",
     "@types/react-dom": "^18.2.22",

@@ -136,7 +136,11 @@ export function restoreWorkflowState(messages: ChatMessage[]): { todoList: TodoI
  * @param mode - 会话运行模式：'plan'（带确认的计划模式）或 'act'（直接执行模式）
  * @returns 包含消息列表、加载状态、计划状态及会话控制方法的对象
  */
-export function useChatSession(sessionId: string | null, mode: 'plan' | 'act' | 'research') {
+export function useChatSession(
+  sessionId: string | null,
+  mode: 'plan' | 'act' | 'research',
+  contextPromptOverride?: string,
+) {
   const settings = useAIStore(s => s.settings);
   const currentContext = useAIStore(s => s.currentContext);
   const config = useAIStore(s => s.config);
@@ -145,6 +149,9 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act' | 
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<string>('');
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(sessionId);
+  // 历史消息完成恢复后才允许后台运行时向该会话继续发送，避免刚切换会话时
+  // 以空上下文抢跑，覆盖或截断已有对话。
+  const [hydrated, setHydrated] = useState(!sessionId);
   
   const [planStatus, setPlanStatus] = useState<PlanStatus>('none');
   const [currentPlan, setCurrentPlan] = useState<string>('');
@@ -162,6 +169,10 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act' | 
 
   // 思考（reasoning）开始时间戳，用于计算「已思考 Xs」耗时；null 表示本轮未产生思考内容
   const reasoningStartRef = useRef<number | null>(null);
+
+  // 每次用户提交时冻结一次上下文，并贯穿该轮全部递归工具调用、确认与追问。
+  // 下一次独立提交可替换为新的页面上下文。
+  const activeContextPromptRef = useRef<string | undefined>(contextPromptOverride);
 
   // 子 Agent（delegate_task）的实时状态，按 toolCall.id 索引，供 UI 渲染子任务卡片
   const [subAgentStates, setSubAgentStates] = useState<Record<string, SubAgentState>>({});
@@ -192,13 +203,14 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act' | 
     let disposed = false;
 
     if (sessionId) {
+      setHydrated(false);
       setCurrentSessionId(sessionId);
       setTodoList([]);
       setAskState(null);
       setSubAgentStates({});
       db.chatMessages.where('sessionId').equals(sessionId).sortBy('createdAt').then(msgs => {
         if (disposed) return;
-        setMessages(msgs.map(m => ({
+      const restoredMessages = msgs.map(m => ({
           role: m.role as any,
           content: m.content,
           name: m.name,
@@ -206,7 +218,8 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act' | 
           tool_call_id: m.tool_call_id,
           reasoning_content: m.reasoning_content,
           reasoningTimeMs: m.reasoningTimeMs
-        })));
+        }));
+        setMessages(restoredMessages);
         // Rebuild subAgentStates from persisted delegate_task tool messages
         const rebuilt: Record<string, SubAgentState> = {};
         for (const m of msgs) {
@@ -237,8 +250,15 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act' | 
         const restoredWorkflow = restoreWorkflowState(msgs);
         setTodoList(restoredWorkflow.todoList);
         setAskState(restoredWorkflow.askState);
+        setHydrated(true);
+      }).catch(error => {
+        if (disposed) return;
+        console.error('恢复 AI 会话失败:', error);
+        // 即使本地历史读取失败也解除等待，后续请求仍可给出明确错误，而不是永久卡住。
+        setHydrated(true);
       });
     } else {
+      setHydrated(true);
       setCurrentSessionId(null);
       setMessages([]);
       setPlanStatus('none');
@@ -335,7 +355,13 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act' | 
    * @param files - 用户附带的文件或图片资源
    * @returns 活跃的会话 ID
    */
-  const sendMessage = async (content: string, files: any[] = [], hiddenContext = '') => {
+  const sendMessage = async (
+    content: string,
+    files: any[] = [],
+    hiddenContext = '',
+    autoRename = false,
+    taskContextPrompt?: string,
+  ) => {
     if (!settings?.apiKey || !settings?.baseUrl) {
       showAlert("请在设置中配置 AI 服务的 API Key 和请求地址。", { title: '缺少配置' });
       return;
@@ -351,6 +377,7 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act' | 
 
     // 重置停止标记，开始新一轮对话
     stoppedRef.current = false;
+    activeContextPromptRef.current = taskContextPrompt ?? contextPromptOverride;
 
     let activeSessionId = currentSessionId;
     const wasNewSession = !activeSessionId;
@@ -440,7 +467,7 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act' | 
     try {
       await processAgentLoop(newMessages, activeSessionId, false);
       // 首轮对话完成后，后台静默生成智能标题（不阻塞主流程，失败静默）
-      if (wasNewSession) {
+      if (wasNewSession || autoRename) {
         void autoRenameSession(activeSessionId, content);
       }
     } catch (error: any) {
@@ -476,7 +503,9 @@ export function useChatSession(sessionId: string | null, mode: 'plan' | 'act' | 
   ) => {
     if (!settings) return;
 
-    const contextPrompt = getFullContextPrompt(currentContext);
+    // 后台任务在提交瞬间冻结界面上下文。这样用户随后切页、打开历史会话或
+    // 新建其它任务时，原任务仍围绕发送时的页面与实体执行。
+    const contextPrompt = activeContextPromptRef.current ?? getFullContextPrompt(currentContext);
     let systemPrompt = getSystemPromptWithContext(mode, contextPrompt);
 
     if (mode === 'plan' && !skipPlanning && planStatus !== 'confirmed') {
@@ -1033,6 +1062,7 @@ IMPORTANT: Always respond in Chinese.
 
   return {
     messages,
+    hydrated,
     loading,
     status,
     currentSessionId,
