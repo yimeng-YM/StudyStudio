@@ -249,7 +249,11 @@ export function AIFloatingWindow() {
         <div
             className={cn(
                 "border-b dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 flex items-center justify-between select-none shrink-0",
-                isSidebar ? "px-4 md:px-8 py-2 md:py-4" : "p-3",
+                isMobile
+                    ? "mobile-ai-title-safe-area px-3 pb-3"
+                    : isSidebar
+                        ? "px-4 md:px-8 py-2 md:py-4"
+                        : "p-3",
                 titleDraggable && "cursor-move"
             )}
             style={{ touchAction: titleDraggable ? 'none' : undefined }}
@@ -284,10 +288,14 @@ export function AIFloatingWindow() {
                 )}
                 <button
                     onClick={() => setFloatingWindowOpen(false)}
-                    className="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-500 transition-colors"
-                    title="收起"
+                    className={cn(
+                        "flex shrink-0 items-center justify-center text-slate-500 transition-colors hover:bg-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:bg-slate-700",
+                        isMobile ? "-mr-1 h-11 w-11 rounded-xl" : "rounded p-1.5"
+                    )}
+                    title="关闭 AI 助手"
+                    aria-label="关闭 AI 助手"
                 >
-                    <X size={16} />
+                    <X size={isMobile ? 20 : 16} aria-hidden="true" />
                 </button>
             </div>
         </div>

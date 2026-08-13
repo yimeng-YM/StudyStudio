@@ -258,6 +258,14 @@ html.theme-view-transition *::after {
     padding-top: calc(var(--safe-area-inset-top, env(safe-area-inset-top, 0px)) + 4px);
   }
 
+  /*
+   * 手机 AI 窗口是相对视口定位的 fixed 层，不会继承页面根节点的安全区。
+   * 单独给其标题栏留出系统栏 inset 与舒适间距，保证关闭按钮远离屏幕顶边。
+   */
+  .mobile-ai-title-safe-area {
+    padding-top: calc(var(--safe-area-inset-top, env(safe-area-inset-top, 0px)) + 20px);
+  }
+
   /* Hide scrollbar utility */
   .scrollbar-none {
     -ms-overflow-style: none;
