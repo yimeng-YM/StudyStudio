@@ -6,6 +6,7 @@ import { Sparkles, X, PanelRight, AppWindow } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { cn } from '@/lib/utils';
+import { useAIBackgroundRuntime } from '@/services/aiTaskRuntime';
 
 /**
  * AI 悬浮窗口组件
@@ -39,6 +40,7 @@ export function AIFloatingWindow() {
     } = useAIStore();
 
     const isMobile = useIsMobile();
+    const { runningCount, waitingCount } = useAIBackgroundRuntime();
 
     // 视口尺寸：侧边栏模式用 left/height 数值定位（贴右贴底），需监听 resize 实时更新
     const [viewport, setViewport] = useState({ w: window.innerWidth, h: window.innerHeight });
@@ -292,8 +294,8 @@ export function AIFloatingWindow() {
                         "flex shrink-0 items-center justify-center text-slate-500 transition-colors hover:bg-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:bg-slate-700",
                         isMobile ? "-mr-1 h-11 w-11 rounded-xl" : "rounded p-1.5"
                     )}
-                    title="关闭 AI 助手"
-                    aria-label="关闭 AI 助手"
+                    title={runningCount > 0 ? `${runningCount} 个任务将在后台继续运行` : '关闭 AI 助手'}
+                    aria-label={runningCount > 0 ? `收起 AI 助手，${runningCount} 个任务继续在后台运行` : '收起 AI 助手'}
                 >
                     <X size={isMobile ? 20 : 16} aria-hidden="true" />
                 </button>
@@ -335,10 +337,19 @@ export function AIFloatingWindow() {
                         whileHover={{ scale: 1.1 }}
                         whileTap={{ scale: 0.9 }}
                         onClick={() => setFloatingWindowOpen(true)}
-                        className="p-4 bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 rounded-full shadow-lg shadow-blue-500/15 hover:bg-blue-200 dark:hover:bg-blue-900/60 active:scale-95 group relative flex items-center justify-center border border-blue-200 dark:border-blue-800/50"
-                        title="打开 AI 助手"
+                        className="min-w-[56px] min-h-[56px] p-4 bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 rounded-full shadow-lg shadow-blue-500/15 hover:bg-blue-200 dark:hover:bg-blue-900/60 active:scale-95 group relative flex items-center justify-center border border-blue-200 dark:border-blue-800/50"
+                        title={runningCount > 0 ? `${runningCount} 个 AI 任务正在后台运行` : '打开 AI 助手'}
+                        aria-label={runningCount > 0 ? `打开 AI 助手，${runningCount} 个任务正在后台运行` : '打开 AI 助手'}
                     >
                         <Sparkles size={24} className="group-hover:animate-pulse" />
+                        {(runningCount > 0 || waitingCount > 0) && (
+                            <span className={cn(
+                                "absolute -right-1 -top-1 min-w-6 h-6 px-1 rounded-full text-[11px] font-bold text-white flex items-center justify-center ring-2 ring-white dark:ring-zinc-950",
+                                runningCount > 0 ? "bg-blue-600" : "bg-amber-500"
+                            )}>
+                                {runningCount || waitingCount}
+                            </span>
+                        )}
                     </motion.button>
                 </div>
             )}

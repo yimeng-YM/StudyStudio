@@ -7,6 +7,7 @@ import { SortProvider } from '@/hooks/useSorting';
 import { useStudyLogger } from '@/hooks/useStudyLogger';
 import { initFontSize } from '@/hooks/useFontSize';
 import { isChunkLoadError, reloadOnChunkError } from '@/lib/chunkLoadError';
+import { AIBackgroundRuntimeProvider } from '@/services/aiTaskRuntime';
 
 // 以下三个 hook 在其模块加载时即写 DOM（主题 class / 背景与强调色 CSS 变量），以避免首屏闪烁。
 // Settings 改为懒加载后，这些模块不再随启动加载，需在入口静态引入以确保刷新时仍随首屏执行。
@@ -128,23 +129,25 @@ function App() {
   return (
     <SortProvider>
       <DialogProvider>
-        <HashRouter>
-          <PageLoadErrorBoundary>
-            <Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-zinc-400">加载中…</div>}>
-              <SplashReadySignal />
-              <Routes>
-                <Route path="/" element={<Layout />}>
-                  <Route index element={<Dashboard />} />
-                  <Route path="subjects" element={<MobileSubjects />} />
-                  <Route path="subject/:id" element={<SubjectView />} />
-                  <Route path="settings" element={<Settings />} />
-                  <Route path="ai-chat" element={<AIChat />} />
-                  <Route path="docs" element={<Docs />} />
-                </Route>
-              </Routes>
-            </Suspense>
-          </PageLoadErrorBoundary>
-        </HashRouter>
+        <AIBackgroundRuntimeProvider>
+          <HashRouter>
+            <PageLoadErrorBoundary>
+              <Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-zinc-400">加载中…</div>}>
+                <SplashReadySignal />
+                <Routes>
+                  <Route path="/" element={<Layout />}>
+                    <Route index element={<Dashboard />} />
+                    <Route path="subjects" element={<MobileSubjects />} />
+                    <Route path="subject/:id" element={<SubjectView />} />
+                    <Route path="settings" element={<Settings />} />
+                    <Route path="ai-chat" element={<AIChat />} />
+                    <Route path="docs" element={<Docs />} />
+                  </Route>
+                </Routes>
+              </Suspense>
+            </PageLoadErrorBoundary>
+          </HashRouter>
+        </AIBackgroundRuntimeProvider>
       </DialogProvider>
     </SortProvider>
   );

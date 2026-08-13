@@ -1,10 +1,11 @@
 import { db, ChatSession } from '@/db';
-import { MessageSquare, Trash2, Brain, Zap, Microscope, Pencil, Copy } from 'lucide-react';
+import { MessageSquare, Trash2, Brain, Zap, Microscope, Pencil, Copy, Loader2, PauseCircle, CheckCircle2 } from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useAIStore } from '@/store/useAIStore';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useContextMenu } from '@/components/ui/ContextMenu';
 import { buildChatTranscript } from '@/lib/chatTranscript';
+import { useAIBackgroundRuntime } from '@/services/aiTaskRuntime';
 
 /**
  * AI 聊天历史记录页面组件
@@ -23,6 +24,7 @@ export function AIChat() {
   const setFloatingWindowOpen = useAIStore(s => s.setFloatingWindowOpen);
   const { showAlert, showConfirm, showPrompt } = useDialog();
   const { openContextMenu, contextMenu } = useContextMenu();
+  const { snapshots, runningCount, waitingCount, detachSession } = useAIBackgroundRuntime();
 
   const sessions = useLiveQuery(async () => {
     return await db.chatSessions.reverse().sortBy('updatedAt');
@@ -43,10 +45,15 @@ export function AIChat() {
    * @param {string} id - 要删除的会话 ID
    */
   const deleteSessionById = async (id: string) => {
+    if (snapshots[id]?.loading) {
+      showAlert('该任务仍在后台运行。请先打开会话并停止任务，再删除记录。', { title: '任务运行中' });
+      return;
+    }
     const confirmed = await showConfirm('确定要删除这段对话吗？', { title: '删除确认', confirmText: '删除', type: 'confirm' });
     if (confirmed) {
       await db.chatSessions.delete(id);
       await db.chatMessages.where('sessionId').equals(id).delete();
+      detachSession(id);
       showAlert('会话已删除', { title: '成功' });
     }
   };
@@ -84,7 +91,17 @@ export function AIChat() {
    * 渲染单个会话列表项
    * @param {ChatSession} session - 会话数据
    */
-  const renderSessionItem = (session: ChatSession) => (
+  const renderSessionItem = (session: ChatSession) => {
+    const task = snapshots[session.id];
+    const state = task?.loading
+      ? { label: '后台运行中', className: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300', icon: <Loader2 size={12} className="animate-spin" /> }
+      : task?.phase === 'waiting_user'
+        ? { label: '等待你的操作', className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300', icon: <PauseCircle size={12} /> }
+        : task?.phase === 'completed'
+          ? { label: '后台已完成', className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300', icon: <CheckCircle2 size={12} /> }
+          : null;
+
+    return (
     <div
       key={session.id}
       onClick={() => handleSessionClick(session)}
@@ -101,24 +118,35 @@ export function AIChat() {
           <span className={`text-[10px] px-1.5 py-0.5 rounded-sm uppercase tracking-wider ${session.mode === 'plan' ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/50 dark:text-indigo-400' : session.mode === 'research' ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/50 dark:text-emerald-400' : 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400'}`}>
             {session.mode === 'plan' ? '规划模式' : session.mode === 'research' ? '研究模式' : '执行模式'}
           </span>
+          {state && (
+            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${state.className}`}>
+              {state.icon}{state.label}
+            </span>
+          )}
         </div>
       </div>
       <button
         onClick={(e) => deleteSession(e, session.id)}
-        className="opacity-0 group-hover:opacity-100 p-2.5 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-all"
+        className="min-w-11 min-h-11 inline-flex items-center justify-center opacity-100 md:opacity-0 md:group-hover:opacity-100 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-all disabled:opacity-30"
         title="删除对话"
+        aria-label={`删除会话：${session.title || '未命名会话'}`}
+        disabled={task?.loading}
       >
         <Trash2 size={18} />
       </button>
     </div>
-  );
+    );
+  };
 
   return (
     <div className="flex flex-col h-full overflow-y-auto pb-20 md:pb-0">
       <div className="p-4 md:p-8 max-w-5xl mx-auto w-full">
         <div className="mb-6 md:mb-8">
           <h1 className="text-2xl md:text-3xl font-bold text-zinc-900 dark:text-zinc-100 mb-1 md:mb-2">全局任务历史</h1>
-          <p className="text-sm md:text-base text-zinc-600 dark:text-zinc-400">查看所有的 Agent 任务流转记录。</p>
+          <p className="text-sm md:text-base text-zinc-600 dark:text-zinc-400">
+            任务会在后台持续执行，可以放心切换页面或关闭聊天窗口。
+            {(runningCount > 0 || waitingCount > 0) && ` 当前 ${runningCount} 个运行中，${waitingCount} 个等待操作。`}
+          </p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
