@@ -6,6 +6,10 @@ import path from 'path'
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const localBackend = env.STUDYSTUDIO_LOCAL_BACKEND_URL || 'http://127.0.0.1:17890'
+  const requestedDevPort = Number.parseInt(env.STUDYSTUDIO_DEV_PORT || '5273', 10)
+  const devPort = Number.isInteger(requestedDevPort) && requestedDevPort > 0 && requestedDevPort <= 65535
+    ? requestedDevPort
+    : 5273
 
   return {
     clearScreen: false,
@@ -16,6 +20,11 @@ export default defineConfig(({ mode }) => {
       },
     },
     server: {
+      // Bind IPv4 explicitly so `localhost` cannot resolve to an unusable IPv6
+      // listener. Port 5173 is commonly reserved by Hyper-V/WSL on Windows.
+      host: '127.0.0.1',
+      port: devPort,
+      strictPort: true,
       proxy: {
         '/api': {
           target: localBackend,

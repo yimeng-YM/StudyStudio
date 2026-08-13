@@ -3,7 +3,7 @@ import { useAIStore } from '@/store/useAIStore';
 import { SegmentSlider } from '@/components/ui/SegmentSlider';
 import { DEFAULT_MAX_TOKENS } from '@/services/promptConfig';
 import { cn } from '@/lib/utils';
-import { DEFAULT_LOCAL_SEARCH_BASE_URL, getSearchBackend } from '@/lib/toolConfig';
+import { DEFAULT_LOCAL_SEARCH_BASE_URL, getLocalSearchBaseUrl, getSearchBackend } from '@/lib/toolConfig';
 import { fetchLocalNetwork } from '@/lib/localNetwork';
 import { Search, ChevronDown, Check, SlidersHorizontal, Tag, Globe, RefreshCw } from 'lucide-react';
 
@@ -77,7 +77,9 @@ export function AdvancedSettings() {
     setShowNamingModel(false);
   };
 
-  const localApiBase = (config?.localSearchBaseUrl?.trim() || DEFAULT_LOCAL_SEARCH_BASE_URL).replace(/\/+$/, '') || DEFAULT_LOCAL_SEARCH_BASE_URL;
+  // Keep the health check on the same normalized endpoint as actual searches.
+  // In particular, migrate a saved `/api` value to loopback on public deployments.
+  const localApiBase = getLocalSearchBaseUrl(config);
 
   const checkLocalBackend = useCallback(async () => {
     setLocalHealth('checking');

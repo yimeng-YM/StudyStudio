@@ -149,7 +149,7 @@ git clone --branch search --single-branch https://github.com/yimeng-YM/StudyStud
 
 前端与搜索服务现在是两个独立进程：
 
-- 双击 **`start.bat`**：打开 `http://localhost:5173`；若已检出 `search` 分支，会自动在另一个窗口启动搜索服务。
+- 双击 **`start.bat`**：打开 `http://127.0.0.1:5273`；若已检出 `search` 分支，会自动在另一个窗口启动搜索服务。
 - 双击 **`start-search.bat`**：通过正式桥接入口启动独立检出中的 `search/start.bat`，不启动或构建前端。
 
 命令行也可运行 `npm run search`。搜索服务入口统一使用 `start-search` 命名，不再保留旧的 `start-local` 兼容入口。
@@ -183,7 +183,9 @@ StudyStudio 根启动器会把正式域名加入 CORS 白名单。Vercel Preview
    ```bash
    npm run dev
    ```
-4. 打开浏览器访问 `http://localhost:5173`
+4. 打开浏览器访问 `http://127.0.0.1:5273`
+
+如需改用其他开发端口，可在启动前设置 `STUDYSTUDIO_DEV_PORT`。默认使用 `5273`，以避开部分 Windows/Hyper-V 环境会保留的 `5173` 端口。
 
 ## 🔧 构建生产版本
 

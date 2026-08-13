@@ -54,6 +54,9 @@ if not exist "node_modules" (
 )
 echo.
 
+if not defined STUDYSTUDIO_DEV_PORT set "STUDYSTUDIO_DEV_PORT=5273"
+set "STUDYSTUDIO_DEV_URL=http://127.0.0.1:%STUDYSTUDIO_DEV_PORT%"
+
 echo %c_cyan%[3/3] 正在启动 StudyStudio...%c_reset%
 if /i not "%STUDYSTUDIO_SKIP_SEARCH%"=="1" (
   if exist "%~dp0search\start.bat" (
@@ -72,10 +75,12 @@ if /i not "%STUDYSTUDIO_SKIP_SEARCH%"=="1" (
   echo %c_yell%已按 STUDYSTUDIO_SKIP_SEARCH=1 跳过本地搜索服务。%c_reset%
 )
 
-start "" /b cmd.exe /d /c "timeout /t 3 >nul && start http://localhost:5173"
+if /i not "%STUDYSTUDIO_SKIP_BROWSER%"=="1" (
+  start "" /b powershell.exe -NoLogo -NoProfile -WindowStyle Hidden -Command "Start-Sleep -Seconds 3; Start-Process '%STUDYSTUDIO_DEV_URL%'"
+)
 echo.
 echo %c_blue%============================================================%c_reset%
-echo %c_green%  StudyStudio 即将在 http://localhost:5173 启动%c_reset%
+echo %c_green%  StudyStudio 即将在 %STUDYSTUDIO_DEV_URL% 启动%c_reset%
 echo %c_yell%  网页将在 3 秒后自动打开，请在使用期间保持此窗口运行。%c_reset%
 echo %c_blue%============================================================%c_reset%
 echo.
