@@ -679,7 +679,7 @@ export function QuizModule({ subjectId }: QuizModuleProps) {
   const createQuiz = async () => {
     const id = generateUUID(); const now = Date.now();
     await db.entities.add({ id, subjectId, type: 'quiz_bank' as const, title: '未命名题库', content: { questions: [] }, createdAt: now, updatedAt: now, lastAccessed: now, order: now });
-    setSelectedQuizId(id); setEditTitle('未命名题库'); setIsEditingTitle(true); setViewMode('nav'); setSidebarCollapsed(false);
+    setSelectedQuizId(id); setEditTitle('未命名题库'); setIsEditingTitle(true); setViewMode('detail'); setSidebarCollapsed(false);
   };
 
   const deleteQuiz = async (id: string) => {
@@ -708,7 +708,8 @@ export function QuizModule({ subjectId }: QuizModuleProps) {
   const { moveItem } = useManualReorder(quizzes, db.entities);
 
   const handleSelectQuiz = async (quiz: Entity) => {
-    setSelectedQuizId(quiz.id); setEditTitle(quiz.title); setIsEditingTitle(false); setViewMode('nav'); setScrollToIndex(null); setSidebarCollapsed(false);
+    const hasQuestions = ((quiz.content as QuizContent)?.questions?.length || 0) > 0;
+    setSelectedQuizId(quiz.id); setEditTitle(quiz.title); setIsEditingTitle(false); setViewMode(hasQuestions ? 'nav' : 'detail'); setScrollToIndex(null); setSidebarCollapsed(false);
     await db.entities.update(quiz.id, { lastAccessed: Date.now() });
   };
 
@@ -784,7 +785,15 @@ export function QuizModule({ subjectId }: QuizModuleProps) {
     ], sourceLabel);
   };
   const handleBackToList = () => { setSelectedQuizId(null); setIsEditingTitle(false); setViewMode('list'); setScrollToIndex(null); setSidebarCollapsed(false); };
-  const handleDetailBack = () => { setViewMode('nav'); setScrollToIndex(null); };
+  const handleDetailBack = () => {
+    const hasQuestions = ((selectedQuiz?.content as QuizContent | undefined)?.questions?.length || 0) > 0;
+    if (!hasQuestions) {
+      handleBackToList();
+      return;
+    }
+    setViewMode('nav');
+    setScrollToIndex(null);
+  };
   const handleSelectQuestion = (index: number) => {
     if (window.innerWidth >= 768) { setScrollToIndex(index); setTimeout(() => setScrollToIndex(null), 100); }
     else { setViewMode('detail'); setScrollToIndex(index); }
@@ -893,15 +902,27 @@ export function QuizModule({ subjectId }: QuizModuleProps) {
             <div className="flex items-center gap-2 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 shrink-0">
               <button onClick={handleBackToList} className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg"><ArrowLeft size={20} /></button>
               <span className="font-medium text-sm truncate">{selectedQuiz?.title}</span>
-              <span className="text-xs text-zinc-400 ml-auto">{questions.length} 题</span>
+              <button onClick={() => setViewMode('detail')} className="p-1.5 ml-auto text-zinc-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg" title="编辑题库"><Edit size={18} /></button>
+              <span className="text-xs text-zinc-400">{questions.length} 题</span>
             </div>
             <div className="flex-1 overflow-y-auto px-3 pt-3">
-              <MobileQuizNav questions={questions} recordMap={recordMap} onSelectQuestion={handleSelectQuestion} />
-              <StatusLegend />
+              {questions.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center gap-3 pb-16 text-center text-zinc-500 dark:text-zinc-400">
+                  <div className="text-sm">这个题库还没有题目</div>
+                  <button onClick={() => setViewMode('detail')} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
+                    进入编辑并添加题目
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <MobileQuizNav questions={questions} recordMap={recordMap} onSelectQuestion={handleSelectQuestion} />
+                  <StatusLegend />
+                </>
+              )}
             </div>
           </motion.div>
         )}
-        {viewMode === 'detail' && (
+        {viewMode === 'detail' && selectedQuiz && (
           <motion.div key="m-detail" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 30 }} transition={{ duration: 0.2 }} className="flex flex-col h-full">
             <div className="flex items-center gap-1 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 shrink-0">
               <button onClick={handleDetailBack} className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg shrink-0"><ArrowLeft size={20} /></button>
