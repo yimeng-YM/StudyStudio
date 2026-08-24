@@ -54,7 +54,7 @@ if not exist "node_modules" (
 )
 echo.
 
-if not defined STUDYSTUDIO_DEV_PORT set "STUDYSTUDIO_DEV_PORT=5273"
+if not defined STUDYSTUDIO_DEV_PORT set "STUDYSTUDIO_DEV_PORT=5173"
 set "STUDYSTUDIO_DEV_URL=http://127.0.0.1:%STUDYSTUDIO_DEV_PORT%"
 
 echo %c_cyan%[3/3] 正在启动 StudyStudio...%c_reset%

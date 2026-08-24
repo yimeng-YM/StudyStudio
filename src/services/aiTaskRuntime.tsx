@@ -105,6 +105,7 @@ export interface BackgroundTaskRunnerProps {
 export function AIBackgroundRuntimeProvider({ children }: { children: ReactNode }) {
   const [sessions, setSessions] = useState<Record<string, { mode: AITaskMode; contextPrompt: string }>>({});
   const [snapshots, setSnapshots] = useState<Record<string, AITaskSnapshot>>({});
+  const [controllerVersion, setControllerVersion] = useState(0);
   const controllersRef = useRef<Record<string, AITaskController>>({});
   const pendingSendsRef = useRef<Record<string, PendingSend[]>>({});
 
@@ -141,7 +142,16 @@ export function AIBackgroundRuntimeProvider({ children }: { children: ReactNode 
   }, []);
 
   const handleReady = useCallback((sessionId: string, controller: AITaskController) => {
+    if (controllersRef.current[sessionId]) {
+      // The controller methods delegate to a session ref, so the first registered
+      // controller stays valid even as the underlying session state changes.
+      return;
+    }
     controllersRef.current[sessionId] = controller;
+    // Controllers are stored in a ref so callbacks can always read the latest value,
+    // but the UI also needs to be notified when a controller is registered.
+    // Bumping this version forces controllers to be recomputed with the fresh ref.
+    setControllerVersion(v => v + 1);
     flushPendingSends(sessionId, controller);
   }, [flushPendingSends]);
 
@@ -221,7 +231,7 @@ export function AIBackgroundRuntimeProvider({ children }: { children: ReactNode 
       if (controller) result[sessionId] = { ...controller, ...snapshot };
     }
     return result;
-  }, [snapshots]);
+  }, [snapshots, controllerVersion]);
 
   const runningCount = Object.values(snapshots).filter(task => task.loading).length;
   const waitingCount = Object.values(snapshots).filter(task => task.phase === 'waiting_user').length;

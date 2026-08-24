@@ -33,6 +33,11 @@ export default function AIBackgroundTaskRunner({
   const previousRef = useRef<AITaskSnapshot>();
   const startedAtRef = useRef<number>();
   const completedAtRef = useRef<number>();
+  // Keep the latest session methods in a ref so the controller can stay referentially
+  // stable across unrelated re-renders. This prevents onReady from firing on every
+  // parent render and lets the runtime safely refresh its controller registry.
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
 
   if (session.loading && !startedAtRef.current) startedAtRef.current = Date.now();
 
@@ -83,12 +88,12 @@ export default function AIBackgroundTaskRunner({
   const controller = useMemo<AITaskController>(() => ({
     ...snapshot,
     sendMessage: async ({ content, files = [], hiddenContext = '', newSession = false, contextPrompt: taskContextPrompt }) => {
-      await session.sendMessage(content, files, hiddenContext, newSession, taskContextPrompt);
+      await sessionRef.current.sendMessage(content, files, hiddenContext, newSession, taskContextPrompt);
     },
-    retry: session.retry,
-    stop: session.stop,
-    answerAsk: session.answerAsk,
-  }), [snapshot, session.sendMessage, session.retry, session.stop, session.answerAsk]);
+    retry: (index?: number) => sessionRef.current.retry(index),
+    stop: () => sessionRef.current.stop(),
+    answerAsk: (answer: string | string[]) => sessionRef.current.answerAsk(answer),
+  }), [snapshot]);
 
   useEffect(() => {
     previousRef.current = snapshot;
